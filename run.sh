@@ -1,10 +1,15 @@
 #!/bin/sh
+NEST_BUILD_DIR=build
+NEST_EXE_NAME=nest
 set -ex
-mkdir -p build
+mkdir -p $NEST_BUILD_DIR
 time clang++ \
--o build/hatch \
+-o $NEST_BUILD_DIR/$NEST_EXE_NAME \
 bootstrap/main.cpp \
 bootstrap/entry.S \
+`# -Oz` \
+`# -march=native` \
+`# -Wl,-strip-all` \
 -g \
 -std=gnu++23 \
 -Wall \
@@ -19,5 +24,5 @@ bootstrap/entry.S \
 -fno-stack-protector \
 -ferror-limit=1 \
 `#-ftime-report` \
--MJ build/compile_commands.json
-gf2 -ex r build/hatch
+-MJ $NEST_BUILD_DIR/compile_commands.json
+gf2 -ex r $NEST_BUILD_DIR/$NEST_EXE_NAME
