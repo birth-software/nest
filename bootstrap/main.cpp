@@ -72,7 +72,7 @@ extern "C" void* memset(void* dst, u8 n, u64 size)
     return dst;
 }
 
-extern "C" int memcmp(const void* left, const void* right, u64 n)
+fn int memcmp(const void* left, const void* right, u64 n)
 {
 	const u8 *l=(const u8*)left, *r=(const u8*)right;
 	for (; n && *l == *r; n--, l++, r++);
@@ -138,26 +138,32 @@ struct Slice
     {
         return pointer + length;
     }
+
+    forceinline void copy_in(Slice other)
+    {
+        assert(length == other.length);
+        memcpy(pointer, other.pointer, sizeof(T) * other.length);
+    }
 };
 
 using String = Slice<u8>;
 #define strlit(s) String{ .pointer = (u8*)s, .length = sizeof(s) - 1, }
 #define ch_to_str(ch) String{ .pointer = &ch, .length = 1 }
 
-global auto constexpr fnv_offset = 14695981039346656037ull;
-global auto constexpr fnv_prime = 1099511628211ull;
+// global auto constexpr fnv_offset = 14695981039346656037ull;
+// global auto constexpr fnv_prime = 1099511628211ull;
 
-fn Hash hash_bytes(String bytes)
-{
-    u64 result = fnv_offset;
-    for (u64 i = 0; i < bytes.length; i += 1)
-    {
-        result ^= bytes.pointer[i];
-        result *= fnv_prime;
-    }
-
-    return (Hash)result;
-}
+// fn Hash hash_bytes(String bytes)
+// {
+//     u64 result = fnv_offset;
+//     for (u64 i = 0; i < bytes.length; i += 1)
+//     {
+//         result ^= bytes.pointer[i];
+//         result *= fnv_prime;
+//     }
+//
+//     return (Hash)result;
+// }
 
 // fn forceinline long syscall0(long n)
 // {
@@ -219,18 +225,18 @@ fn forceinline long syscall6(long n, long a1, long a2, long a3, long a4, long a5
 	return ret;
 }
 
-fn u8 memeq(u8* a, u8* b, u64 size)
-{
-    for (u64 i = 0; i < size; i += 1)
-    {
-        if (a[i] != b[i])
-        {
-            return 0;
-        }
-    }
-
-    return 1;
-}
+// fn u8 memeq(u8* a, u8* b, u64 size)
+// {
+//     for (u64 i = 0; i < size; i += 1)
+//     {
+//         if (a[i] != b[i])
+//         {
+//             return 0;
+//         }
+//     }
+//
+//     return 1;
+// }
 
 enum class SyscallX86_64 : u64 {
     read = 0,
@@ -645,10 +651,10 @@ fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
     syscall_exit(1);
 }
 
-fn void* reserve(u64 size, u8 huge_pages)
+fn void* reserve(u64 size)
 {
     int protection_flags = PROT_NONE;
-    int map_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_NORESERVE | (huge_pages ? MAP_HUGETLB : 0);
+    int map_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_NORESERVE;
     void* result = syscall_mmap(0, size, protection_flags, map_flags, -1, 0);
     assert(result != MAP_FAILED);
     return result;
@@ -683,7 +689,7 @@ struct Arena
     fn Arena* init(u64 reserved_size, u64 granularity, u64 initial_size)
     {
         assert(initial_size % granularity == 0);
-        Arena* arena = (Arena*)reserve(reserved_size, granularity != minimum_granularity);
+        Arena* arena = (Arena*)reserve(reserved_size);
         commit(arena, initial_size);
         *arena = {
             .reserved_size = reserved_size,
@@ -787,10 +793,12 @@ struct PinnedArray
 {
     T* pointer;
     u32 length;
-    u32 committed;
+    u32 capacity;
 
     global constexpr auto granularity = page_size;
     global constexpr auto reserved_size = ((u64)GB(4) - granularity);
+
+    // static_assert(sizeof(T) % granularity == 0);
 
     forceinline T& operator[](u32 index)
     {
@@ -804,6 +812,11 @@ struct PinnedArray
         generic_pinned_array_ensure_capacity(generic_array, additional, sizeof(T));
     }
 
+    forceinline void clear()
+    {
+        length = 0;
+    }
+
     forceinline Slice<T> add_with_capacity(u32 additional)
     {
         auto generic_array = (PinnedArray<u8>*)(this);
@@ -814,8 +827,6 @@ struct PinnedArray
         };
     }
 
-//     generic_pinned_array_ensure_capacity(array, additional_T, size_of_T);
-//     u8* result = generic_pinned_array_add_with_capacity(array, additional_T, size_of_T);
     forceinline Slice<T> add(u32 additional)
     {
         ensure_capacity(additional);
@@ -823,9 +834,39 @@ struct PinnedArray
         return slice;
     }
 
+    forceinline Slice<T> append(Slice<T> items)
+    {
+        assert(items.length <= 0xffffffff);
+        auto slice = add(items.length);
+        slice.copy_in(items);
+        return slice;
+    }
+
     forceinline T* add_one()
     {
         return add(1).pointer;
+    }
+
+    forceinline T* append_one(T item)
+    {
+        T* new_item = add_one();
+        *new_item = item;
+        return new_item;
+    }
+
+    forceinline T pop()
+    {
+        assert(length);
+        length -= 1;
+        return pointer[length];
+    }
+
+    forceinline Slice<T> slice()
+    {
+        return {
+            .pointer = pointer,
+            .length = length,
+        };
     }
 };
 
@@ -837,26 +878,23 @@ forceinline fn u32 generic_pinned_array_length(PinnedArray<u8>* array, u32 size_
 
 fn void generic_pinned_array_ensure_capacity(PinnedArray<u8>* array, u32 additional_T, u32 size_of_T)
 {
-    if (array->committed == 0)
+    u32 wanted_capacity = array->length + additional_T;
+    if (array->capacity < array->length + additional_T)
     {
-        assert(array->length == 0);
-        assert(array->pointer == 0);
-        array->pointer = static_cast<u8*>(reserve(PinnedArray<u8>::reserved_size, 0));
-    }
+        if (array->capacity == 0)
+        {
+            assert(array->length == 0);
+            assert(array->pointer == 0);
+            array->pointer = static_cast<u8*>(reserve(PinnedArray<u8>::reserved_size));
+        }
 
-    u32 additional_bytes = additional_T * size_of_T;
-    u32 current_length_bytes = generic_pinned_array_length(array, size_of_T);
-    u64 granularity_aligned_commit_bytes = align_forward(current_length_bytes, PinnedArray<u8>::granularity);
-    u64 new_length_bytes = current_length_bytes + additional_bytes;
-
-    if (granularity_aligned_commit_bytes < new_length_bytes)
-    {
-        assert(new_length_bytes <= PinnedArray<u8>::reserved_size);
-        u64 new_granularity_aligned_commit_bytes = align_forward(new_length_bytes, PinnedArray<u8>::granularity);
-        u8* commit_pointer = array->pointer + granularity_aligned_commit_bytes;
-        u64 commit_bytes = new_granularity_aligned_commit_bytes + granularity_aligned_commit_bytes;
-        commit(commit_pointer, commit_bytes);
-        array->committed += commit_bytes / PinnedArray<u8>::granularity;
+        u64 currently_committed_size = align_forward(array->capacity * size_of_T, array->granularity);
+        u64 wanted_committed_size = align_forward(wanted_capacity * size_of_T, array->granularity);
+        void* commit_pointer = array->pointer + currently_committed_size;
+        u64 commit_size = wanted_committed_size - currently_committed_size;
+        assert(commit_size > 0);
+        commit(commit_pointer, commit_size);
+        array->capacity = wanted_committed_size / size_of_T;
     }
 }
 
@@ -864,7 +902,7 @@ fn u8* generic_pinned_array_add_with_capacity(PinnedArray<u8>* array, u32 additi
 {
     u32 current_length_bytes = generic_pinned_array_length(array, size_of_T);
     assert(current_length_bytes < PinnedArray<u8>::reserved_size);
-    u8* pointer = array->pointer;
+    u8* pointer = array->pointer + current_length_bytes;
     array->length += additional_T;
     return pointer;
 }
@@ -878,7 +916,7 @@ struct GetOrPut
     V* value;
     u8 existing;
 };
-fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
+// fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
 
 
 template<typename K, typename V>
@@ -897,97 +935,97 @@ struct PinnedHashmap
     static_assert(granularity % sizeof(K) == 0, "");
     static_assert(granularity % sizeof(V) == 0, "");
 
-    forceinline GetOrPut<K, V> get_or_put(K key, V value)
-    {
-        auto* generic_hashmap = (PinnedHashmap<u8, u8>*)(this);
-        auto generic_get_or_put = generic_pinned_hashmap_get_or_put(generic_hashmap, (u8*)&key, sizeof(K), (u8*)&value, sizeof(V));
-        return *(GetOrPut<K, V>*)&generic_get_or_put;
-    }
+    // forceinline GetOrPut<K, V> get_or_put(K key, V value)
+    // {
+    //     auto* generic_hashmap = (PinnedHashmap<u8, u8>*)(this);
+    //     auto generic_get_or_put = generic_pinned_hashmap_get_or_put(generic_hashmap, (u8*)&key, sizeof(K), (u8*)&value, sizeof(V));
+    //     return *(GetOrPut<K, V>*)&generic_get_or_put;
+    // }
 };
 
 // Returns the generic value pointer if the key is present
-fn u32 generic_pinned_hashmap_get_index(PinnedHashmap<u8, u8>* hashmap, u8* key_pointer, u32 key_size)
-{
-    u32 index = hashmap->invalid_index;
+// fn u32 generic_pinned_hashmap_get_index(PinnedHashmap<u8, u8>* hashmap, u8* key_pointer, u32 key_size)
+// {
+//     u32 index = hashmap->invalid_index;
+//
+//     for (u32 i = 0; i < hashmap->length; i += 1)
+//     {
+//         u8* it_key_pointer = &hashmap->keys[i * key_size];
+//         if (memeq(it_key_pointer, key_pointer, key_size))
+//         {
+//             index = (it_key_pointer - hashmap->keys) / key_size;
+//             break;
+//         }
+//     }
+//
+//     return index;
+// }
 
-    for (u32 i = 0; i < hashmap->length; i += 1)
-    {
-        u8* it_key_pointer = &hashmap->keys[i * key_size];
-        if (memeq(it_key_pointer, key_pointer, key_size))
-        {
-            index = (it_key_pointer - hashmap->keys) / key_size;
-            break;
-        }
-    }
+// fn void generic_pinned_hashmap_ensure_capacity(PinnedHashmap<u8, u8>* hashmap, u32 key_size, u32 value_size, u32 additional_elements)
+// {
+//     if (additional_elements != 0)
+//     {
+//         if (hashmap->key_page_capacity == 0)
+//         {
+//             assert(hashmap->value_page_capacity == 0);
+//             hashmap->keys = (u8*)reserve(hashmap->reserved_size);
+//             hashmap->values = (u8*)reserve(hashmap->reserved_size);
+//         }
+//
+//         u32 target_element_capacity = hashmap->length + additional_elements;
+//
+//         {
+//             u32 key_byte_capacity = hashmap->key_page_capacity * hashmap->granularity;
+//             u32 target_byte_capacity = target_element_capacity * key_size;
+//             if (key_byte_capacity < target_byte_capacity)
+//             {
+//                 u32 aligned_target_byte_capacity = align_forward(target_byte_capacity,  hashmap->granularity);
+//                 void* commit_pointer = hashmap->keys + key_byte_capacity;
+//                 u32 commit_size = aligned_target_byte_capacity - key_byte_capacity;
+//                 commit(commit_pointer, commit_size);
+//                 hashmap->key_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
+//             }
+//         }
+//
+//         {
+//             u32 value_byte_capacity = hashmap->value_page_capacity * hashmap->granularity;
+//             u32 target_byte_capacity = target_element_capacity * value_size;
+//             if (value_byte_capacity < target_byte_capacity)
+//             {
+//                 u32 aligned_target_byte_capacity = align_forward(target_byte_capacity, hashmap->granularity);
+//                 void* commit_pointer = hashmap->values + value_byte_capacity;
+//                 u32 commit_size = aligned_target_byte_capacity - value_byte_capacity;
+//                 commit(commit_pointer, commit_size);
+//                 hashmap->value_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
+//             }
+//         }
+//     }
+// }
 
-    return index;
-}
-
-fn void generic_pinned_hashmap_ensure_capacity(PinnedHashmap<u8, u8>* hashmap, u32 key_size, u32 value_size, u32 additional_elements)
-{
-    if (additional_elements != 0)
-    {
-        if (hashmap->key_page_capacity == 0)
-        {
-            assert(hashmap->value_page_capacity == 0);
-            hashmap->keys = (u8*)reserve(hashmap->reserved_size, 0);
-            hashmap->values = (u8*)reserve(hashmap->reserved_size, 0);
-        }
-
-        u32 target_element_capacity = hashmap->length + additional_elements;
-
-        {
-            u32 key_byte_capacity = hashmap->key_page_capacity * hashmap->granularity;
-            u32 target_byte_capacity = target_element_capacity * key_size;
-            if (key_byte_capacity < target_byte_capacity)
-            {
-                u32 aligned_target_byte_capacity = align_forward(target_byte_capacity,  hashmap->granularity);
-                void* commit_pointer = hashmap->keys + key_byte_capacity;
-                u32 commit_size = aligned_target_byte_capacity - key_byte_capacity;
-                commit(commit_pointer, commit_size);
-                hashmap->key_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
-            }
-        }
-
-        {
-            u32 value_byte_capacity = hashmap->value_page_capacity * hashmap->granularity;
-            u32 target_byte_capacity = target_element_capacity * value_size;
-            if (value_byte_capacity < target_byte_capacity)
-            {
-                u32 aligned_target_byte_capacity = align_forward(target_byte_capacity, hashmap->granularity);
-                void* commit_pointer = hashmap->values + value_byte_capacity;
-                u32 commit_size = aligned_target_byte_capacity - value_byte_capacity;
-                commit(commit_pointer, commit_size);
-                hashmap->value_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
-            }
-        }
-    }
-}
-
-fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
-{
-    u32 index = generic_pinned_hashmap_get_index(hashmap, new_key_pointer, key_size);
-    if (index != hashmap->invalid_index)
-    {
-        trap();
-    }
-    else
-    {
-        generic_pinned_hashmap_ensure_capacity(hashmap, key_size, value_size, 1);
-        u32 new_index = hashmap->length;
-        hashmap->length += 1;
-        u8* key_pointer = &hashmap->keys[new_index * key_size];
-        u8* value_pointer = &hashmap->values[new_index * value_size];
-        memcpy(key_pointer, new_key_pointer, key_size);
-        memcpy(value_pointer, new_value_pointer, value_size);
-
-        return {
-            .key = key_pointer,
-            .value = value_pointer,
-            .existing = 0,
-        };
-    }
-}
+// fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
+// {
+//     u32 index = generic_pinned_hashmap_get_index(hashmap, new_key_pointer, key_size);
+//     if (index != hashmap->invalid_index)
+//     {
+//         trap();
+//     }
+//     else
+//     {
+//         generic_pinned_hashmap_ensure_capacity(hashmap, key_size, value_size, 1);
+//         u32 new_index = hashmap->length;
+//         hashmap->length += 1;
+//         u8* key_pointer = &hashmap->keys[new_index * key_size];
+//         u8* value_pointer = &hashmap->values[new_index * value_size];
+//         memcpy(key_pointer, new_key_pointer, key_size);
+//         memcpy(value_pointer, new_value_pointer, value_size);
+//
+//         return {
+//             .key = key_pointer,
+//             .value = value_pointer,
+//             .existing = 0,
+//         };
+//     }
+// }
 
 typedef enum FileStatus
 {
@@ -1049,7 +1087,8 @@ struct SemaType
     SemaTypeId id : type_id_bit_count;
     u32 resolved: 1;
     u32 flags: type_flags_bit_count;
-    u32 name;
+    u32 reserved;
+    String name;
 
     u8 get_bit_count()
     {
@@ -1062,7 +1101,7 @@ struct SemaType
     }
 
 };
-static_assert(sizeof(SemaType) == sizeof(u64) * 3, "Type must be 24 bytes");
+static_assert(sizeof(SemaType) == sizeof(u64) * 5, "Type must be 24 bytes");
 forceinline u8 Type::is_resolved()
 {
     return (id == Id::backend) | ((id == Id::sema) & get_sema()->resolved);
@@ -1083,7 +1122,7 @@ struct Symbol
         external,
     };
 
-    u32 name;
+    String name;
     Id id: 1;
     Linkage linkage: 1;
 };
@@ -1179,15 +1218,20 @@ global auto constexpr integer_type_offset = 5;
 global auto constexpr integer_type_count = 64 * 2;
 global auto constexpr builtin_type_count = integer_type_count + integer_type_offset + 1;
 
+struct Thread
+{
+    Arena* arena;
+    Slice<Function> functions;
+};
 
 struct Unit
 {
-    PinnedArray<File> files;
-    PinnedArray<Function> functions;
-    Arena* arena;
-    Arena* node_arena;
-    Arena* type_arena;
-    PinnedHashmap<Hash, String> identifiers;
+    // PinnedArray<File> files;
+    // PinnedArray<Function> functions;
+    // Arena* arena;
+    // Arena* node_arena;
+    // Arena* type_arena;
+    // PinnedHashmap<Hash, String> identifiers;
     SemaType* builtin_types;
     u64 generate_debug_information : 1;
 
@@ -1216,6 +1260,13 @@ struct ProjectionData
     NodeDataType type;
     u16 index;
 };
+
+struct Output
+{
+    Node* node;
+    u16 slot;
+};
+
 // This is a node in the "sea of nodes" sense:
 // https://en.wikipedia.org/wiki/Sea_of_nodes
 struct Node
@@ -1230,11 +1281,13 @@ struct Node
 
     static_assert(sizeof(NodeDataType) <= 2);
 
-    Node** edges;
+    Node** inputs;
+    Output* outputs;
     u32 gvn;
     u16 input_count;
+    u16 input_capacity;
     u16 output_count;
-    u16 capacity;
+    u16 output_capacity;
     NodeDataType data_type;
     Id id;
 
@@ -1250,117 +1303,229 @@ struct Node
     forceinline Slice<Node*> get_inputs()
     {
         return {
-            .pointer = edges,
+            .pointer = inputs,
             .length = input_count,
         };
     }
 
-    forceinline Slice<Node*> get_outputs()
+    forceinline Slice<Output> get_outputs()
     {
         return {
-            .pointer = edges + input_count,
+            .pointer = outputs,
             .length = output_count,
         };
     }
 
-    [[nodiscard]] fn Node* add(Unit* unit)
+    struct NodeData
     {
-        Node* node = unit->node_arena->allocate_one<Node>();
-        *node = {};
+        NodeDataType type;
+        u16 input_count;
+        Id id;
+    };
+
+    struct DynamicNodeData
+    {
+        NodeData s;
+        u32 gvn;
+        u16 input_capacity;
+    };
+
+    [[nodiscard]] fn Node* add(Arena* arena, DynamicNodeData data)
+    {
+        auto* node = arena->allocate_one<Node>();
+        u16 output_count = 0;
+        u16 output_capacity = 4;
+        *node = {
+            .inputs = arena->allocate_many<Node*>(data.input_capacity),
+            .outputs = arena->allocate_many<Output>(output_capacity),
+            .gvn = data.gvn,
+            .input_count = data.s.input_count,
+            .input_capacity = data.input_capacity,
+            .output_count = output_count,
+            .output_capacity = output_capacity,
+            .data_type = data.s.type,
+            .id = data.s.id,
+        };
+
+        memset(node->inputs, 0, sizeof(Node*) * node->input_capacity);
+        memset(node->outputs, 0, sizeof(Output) * node->output_capacity);
+
         return node;
     }
 
-    [[nodiscard]] fn Node* add_from_function(Unit* unit, Function* function)
+    [[nodiscard]] fn Node* add_from_function_dynamic(Arena* arena, Function* function, NodeData data, u16 input_capacity)
     {
-        u32 gvn = function->node_count;
+        auto gvn = function->node_count;
         function->node_count += 1;
-        Node* node = unit->node_arena->allocate_one<Node>();
-        *node = {
+
+        auto* node = add(arena, {
+            .s = data,
             .gvn = gvn,
-        };
+            .input_capacity = input_capacity,
+        });
         return node;
     }
+
+    [[nodiscard]] fn Node* add_from_function(Arena* arena, Function* function, NodeData data)
+    {
+        return add_from_function_dynamic(arena, function, data, data.input_count);
+    }
     
-    Node* project(Unit* unit, Function* function, ProjectionData data)
+    [[nodiscard]] Node* project(Arena* arena, Function* function, ProjectionData data)
     {
         assert(data_type.id == NodeDataType::Id::TUPLE);
 
-        Node* projection = Node::add_from_function(unit, function);
+        Node* projection = Node::add_from_function(arena, function, {
+            .input_count = 1,
+        });
         assert(projection != this);
         projection->id = Node::Id::PROJECTION;
         projection->data_type = data.type;
-        projection->reallocate_edges(unit, 4);
+        // projection->reallocate_edges(unit, 4);
         projection->input_count = 1;
-        projection->set_input(unit, function, this, 0);
+        projection->set_input(this, 0);
         projection->projection.index = data.index;
 
         return projection;
     }
 
-    void set_input(Unit* unit, Function* function, Node* input, u16 slot)
+    void set_input(Node* input, u16 slot)
     {
         assert(slot < input_count);
-        remove_output(unit, function, slot);
-        *get_input_slot(slot) = input;
+        remove_output(slot);
+        inputs[slot] = input;
         if (input)
         {
-            add_output(unit, function, input);
+            add_output(input, slot);
         }
     }
 
-    Node** get_output_slot(u16 slot)
+    void add_output(Node* input, u16 slot)
     {
-        assert(slot < output_count);
-        return edges + input_count + slot;
-    }
-
-    Node** get_input_slot(u16 slot)
-    {
-        assert(slot < input_count);
-        return edges + slot;
-    }
-
-    void add_output(Unit* unit, Function* function, Node* input)
-    {
-        unused(unit);
-        unused(function);
-
-        if (input->output_count + input->input_count >= input->capacity)
+        if (input->output_count >= input->output_capacity)
         {
             trap();
         }
 
         auto index = input->output_count;
         input->output_count += 1;
-        *input->get_output_slot(index) = this;
+        input->outputs[index] = {
+            .node = this,
+            .slot = slot,
+        };
     }
 
-    void remove_output(Unit* unit, Function* function, u16 slot)
+    void remove_output(u16 slot)
     {
-        unused(unit);
-        unused(function);
         if (slot < output_count)
         {
-            Node** output_slot = get_output_slot(slot);
-            if (*output_slot)
+            Output* output_slot = &outputs[slot];
+            if (output_slot->node)
             {
                 trap();
             }
         }
     }
 
-    void reallocate_edges(Unit* unit, u16 new_capacity)
+    u8 is_pinned()
     {
-        auto old_capacity = capacity;
-        assert(new_capacity > old_capacity);
-        auto length = output_count + input_count;
-        Node** new_edges = unit->arena->allocate_many<Node*>(new_capacity);
-        memcpy(new_edges, edges, length * sizeof(Node*));
-        memset(new_edges + length, 0, (new_capacity - length) * sizeof(Node));
-        capacity = new_capacity;
-        edges = new_edges;
-        // TODO: free
+        u8 is_good_id = 0;
+        switch (id)
+        {
+        case Id::ROOT:
+        case Id::RETURN:
+            is_good_id = 1;
+            break;
+        case Id::PROJECTION:
+        case Id::CONSTANT_INT:
+            break;
+        }
 
+        return is_good_id | is_projection() | cfg_is_control_projection();
+    }
+
+    u8 is_projection()
+    {
+        switch (id)
+        {
+            case Id::PROJECTION:
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    u8 cfg_is_control_projection()
+    {
+        return is_projection() & (data_type.id == NodeDataType::Id::CONTROL);
+    }
+
+    u8 is_cfg_control()
+    {
+        switch (data_type.id)
+        {
+        case NodeDataType::Id::CONTROL:
+            return 1;
+        case NodeDataType::Id::TUPLE:
+            for (Output& output : get_outputs())
+            {
+                if (output.node->cfg_is_control_projection())
+                {
+                    return 1;
+                }
+            }
+        default:
+            return 0;
+        }
+    }
+};
+
+struct WorkList
+{
+    using BitsetBackingType = u32;
+    PinnedArray<Node*> nodes;
+    PinnedArray<BitsetBackingType> bitset;
+
+    global constexpr auto bit_count = sizeof(BitsetBackingType) * 8;
+
+    void push(Node* node)
+    {
+        if (!test_and_set(node))
+        {
+            nodes.append_one(node);
+        }
+    }
+
+    u8 test_and_set(Node* node)
+    {
+        BitsetBackingType gvn_word = node->gvn / bit_count;
+        if (gvn_word >= bitset.capacity)
+        {
+            trap();
+        }
+        BitsetBackingType gvn_mask = 1 << (node->gvn % bit_count);
+        if (bitset[gvn_word] & gvn_mask)
+        {
+            return 1;
+        }
+        else
+        {
+            bitset[gvn_word] |= gvn_mask;
+            return 0;
+        }
+    }
+
+    void ensure_capacity(u32 capacity)
+    {
+        u32 aligned_capacity = align_forward(capacity, bit_count);
+        nodes.ensure_capacity(aligned_capacity);
+        auto bitset_length = aligned_capacity / bit_count;
+        unused(bitset.add(bitset_length));
+    }
+
+    void clear()
+    {
+        nodes.clear();
     }
 };
 
@@ -1377,12 +1542,12 @@ fn u64 round_up_to_next_power_of_2(u64 n)
     return n;
 }
 
-fn Hash intern_identifier(Unit* unit, String identifier)
-{
-    Hash hash = hash_bytes(identifier);
-    (void)unit->identifiers.get_or_put(hash, identifier);
-    return hash;
-}
+// fn Hash intern_identifier(Unit* unit, String identifier)
+// {
+//     Hash hash = hash_bytes(identifier);
+//     (void)unit->identifiers.get_or_put(hash, identifier);
+//     return hash;
+// }
 
 global String integer_names[] =
 {
@@ -1522,9 +1687,9 @@ fn void unit_initialize(Unit* unit)
     SemaType* builtin_types = type_arena->allocate_many<SemaType>(builtin_type_count);
 
     *unit = {
-        .arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(4)),
-        .node_arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(64)),
-        .type_arena = type_arena,
+        // .arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(4)),
+        // .node_arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(64)),
+        // .type_arena = type_arena,
         .builtin_types = builtin_types,
     };
 
@@ -1533,21 +1698,21 @@ fn void unit_initialize(Unit* unit)
         .alignment = 1,
         .id = SemaTypeId::VOID,
         .resolved = 1,
-        .name = intern_identifier(unit, strlit("void")),
+        .name = strlit("void"),
     };
     builtin_types[noreturn_type_index] = {
         .size = 0,
         .alignment = 1,
         .id = SemaTypeId::NORETURN,
         .resolved = 1,
-        .name = intern_identifier(unit, strlit("noreturn")),
+        .name = strlit("noreturn"),
     };
     builtin_types[opaque_pointer_type_index] = {
         .size = 8,
         .alignment = 8,
         .id = SemaTypeId::POINTER,
         .resolved = 1,
-        .name = intern_identifier(unit, strlit("*any")),
+        .name = strlit("*any"),
     };
     // TODO: float types
     
@@ -1567,7 +1732,7 @@ fn void unit_initialize(Unit* unit)
             .id = SemaTypeId::INTEGER,
             .resolved = 1,
             .flags = static_cast<u32>(bit_count),
-            .name = intern_identifier(unit, integer_names[bit_count - 1]),
+            .name = integer_names[bit_count - 1],
         };
     }
 
@@ -1586,7 +1751,7 @@ fn void unit_initialize(Unit* unit)
             .id = SemaTypeId::INTEGER,
             .resolved = 1,
             .flags = static_cast<u32>(bit_count | (1 << (type_flags_bit_count - 1))), // Signedness bit
-            .name = intern_identifier(unit, integer_names[bit_count + 63]),
+            .name = integer_names[bit_count + 63],
         };
     }
 }
@@ -1606,6 +1771,16 @@ fn Unit* instance_add_unit(Instance* instance)
     *unit = {
     };
     return unit;
+}
+
+// TODO: make it into an array
+fn Thread* instance_add_thread(Instance* instance)
+{
+    auto* thread = instance->arena->allocate_one<Thread>();
+    *thread = {
+        .arena = Arena::init_default(KB(64)),
+    };
+    return thread;
 }
 
 struct Parser
@@ -1761,7 +1936,7 @@ fn void expect_character(Parser* parser, String src, u8 expected_ch)
     }
 }
 
-fn String parse_identifier(Parser* parser, String src)
+fn String parse_raw_identifier(Parser* parser, String src)
 {
     u64 identifier_start_index = parser->i;
     u64 is_string_literal = src.pointer[identifier_start_index] == '"';
@@ -1812,9 +1987,9 @@ typedef enum Keyword : u32
 //     return result;
 // }
 
-fn Hash parse_and_intern_identifier(Parser* parser, Unit* unit, String src)
+fn String parse_and_check_identifier(Parser* parser, String src)
 {
-    String identifier = parse_identifier(parser, src);
+    String identifier = parse_raw_identifier(parser, src);
     // Keyword keyword_index = parse_keyword(identifier);
     // if (expect(keyword_index != KEYWORD_INVALID, 0))
     // {
@@ -1823,11 +1998,10 @@ fn Hash parse_and_intern_identifier(Parser* parser, Unit* unit, String src)
 
     if (expect(identifier.equal(strlit("_")), 0))
     {
-        return 0;
+        return {};
     }
 
-    Hash result = intern_identifier(unit, identifier);
-    return result;
+    return identifier;
 }
 
 
@@ -1841,19 +2015,19 @@ fn Hash parse_and_intern_identifier(Parser* parser, Unit* unit, String src)
 //     return parser->i - parser->column + 1;
 // }
 
-fn File* unit_add_file(Unit* unit, String file_path)
+fn File* add_file(Arena* arena, String file_path)
 {
-    auto* file = unit->files.add_one();
+    auto* file = arena->allocate_one<File>();
     *file = {
         .path = file_path,
     };
     return file;
 }
 
-fn void unit_file_read(Unit* unit, File* file)
+fn void compiler_file_read(Arena* arena, File* file)
 {
     assert(file->status == FILE_STATUS_ADDED || file->status == FILE_STATUS_QUEUED);
-    file->source_code = file_read(unit->arena, file->path);
+    file->source_code = file_read(arena, file->path);
     file->status = FILE_STATUS_READ;
 }
 
@@ -2080,9 +2254,35 @@ fn u64 parse_hex(String string)
     return value;
 }
 
-[[nodiscard]] fn Node* parse_constant_integer(Parser* parser, Unit* unit, String src, SemaType* type)
+struct ConstantIntData
 {
+    u64 value;
+    Node* input;
+    u32 gvn;
+    u8 bit_count;
+};
+
+[[nodiscard]] fn Node* add_constant_integer(Arena* arena, ConstantIntData data)
+{
+    auto* constant_int = Node::add(arena, {
+        .s = {
+            .type = { .id = NodeDataType::Id::INTEGER, .bit_count = data.bit_count, },
+            .input_count = 1,
+            .id = Node::Id::CONSTANT_INT,
+        },
+        .gvn = data.gvn,
+        .input_capacity = 1,
+    });
+    constant_int->constant_int = data.value;
+    constant_int->set_input(data.input, 0);
+    return constant_int;
+}
+
+[[nodiscard]] fn Node* parse_constant_integer(Parser* parser, Arena* arena, String src, SemaType* type, u32 gvn, Node* input)
+{
+    u64 value = 0;
     auto starting_ch = src[parser->i];
+
     if (starting_ch == '0')
     {
         auto follow_up_character = src[parser->i + 1];
@@ -2120,15 +2320,7 @@ fn u64 parse_hex(String string)
                         }
 
                         auto slice = src.slice(start, parser->i);
-                        auto number = parse_hex(slice);
-
-                        auto* constant_int = Node::add(unit);
-                        constant_int->id = Node::Id::CONSTANT_INT;
-                        constant_int->data_type = { .id = NodeDataType::Id::INTEGER, .bit_count = type->get_bit_count() };
-                        constant_int->constant_int = number;
-                        // TODO: is this fine?
-                        constant_int->reallocate_edges(unit, 1);
-                        return constant_int;
+                        value = parse_hex(slice);
                     }
                 case IntegerPrefix::octal: 
                     trap();
@@ -2136,27 +2328,27 @@ fn u64 parse_hex(String string)
                     trap();
             }
         } else if (is_valid_after_zero) {
+            value = 0;
             parser->i += 1;
-
-            auto* constant_int = Node::add(unit);
-            constant_int->id = Node::Id::CONSTANT_INT;
-            constant_int->data_type = { .id = NodeDataType::Id::INTEGER, .bit_count = type->get_bit_count() };
-            constant_int->reallocate_edges(unit, 1);
-            constant_int->constant_int = 0;
-            return constant_int;
         } else {
             fail();
         }
-
-        trap();
     }
     else
     {
         trap();
     }
+
+    Node* result = add_constant_integer(arena, {
+        .value = value,
+        .input = input,
+        .gvn = gvn,
+        .bit_count = type->get_bit_count(),
+    });
+    return result;
 }
 
-[[nodiscard]] fn Node* analyze_single_expression(Analyzer* analyzer, Parser* parser, Unit* unit, String src, SemaType* type, Side side)
+[[nodiscard]] fn Node* analyze_single_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Arena* arena, String src, SemaType* type, Side side)
 {
     unused(side);
     enum class Unary
@@ -2166,6 +2358,7 @@ fn u64 parse_hex(String string)
         NEGATION,
     };
     auto unary_operation = Unary::NONE;
+    auto* function = analyzer->function;
 
     auto original_starting_ch_index = parser->i;
     u8 original_starting_ch = src[original_starting_ch_index];
@@ -2225,9 +2418,9 @@ fn u64 parse_hex(String string)
             fail();
         }
 
-        Node* constant_int = parse_constant_integer(parser, unit, src, integer_type);
-        constant_int->gvn = analyzer->function->node_count;
-        analyzer->function->node_count += 1;
+        auto gvn = function->node_count;
+        function->node_count += 1;
+        Node* constant_int = parse_constant_integer(parser, arena, src, integer_type, gvn, function->root_node);
 
         return constant_int;
     }
@@ -2241,7 +2434,7 @@ fn u64 parse_hex(String string)
     }
 }
 
-[[nodiscard]] fn Node* analyze_expression(Analyzer* analyzer, Parser* parser, Unit* unit, String src, SemaType* type, Side side)
+[[nodiscard]] fn Node* analyze_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Arena* arena, String src, SemaType* type, Side side)
 {
     enum class CurrentOperation
     {
@@ -2269,7 +2462,7 @@ fn u64 parse_hex(String string)
         }
         else
         {
-            current_node = analyze_single_expression(analyzer, parser, unit, src, iteration_type, side);
+            current_node = analyze_single_expression(analyzer, parser, unit, arena, src, iteration_type, side);
         }
 
         skip_space(parser, src);
@@ -2299,7 +2492,7 @@ fn u64 parse_hex(String string)
     }
 }
 
-fn void analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, String src)
+fn void analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Arena* arena, String src)
 {
     expect_character(parser, src, block_start);
     while (1)
@@ -2316,23 +2509,23 @@ fn void analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Stri
 
         if (is_identifier_start(statement_start_ch))
         {
-            String identifier = parse_identifier(parser, src);
+            String identifier = parse_raw_identifier(parser, src);
             if (identifier.equal(strlit("return")))
             {
                 skip_space(parser, src);
 
-                auto* return_value = analyze_expression(analyzer, parser, unit, src, analyzer->function->prototype.original_return_type, Side::right);
+                auto* return_value = analyze_expression(analyzer, parser, unit, arena, src, analyzer->function->prototype.original_return_type, Side::right);
                 expect_character(parser, src, ';');
 
                 Function* function = analyzer->function;
 
-                Node* ret_node = Node::add_from_function(unit, function);
-                ret_node->id = Node::Id::RETURN;
-                ret_node->data_type = { .id = NodeDataType::Id::CONTROL };
-                ret_node->reallocate_edges(unit, 4);
-                ret_node->input_count = 2;
-                ret_node->set_input(unit, function, function->root_node, 0);
-                ret_node->set_input(unit, function, return_value, 1);
+                Node* ret_node = Node::add_from_function(arena, function, {
+                    .type = { .id = NodeDataType::Id::CONTROL },
+                    .input_count = 2,
+                    .id = Node::Id::RETURN,
+                });
+                ret_node->set_input(function->root_node, 0);
+                ret_node->set_input(return_value, 1);
             }
             else
             {
@@ -2478,7 +2671,7 @@ fn SemaType* systemv_get_int_type_at_offset(SemaType* type, u64 offset, SemaType
     }
 }
 
-fn void analyze_function(Parser* parser, Unit* unit, String src)
+fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
 {
     expect_character(parser, src, 'f');
     expect_character(parser, src, 'n');
@@ -2503,7 +2696,7 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
                 break;
             }
 
-            String attribute_candidate = parse_identifier(parser, src);
+            String attribute_candidate = parse_raw_identifier(parser, src);
 
             u64 attribute_i;
             for (attribute_i = 0; attribute_i < array_length(function_attributes); attribute_i += 1)
@@ -2527,7 +2720,7 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
                                 expect_character(parser, src, '(');
                                 skip_space(parser, src);
                                 expect_character(parser, src, '.');
-                                String candidate_cc = parse_identifier(parser, src);
+                                String candidate_cc = parse_raw_identifier(parser, src);
                                 skip_space(parser, src);
                                 expect_character(parser, src, ')');
 
@@ -2576,7 +2769,7 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
         skip_space(parser, src);
     }
 
-    Hash name_hash = parse_and_intern_identifier(parser, unit, src);
+    String name = parse_and_check_identifier(parser, src);
 
     skip_space(parser, src);
 
@@ -2597,7 +2790,7 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
                 break;
             }
 
-            String candidate_attribute = parse_identifier(parser, src);
+            String candidate_attribute = parse_raw_identifier(parser, src);
             skip_space(parser, src);
             switch (src.pointer[parser->i])
             {
@@ -2805,15 +2998,17 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
                 trap();
             }
 
-            auto* function = unit->functions.add_one();
+            // TODO: put them into an array?
+            auto* function = thread->arena->allocate_one<Function>();
+
             *function = {
                 .symbol = {
-                    .name = name_hash,
+                    .name = name,
                     .id = Symbol::Id::function,
                     .linkage = symbol_attributes.external ? Symbol::Linkage::external : Symbol::Linkage::internal,
                 },
                 .root_node = 0,
-                .parameters = unit->arena->allocate_many<Node*>(argument_type_abis.length),
+                .parameters = thread->arena->allocate_many<Node*>(argument_type_abis.length),
                 .prototype = {
                     .argument_type_abis = argument_type_abis.pointer,
                     .original_argument_types = original_argument_types.pointer,
@@ -2825,13 +3020,13 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
                 .node_count = 0,
                 .parameter_count = (u16)argument_type_abis.length,
             };
+            
+            function->root_node = Node::add_from_function_dynamic(thread->arena, function, {
+                .type = { .id = NodeDataType::Id::TUPLE },
+                .input_count = 2,
+                .id = Node::Id::ROOT,
+            }, 4);
 
-            Node* root_node = Node::add_from_function(unit, function);
-            root_node->id = Node::Id::ROOT;
-            root_node->data_type = {
-                .id = NodeDataType::Id::TUPLE,
-            };
-            root_node->reallocate_edges(unit, 4);
             // TODO: revisit
 
             // auto* control_node = root_node->project(unit, function, {
@@ -2864,7 +3059,12 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
                     {
                         Analyzer analyzer = {};
                         analyzer.function = function;
-                        analyze_local_block(&analyzer, parser, unit, src);
+                        analyze_local_block(&analyzer, parser, unit, thread->arena, src);
+                        // TODO: remove hack
+                        thread->functions = {
+                            .pointer = function,
+                            .length = 1,
+                        };
                     } break;
                 case 1:
                     trap();
@@ -2879,9 +3079,9 @@ fn void analyze_function(Parser* parser, Unit* unit, String src)
     }
 }
 
-fn void unit_file_analyze(Unit* unit, File* file)
+fn void unit_file_analyze(Thread* thread, Unit* unit, File* file)
 {
-    unit_file_read(unit, file);
+    compiler_file_read(thread->arena, file);
 
     Parser parser = {};
     String src = file->source_code;
@@ -2908,7 +3108,7 @@ fn void unit_file_analyze(Unit* unit, File* file)
             case 'f':
                 if (get_next_ch_safe(src, declaration_start_index) == 'n')
                 {
-                    analyze_function(&parser, unit, src);
+                    analyze_function(&parser, thread, unit, src);
                 }
                 else
                 {
@@ -2923,11 +3123,117 @@ fn void unit_file_analyze(Unit* unit, File* file)
 
 global Instance instance;
 
+// fn Node* instruction_selection(Node* node)
+// {
+//     switch (node->id)
+//     {
+//     case Node::Id::PROJECTION:
+//         return node;
+//     case Node::Id::ROOT:
+//         {
+//             return node;
+//         }
+//     case Node::Id::RETURN:
+//         trap();
+//     case Node::Id::CONSTANT_INT:
+//         trap();
+//       break;
+//     }
+//     trap();
+// }
+
+// fn void function_codegen(Function* function)
+// {
+//     WorkList helper = {};
+//     helper.ensure_capacity(function->node_count);
+//
+//     helper.push(function->root_node);
+//     PinnedArray<Node*> pins = {};
+//
+//     u64 i = 0;
+//     while (i < helper.nodes.length)
+//     {
+//         Node* node = helper.nodes[i];
+//         i += 1;
+//
+//         if (node->is_pinned() & !node->is_projection())
+//         {
+//             pins.append_one(node);
+//         }
+//
+//         for (Output& output : node->get_outputs())
+//         {
+//             helper.push(output.node);
+//         }
+//     }
+//
+//     helper.clear();
+//
+//     WorkList walker = {};
+//     walker.ensure_capacity(function->node_count);
+//
+//     for (Node* pin_node : pins.slice())
+//     {
+//         walker.push(pin_node);
+//
+//         while (walker.nodes.length > 0)
+//         {
+//             Node* node = walker.nodes.pop();
+//
+//             if (!node->is_projection() & (node->output_count == 0))
+//             {
+//                 helper.push(node);
+//                 continue;
+//             }
+//
+//             if (node->data_type.id == NodeDataType::Id::MEMORY)
+//             {
+//                 trap();
+//             }
+//
+//             Node* new_node = instruction_selection(node);
+//             if (new_node && new_node != node)
+//             {
+//                 trap();
+//             }
+//
+//             u16 input_i = node->input_count;
+//             while (input_i > 0)
+//             {
+//                 input_i -= 1;
+//
+//                 if (node->inputs[input_i])
+//                 {
+//                     trap();
+//                 }
+//             }
+//
+//             // TODO: region
+//         }
+//     }
+//
+//
+//
+//     trap();
+// }
+
+String test_file_paths[] = {
+    strlit("tests/first/main.nat"),
+};
+
 extern "C" void entry_point()
 {
     instance.arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(4));
-    Unit* unit = instance_add_unit(&instance);
-    File* file = unit_add_file(unit, strlit("tests/first/main.nat"));
-    unit_initialize(unit);
-    unit_file_analyze(unit, file);
+
+    for (String test_file_path : test_file_paths)
+    {
+        print(test_file_path);
+        print(strlit("... "));
+        Unit* unit = instance_add_unit(&instance);
+        unit_initialize(unit);
+        Thread* thread = instance_add_thread(&instance);
+        File* file = add_file(thread->arena, test_file_path);
+        unit_file_analyze(thread, unit, file);
+        print(strlit("[OK]\n"));
+    }
 }
