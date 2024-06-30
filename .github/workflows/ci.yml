@@ -17,11 +17,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Build
+      - name: Build and test
         run: |
           set -ex
-          ./compile.sh
-      - name: Test
-        run: |
-          set -ex
-          ./build/nest
+          ./run_tests.sh
