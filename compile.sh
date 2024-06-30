@@ -25,4 +25,3 @@ bootstrap/entry.S \
 -ferror-limit=1 \
 `#-ftime-report` \
 -MJ $NEST_BUILD_DIR/compile_commands.json
-gf2 -ex r $NEST_BUILD_DIR/$NEST_EXE_NAME
