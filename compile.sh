@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 NEST_BUILD_DIR=build
 NEST_EXE_NAME=nest
 set -ex
