@@ -3512,6 +3512,8 @@ extern "C" void entry_point()
         Thread* thread = instance_add_thread(&instance);
         File* file = add_file(thread->arena, test_file_path);
         unit_file_analyze(thread, unit, file);
-        print(strlit("[OK]\n"));
+        print(strlit("[\x1b[32mOK\x1b[0m]\n"));
     }
+
+    print(strlit("\x1b[32mTESTS SUCCEEDED!\x1b[0m\n"));
 }
