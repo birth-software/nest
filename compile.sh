@@ -1,27 +1,23 @@
 #!/bin/bash
-NEST_BUILD_DIR=build
-NEST_EXE_NAME=nest
-set -ex
-mkdir -p $NEST_BUILD_DIR
-time clang++ \
--o $NEST_BUILD_DIR/$NEST_EXE_NAME \
-bootstrap/main.cpp \
-bootstrap/entry.S \
-`# -Oz` \
-`# -march=native` \
-`# -Wl,-strip-all` \
--g \
--std=gnu++23 \
--Wall \
--Wextra \
--Wpedantic \
--Wno-nested-anon-types \
--pedantic \
--ffreestanding \
--nostdlib \
--static \
--fno-exceptions \
--fno-stack-protector \
--ferror-limit=1 \
-`#-ftime-report` \
--MJ $NEST_BUILD_DIR/compile_commands.json
+
+function compile()
+{
+    build_dir=$1
+    exe_name=$2
+    debug_info=$3
+    optimizations=$4
+
+    mkdir -p $build_dir
+
+    compile_command="time clang++ -o $build_dir/$exe_name $debug_info $optimizations -std=gnu++20 -Wall -Wextra -Wpedantic -Wno-nested-anon-types -pedantic -fno-exceptions -fno-stack-protector -ferror-limit=1 -MJ $build_dir/compile_commands.json"
+
+    case "$OSTYPE" in
+        darwin*)  ;;
+        linux*)   compile_command="$compile_command -ffreestanding -nostdlib -static bootstrap/entry.S" ;;
+        *)        echo "unknown: $OSTYPE" ;;
+    esac
+
+    compile_command="$compile_command bootstrap/main.cpp"
+    echo $compile_command
+    eval $compile_command
+}

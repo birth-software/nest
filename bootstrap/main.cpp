@@ -81,6 +81,19 @@ forceinline fn u8 mem_equal_range(T* a, T* b, u64 count)
     return memcmp(a, b, count * sizeof(T)) == 0;
 }
 
+fn u8 memeq(u8* a, u8* b, u64 size)
+{
+    for (u64 i = 0; i < size; i += 1)
+    {
+        if (a[i] != b[i])
+        {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 template<typename T>
 struct Slice
 {
@@ -241,6 +254,7 @@ struct StaticList
 //     return (Hash)result;
 // }
 
+#ifdef __linux__
 // fn forceinline long syscall0(long n)
 // {
 // 	unsigned long ret;
@@ -301,18 +315,6 @@ fn forceinline long syscall6(long n, long a1, long a2, long a3, long a4, long a5
 	return ret;
 }
 
-fn u8 memeq(u8* a, u8* b, u64 size)
-{
-    for (u64 i = 0; i < size; i += 1)
-    {
-        if (a[i] != b[i])
-        {
-            return 0;
-        }
-    }
-
-    return 1;
-}
 
 enum class SyscallX86_64 : u64 {
     read = 0,
@@ -685,40 +687,69 @@ enum class SyscallX86_64 : u64 {
     futex_requeue = 456,
 };
 
-fn void* syscall_mmap(void* address, size_t length, int protection_flags, int map_flags, int fd, __off_t offset)
+#endif
+
+fn void* syscall_mmap(void* address, size_t length, int protection_flags, int map_flags, int fd, signed long offset)
 {
+#ifdef __linux__
     return (void*) syscall6(static_cast<long>(SyscallX86_64::mmap), (unsigned long)address, length, protection_flags, map_flags, fd, offset);
+#else
+    return mmap(address, length, protection_flags, map_flags, fd, offset);
+#endif
 }
 
 fn int syscall_mprotect(void *address, size_t length, int protection_flags)
 {
+#ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::mprotect), (unsigned long)address, length, protection_flags);
+#else
+    return mprotect(address, length, protection_flags);
+#endif
 }
 
 fn int syscall_open(const char *file_path, int flags, int mode)
 {
+#ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::open), (unsigned long)file_path, flags, mode);
+#else
+    return open(file_path, flags, mode);
+#endif
 }
 
 fn int syscall_fstat(int fd, struct stat *buffer)
 {
+#ifdef __linux__
     return syscall2(static_cast<long>(SyscallX86_64::fstat), fd, (unsigned long)buffer);
+#else
+    return fstat(fd, buffer);
+#endif
 }
 
 fn ssize_t syscall_read(int fd, void* buffer, size_t bytes)
 {
+#ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::read), fd, (unsigned long)buffer, bytes);
+#else
+    return read(fd, buffer, bytes);
+#endif
 }
 
 fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
 {
+#ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::write), fd, (unsigned long)buffer, bytes);
+#else
+    return write(fd, buffer, bytes);
+#endif
 }
 
 [[noreturn]] [[gnu::cold]] fn void syscall_exit(int status)
 {
+#ifdef __linux__
     (void)syscall1(231, status);
-    trap();
+#else
+    _exit(status);
+#endif
 }
 
 [[noreturn]] [[gnu::cold]] fn void fail()
@@ -3779,7 +3810,11 @@ String test_file_paths[] = {
     strlit("tests/simple_variable_declaration/main.nat"),
 };
 
+#ifdef __linux__
 extern "C" void entry_point()
+#else
+int main()
+#endif
 {
     instance.arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(4));
 
