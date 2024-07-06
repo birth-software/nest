@@ -20,7 +20,6 @@ typedef double f64;
 
 typedef u32 Hash;
 
-
 #define fn static
 #define global static
 #define assert(x) if (__builtin_expect(!(x), 0)) { trap(); }
@@ -34,6 +33,8 @@ typedef u32 Hash;
 #define MB(n) ((n) * 1024 * 1024)
 #define GB(n) ((u64)(n) * 1024 * 1024 * 1024)
 #define TB(n) ((u64)(n) * 1024 * 1024 * 1024 * 1024)
+
+#define may_be_unused __attribute__((unused))
 
 global constexpr auto brace_open = '{';
 global constexpr auto brace_close = '}';
@@ -104,6 +105,15 @@ struct Slice
     {
         assert(index < length);
         return pointer[index];
+    }
+
+    fn Slice from_pointer_range(T* start, T* end)
+    {
+        assert(end >= start);
+        return {
+            .pointer = start,
+            .length = u64(end - start),
+        };
     }
 
     Slice slice(u64 start, u64 end)
@@ -221,6 +231,87 @@ forceinline fn T max(T a, T b)
 using String = Slice<u8>;
 #define strlit(s) String{ .pointer = (u8*)s, .length = sizeof(s) - 1, }
 #define ch_to_str(ch) String{ .pointer = &ch, .length = 1 }
+
+fn u64 parse_decimal(String string)
+{
+    u64 value = 0;
+    for (u8 ch : string)
+    {
+        assert(((ch >= '0') & (ch <= '9')));
+        value = (value * 10) + (ch - '0');
+    }
+
+    return value;
+}
+
+fn u64 safe_flag(u64 value, u64 flag)
+{
+    u64 result = value & ((u64)0 - flag);
+    return result;
+}
+
+fn u8 get_next_ch_safe(String string, u64 index)
+{
+    u64 next_index = index + 1;
+    u64 is_in_range = next_index < string.length;
+    u64 safe_index = safe_flag(next_index, is_in_range);
+    u8 unsafe_result = string.pointer[safe_index];
+    u64 safe_result = safe_flag(unsafe_result, is_in_range);
+    assert(safe_result < 256);
+    return (u8)safe_result;
+}
+
+fn u32 is_space(u8 ch, u8 next_ch)
+{
+    u32 is_comment = (ch == '/') & (next_ch == '/');
+    u32 is_whitespace = ch == ' ';
+    u32 is_vertical_tab = ch == 0x0b;
+    u32 is_horizontal_tab = ch == '\t';
+    u32 is_line_feed = ch == '\n';
+    u32 is_carry_return = ch == '\r';
+    u32 result = (((is_vertical_tab | is_horizontal_tab) | (is_line_feed | is_carry_return)) | (is_comment | is_whitespace));
+    return result;
+}
+
+fn u64 is_lower(u8 ch)
+{
+    return (ch >= 'a') & (ch <= 'z');
+}
+
+fn u64 is_upper(u8 ch)
+{
+    return (ch >= 'A') & (ch <= 'Z');
+}
+
+fn u64 is_alphabetic(u8 ch)
+{
+    return is_lower(ch) | is_upper(ch);
+}
+
+fn u64 is_decimal_digit(u8 ch)
+{
+    return (ch >= '0') & (ch <= '9');
+}
+
+fn u64 is_hex_digit(u8 ch)
+{
+    return (is_decimal_digit(ch) | ((ch == 'a' | ch == 'A') | (ch == 'b' | ch == 'B'))) | (((ch == 'c' | ch == 'C') | (ch == 'd' | ch == 'D')) | ((ch == 'e' | ch == 'E') | (ch == 'f' | ch == 'F')));
+}
+
+
+fn u64 is_identifier_start(u8 ch)
+{
+    u64 alphabetic = is_alphabetic(ch);
+    u64 is_underscore = ch == '_';
+    return alphabetic | is_underscore;
+}
+
+fn u64 is_identifier_ch(u8 ch)
+{
+    u64 identifier_start = is_identifier_start(ch);
+    u64 decimal = is_decimal_digit(ch);
+    return identifier_start | decimal;
+}
 
 
 template<typename T>
@@ -734,7 +825,7 @@ fn ssize_t syscall_read(int fd, void* buffer, size_t bytes)
 #endif
 }
 
-fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
+may_be_unused fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
 {
 #ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::write), fd, (unsigned long)buffer, bytes);
@@ -747,6 +838,7 @@ fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
 {
 #ifdef __linux__
     (void)syscall1(231, status);
+    trap();
 #else
     _exit(status);
 #endif
@@ -780,62 +872,124 @@ fn u64 align_forward(u64 value, u64 alignment)
     return result;
 }
 
-// fn void print(const char* format, ...)
-// {
-//     u8 stack_buffer[4096];
-//     va_list args;
-//     va_start(args, format);
-//     String buffer = { .pointer = stack_buffer, .length = array_length(stack_buffer) };
-//     const char* it = format;
-//     u64 buffer_i = 0;
-//
-//     while (*it)
-//     {
-//         while (*it && *it != brace_open)
-//         {
-//             buffer[buffer_i] = *it;
-//             buffer_i += 1;
-//             it += 1;
-//         }
-//
-//         if (*it == brace_open)
-//         {
-//             it += 1;
-//             char next_ch = *it;
-//
-//             if (next_ch == brace_open)
-//             {
-//                 trap();
-//             }
-//             else
-//             {
-//                 switch (next_ch)
-//                 {
-//                     case 's':
-//                         {
-//                             it += 1;
-//
-//                             String string = va_arg(args, String);
-//                             memcpy(buffer.pointer + buffer_i, string.pointer, string.length);
-//                             buffer_i += string.length;
-//                         } break;
-//                     default:
-//                         trap();
-//                 }
-//
-//                 if (*it != brace_close)
-//                 {
-//                     fail();
-//                 }
-//
-//                 it += 1;
-//             }
-//         }
-//     }
-//
-//     String final_string = buffer.slice(0, buffer_i);
-//     syscall_write(1, final_string.pointer, final_string.length);
-// }
+global constexpr auto silent = 0;
+
+may_be_unused fn void print(const char* format, ...)
+{
+    if constexpr (!silent)
+    {
+        u8 stack_buffer[4096];
+        va_list args;
+        va_start(args, format);
+        String buffer = { .pointer = stack_buffer, .length = array_length(stack_buffer) };
+        const char* it = format;
+        u64 buffer_i = 0;
+
+        while (*it)
+        {
+            while (*it && *it != brace_open)
+            {
+                buffer[buffer_i] = *it;
+                buffer_i += 1;
+                it += 1;
+            }
+
+            if (*it == brace_open)
+            {
+                it += 1;
+                char next_ch = *it;
+
+                if (next_ch == brace_open)
+                {
+                    trap();
+                }
+                else
+                {
+                    switch (next_ch)
+                    {
+                        case 's':
+                            {
+                                it += 1;
+
+                                if (is_decimal_digit(*it))
+                                {
+                                    trap();
+                                }
+                                else
+                                {
+                                    String string = va_arg(args, String);
+                                    memcpy(buffer.pointer + buffer_i, string.pointer, string.length);
+                                    buffer_i += string.length;
+                                }
+
+                            } break;
+                        case 'u':
+                            {
+                                it += 1;
+
+                                auto* bit_count_start = it;
+                                while (is_decimal_digit(*it))
+                                {
+                                    it += 1;
+                                }
+
+                                auto* bit_count_end = it;
+                                auto bit_count = parse_decimal(String::from_pointer_range((u8*)bit_count_start, (u8*)bit_count_end));
+
+                                u64 original_value;
+                                switch (bit_count)
+                                {
+                                    case 8:
+                                    case 16:
+                                    case 32:
+                                        original_value = va_arg(args, u32);
+                                        break;
+                                    case 64:
+                                        original_value = va_arg(args, u64);
+                                        break;
+                                    default:
+                                        trap();
+                                }
+
+                                // TODO: maybe print in one go?
+
+                                u8 reverse_buffer[64];
+                                u8 reverse_index = 0;
+                                u64 value = original_value;
+                                while (value)
+                                {
+                                    u8 decimal_value = (value % 10);
+                                    u8 ascii_ch = decimal_value + '0';
+                                    value /= 10;
+                                    reverse_buffer[reverse_index] = ascii_ch;
+                                    reverse_index += 1;
+                                }
+
+                                while (reverse_index > 0)
+                                {
+                                    reverse_index -= 1;
+                                    buffer[buffer_i] = reverse_buffer[reverse_index];
+                                    buffer_i += 1;
+                                }
+                            } break;
+                        default:
+                            trap();
+                    }
+
+                    if (*it != brace_close)
+                    {
+                        fail();
+                    }
+
+                    it += 1;
+                }
+            }
+        }
+
+        String final_string = buffer.slice(0, buffer_i);
+        syscall_write(1, final_string.pointer, final_string.length);
+    }
+}
 
 struct Arena
 {
@@ -942,9 +1096,16 @@ fn String file_read(Arena* arena, String path)
 
 fn void print(String message)
 {
-    ssize_t result = syscall_write(1, message.pointer, message.length);
-    assert(result >= 0);
-    assert((u64)result == message.length);
+    if constexpr (silent)
+    {
+        unused(message);
+    }
+    else
+    {
+        ssize_t result = syscall_write(1, message.pointer, message.length);
+        assert(result >= 0);
+        assert((u64)result == message.length);
+    }
 }
 
 template<typename T> struct PinnedArray;
@@ -1095,6 +1256,15 @@ struct GetOrPut
     u8 existing;
 };
 fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
+template <typename K, typename V>
+struct PutResult
+{
+    K* key;
+    V* value;
+};
+
+fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
+
 
 template<typename K, typename V>
 struct PinnedHashmap
@@ -1137,11 +1307,22 @@ struct PinnedHashmap
         return result;
     }
 
-    forceinline GetOrPut<K, V> get_or_put(K key, V value)
+    forceinline PinnedHashmap<u8, u8>* generic()
     {
         auto* generic_hashmap = (PinnedHashmap<u8, u8>*)(this);
-        auto generic_get_or_put = generic_pinned_hashmap_get_or_put(generic_hashmap, (u8*)&key, sizeof(K), (u8*)&value, sizeof(V));
+        return generic_hashmap;
+    }
+
+    forceinline GetOrPut<K, V> get_or_put(K key, V value)
+    {
+        auto generic_get_or_put = generic_pinned_hashmap_get_or_put(generic(), (u8*)&key, sizeof(K), (u8*)&value, sizeof(V));
         return *(GetOrPut<K, V>*)&generic_get_or_put;
+    }
+
+    forceinline V* put_assume_not_existing(K key, V value)
+    {
+        auto result = generic_pinned_hashmap_put_assume_not_existing(generic(), (u8*)&key, sizeof(K), (u8*)&value, sizeof(V));
+        return (V*)(result.value);
     }
 };
 
@@ -1209,6 +1390,22 @@ fn void generic_pinned_hashmap_ensure_capacity(PinnedHashmap<u8, u8>* hashmap, u
     }
 }
 
+fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
+{
+    generic_pinned_hashmap_ensure_capacity(hashmap, key_size, value_size, 1);
+    u32 new_index = hashmap->length;
+    hashmap->length += 1;
+    u8* key_pointer = &hashmap->keys[new_index * key_size];
+    u8* value_pointer = &hashmap->values[new_index * value_size];
+    memcpy(key_pointer, new_key_pointer, key_size);
+    memcpy(value_pointer, new_value_pointer, value_size);
+
+    return {
+        .key = key_pointer,
+        .value = value_pointer,
+    };
+}
+
 fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
 {
     u32 index = generic_pinned_hashmap_get_index(hashmap, new_key_pointer, key_size);
@@ -1218,17 +1415,10 @@ fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* has
     }
     else
     {
-        generic_pinned_hashmap_ensure_capacity(hashmap, key_size, value_size, 1);
-        u32 new_index = hashmap->length;
-        hashmap->length += 1;
-        u8* key_pointer = &hashmap->keys[new_index * key_size];
-        u8* value_pointer = &hashmap->values[new_index * value_size];
-        memcpy(key_pointer, new_key_pointer, key_size);
-        memcpy(value_pointer, new_value_pointer, value_size);
-
+        auto put_result = generic_pinned_hashmap_put_assume_not_existing(hashmap, new_key_pointer, key_size, new_value_pointer, value_size);
         return {
-            .key = key_pointer,
-            .value = value_pointer,
+            .key = put_result.key,
+            .value = put_result.value,
             .existing = 0,
         };
     }
@@ -1241,35 +1431,6 @@ typedef enum FileStatus
     FILE_STATUS_READ = 2,
     FILE_STATUS_ANALYZING = 3,
 } FileStatus;
-
-struct File
-{
-    String path;
-    String source_code;
-    FileStatus status;
-};
-
-struct SemaType;
-union Type
-{
-    enum Id
-    {
-        sema,
-        backend,
-    };
-
-    u64 bits:57;
-    Id id:1;
-
-    forceinline SemaType* get_sema()
-    {
-        assert(id == Id::sema);
-        return (SemaType*)(bits);
-    }
-
-    forceinline u8 is_resolved();
-};
-static_assert(sizeof(Type) == 8);
 
 enum class SemaTypeId: u8
 {
@@ -1286,6 +1447,181 @@ global auto constexpr type_id_bit_count = 3;
 static_assert(static_cast<u8>(SemaTypeId::COUNT) < (1 << type_id_bit_count), "Type bit count for id must be respected");
 
 global auto constexpr type_flags_bit_count = 32 - (type_id_bit_count + 1);
+struct NodeType
+{
+    enum class Id: u8
+    {
+        INVALID,
+        BOTTOM,
+        TOP,
+        CONTROL,
+        INTEGER,
+        VOID,
+        MULTIVALUE,
+        MEMORY,
+        POINTER,
+        // TODO: this is mine. Check if it is correct:
+        FUNCTION,
+        CALL,
+    };
+
+    Id id;
+
+    union
+    {
+        struct
+        {
+            u64 constant;
+            u8 bit_count;
+            u8 is_constant;
+        } integer;
+        struct
+        {
+            Slice<NodeType> types;
+        } multi;
+    };
+
+
+    u8 is_simple()
+    {
+        switch (id)
+        {
+            case Id::INVALID:
+                trap();
+            case Id::BOTTOM:
+            case Id::TOP:
+            case Id::CONTROL:
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    u8 equal(NodeType other)
+    {
+        if (id != other.id)
+        {
+            return 0;
+        }
+
+        switch (id)
+        {
+            default:
+                trap();
+        }
+    }
+
+    u8 is_constant()
+    {
+        switch (id)
+        {
+            case Id::VOID:
+                trap();
+            case Id::INTEGER:
+                return integer.is_constant;
+            case Id::CONTROL:
+            case Id::MULTIVALUE:
+            case Id::BOTTOM:
+                return 0;
+            case Id::FUNCTION:
+            case Id::CALL:
+                return 0;
+            default:
+                trap();
+        }
+    }
+
+    NodeType meet(NodeType other)
+    {
+        unused(other);
+
+        switch (id)
+        {
+            case NodeType::Id::MULTIVALUE:
+                fail();
+            case NodeType::Id::INTEGER:
+                {
+                    if (equal(other))
+                    {
+                        return *this;
+                    }
+
+                    if (other.id != NodeType::Id::INTEGER)
+                    {
+                        return NodeType{ .id = NodeType::Id::BOTTOM };
+                    }
+
+                    if (is_bot())
+                    {
+                        return *this;
+                    }
+
+                    if (other.is_bot())
+                    {
+                        return other;
+                    }
+
+                    if (other.is_top())
+                    {
+                        return *this;
+                    }
+
+                    if (is_top())
+                    {
+                        return other;
+                    }
+
+                    assert(is_constant() & other.is_constant());
+                    if (integer.constant == other.integer.constant)
+                    {
+                        trap();
+                    }
+                    else
+                    {
+                        trap();
+                    }
+                } break;
+            default:
+                return NodeType{ .id = NodeType::Id::BOTTOM };
+        }
+    }
+
+    u8 is_bot()
+    {
+        assert(id == Id::INTEGER);
+        return !integer.is_constant & (integer.constant == 1);
+    }
+
+    u8 is_top()
+    {
+        assert(id == Id::INTEGER);
+        return !integer.is_constant & (integer.constant == 0);
+    }
+};
+
+may_be_unused global auto constexpr integer_top = NodeType{
+    .id = NodeType::Id::TOP,
+    .integer = {
+        .constant = 0,
+        .is_constant = 0,
+    },
+};
+
+may_be_unused global auto constexpr integer_bot = NodeType{
+    .id = NodeType::Id::TOP,
+    .integer = {
+        .constant = 1,
+        .is_constant = 0,
+    },
+};
+
+may_be_unused global auto constexpr integer_zero = NodeType{
+    .id = NodeType::Id::TOP,
+    .integer = {
+        .constant = 0,
+        .is_constant = 1,
+    },
+};
 
 struct SemaType
 {
@@ -1307,13 +1643,36 @@ struct SemaType
         return bit_count;
     }
 
+    NodeType lower()
+    {
+        switch (id)
+        {
+        case SemaTypeId::VOID:
+            trap();
+        case SemaTypeId::NORETURN:
+            trap();
+        case SemaTypeId::POINTER:
+            trap();
+        case SemaTypeId::INTEGER:
+            return NodeType{
+                .id = NodeType::Id::INTEGER,
+                .integer = {
+                    .bit_count = get_bit_count(),
+                    .is_constant = 0,
+                },
+            };
+        case SemaTypeId::ARRAY:
+            trap();
+        case SemaTypeId::STRUCT:
+            trap();
+        case SemaTypeId::UNION:
+            trap();
+        case SemaTypeId::COUNT:
+            trap();
+        }
+    }
 };
 static_assert(sizeof(SemaType) == sizeof(u64) * 5, "Type must be 24 bytes");
-forceinline u8 Type::is_resolved()
-{
-    return (id == Id::backend) | ((id == Id::sema) & get_sema()->resolved);
-}
-
 
 struct Symbol
 {
@@ -1367,7 +1726,8 @@ struct Function;
 struct Thread
 {
     Arena* arena;
-    Slice<Function> functions;
+    PinnedArray<Function> functions;
+    u32 node_count;
 };
 
 struct Unit
@@ -1389,56 +1749,6 @@ struct Unit
 };
 
 
-struct NodeType
-{
-    enum class Id: u8
-    {
-        INVALID,
-        BOTTOM,
-        TOP,
-        VOID,
-        INTEGER,
-        TUPLE,
-        CONTROL,
-        MEMORY,
-        POINTER,
-    };
-    Id id;
-    union
-    {
-        struct
-        {
-            u64 constant;
-            u8 bit_count;
-            u8 is_constant;
-        } integer;
-    };
-
-    u8 equal(NodeType other)
-    {
-        if (id != other.id)
-        {
-            return 0;
-        }
-
-        switch (id)
-        {
-            default: trap();
-        }
-    }
-
-    u8 is_constant()
-    {
-        switch (id)
-        {
-            case Id::VOID:
-            case Id::INTEGER:
-                return 1;
-            default:
-                trap();
-        }
-    }
-};
 
 union AbiInfoPayload
 {
@@ -1493,7 +1803,7 @@ struct Function
     Node* root_node;
     Node** parameters;
     Function::Prototype prototype;
-    u32 node_count;
+    // u32 node_count;
     u16 parameter_count;
 };
 
@@ -1505,7 +1815,7 @@ struct ConstantIntData
     u8 bit_count;
 };
 
-[[nodiscard]] fn Node* add_constant_integer(Arena* arena, ConstantIntData data);
+[[nodiscard]] fn Node* add_constant_integer(Thread* thread, ConstantIntData data);
 
 // This is a node in the "sea of nodes" sense:
 // https://en.wikipedia.org/wiki/Sea_of_nodes
@@ -1520,27 +1830,37 @@ struct Node
         INT_ADD,
         INT_SUB,
         SCOPE,
+        SYMBOL_FUNCTION,
+        CALL,
     };
 
     using Type = NodeType;
 
-    PinnedArray<Node*> inputs;
-    PinnedArray<Node*> outputs;
-    u32 gvn;
     Type type;
+    Array<Node*> inputs;
+    Array<Node*> outputs;
+    u32 gvn;
     Id id;
 
     union
     {
         struct
         {
-            u32 index;
+            String name;
+            s32 index;
         } projection;
         struct
         {
             Array<Hashmap<String, u16>> stack;
         } scope;
+        struct
+        {
+            Type args;
+        } root;
+        Symbol* symbol;
     };
+
+    u8 padding[40];
 
     forceinline Slice<Node*> get_inputs()
     {
@@ -1565,26 +1885,22 @@ struct Node
         Id id;
     };
 
-    struct DynamicNodeData
+    [[nodiscard]] fn Node* add(Thread* thread, NodeData data)
     {
-        NodeData s;
-        u32 gvn;
-    };
-
-    [[nodiscard]] fn Node* add(Arena* arena, DynamicNodeData data)
-    {
-        auto* node = arena->allocate_one<Node>();
+        auto* node = thread->arena->allocate_one<Node>();
+        auto gvn = thread->node_count;
+        thread->node_count += 1;
         *node = {
+            .type = data.type,
             .inputs = {},
             .outputs = {},
-            .gvn = data.gvn,
-            .type = data.s.type,
-            .id = data.s.id,
+            .gvn = gvn,
+            .id = data.id,
         };
 
-        node->inputs.append(data.s.inputs);
+        node->inputs.append(data.inputs);
 
-        for (Node* input : data.s.inputs)
+        for (Node* input : data.inputs)
         {
             if (input)
             {
@@ -1595,16 +1911,12 @@ struct Node
         return node;
     }
 
-    [[nodiscard]] fn Node* add_from_function(Arena* arena, Function* function, NodeData data)
+    u8 remove_output(Node* output)
     {
-        auto gvn = function->node_count;
-        function->node_count += 1;
-
-        auto* node = add(arena, {
-            .s = data,
-            .gvn = gvn,
-        });
-        return node;
+        s32 index = outputs.slice().find_index(output);
+        assert(index != -1);
+        outputs.remove_swap(index);
+        return outputs.length == 0;
     }
 
     Node* add_output(Node* output)
@@ -1623,12 +1935,27 @@ struct Node
         return input;
     }
 
-    u8 remove_output(Node* output)
+    Node* set_input(Arena* arena, s32 index, Node* input)
     {
-        s32 index = outputs.slice().find_index(output);
-        assert(index != -1);
-        outputs.remove_swap(index);
-        return outputs.length == 0;
+        Node* old_input = inputs[index];
+        if (old_input == input)
+        {
+            return this;
+        }
+
+        if (input)
+        {
+            input->add_output(this);
+        }
+
+        if (old_input && old_input->remove_output(this))
+        {
+            old_input->kill(arena);
+        }
+
+        inputs[index] = input;
+
+        return input;
     }
 
     u8 is_pinned()
@@ -1648,7 +1975,9 @@ struct Node
             trap();
         case Id::SCOPE:
             trap();
-          break;
+        case Id::SYMBOL_FUNCTION:
+        case Id::CALL:
+            trap();
         }
 
         return is_good_id | is_projection() | cfg_is_control_projection();
@@ -1676,7 +2005,7 @@ struct Node
         {
             case Node::Type::Id::CONTROL:
             return 1;
-        case Node::Type::Id::TUPLE:
+            case Node::Type::Id::MULTIVALUE:
             for (Node* output : get_outputs())
             {
                 if (output->cfg_is_control_projection())
@@ -1693,15 +2022,27 @@ struct Node
     {
         switch (id)
         {
+        case Id::INT_SUB:
+            if (inputs[1] == inputs[2])
+            {
+                trap();
+            }
+            else
+            {
+                return 0;
+            }
         case Id::ROOT:
         case Id::PROJECTION:
         case Id::RETURN:
         case Id::CONSTANT_INT:
         case Id::INT_ADD:
-        case Id::INT_SUB:
             return 0;
         case Id::SCOPE:
             trap();
+            // TODO:
+        case Id::SYMBOL_FUNCTION:
+        case Id::CALL:
+            return 0;
         }
     }
 
@@ -1741,7 +2082,7 @@ struct Node
     }
 
     static auto constexpr enable_peephole = 1;
-    Node* peephole(Arena* arena, Function* function)
+    Node* peephole(Thread* thread, Function* function)
     {
         Node::Type type = this->type = compute();
 
@@ -1752,25 +2093,35 @@ struct Node
 
         if ((!is_constant()) & type.is_constant())
         {
-            this->kill(arena);
-            auto gvn = function->node_count;
-            function->node_count += 1;
-
-            auto* constant_int = Node::add(arena, {
-                .s =
-                {
-                    .type = type,
-                    .inputs = { .pointer = &function->root_node, .length = 1 },
-                    .id = Node::Id::CONSTANT_INT,
-                },
-                .gvn = gvn,
+            auto* constant_int = Node::add(thread, {
+                .type = type,
+                .inputs = { .pointer = &function->root_node, .length = 1 },
+                .id = Node::Id::CONSTANT_INT,
             });
-            auto* result = constant_int->peephole(arena, function);
-            return result;
+            auto* result = constant_int->peephole(thread, function);
+            return dead_code_elimination(thread->arena, result);
         }
 
         Node* n = idealize();
-        return n ? n : this;
+        if (n)
+        {
+            trap();
+        }
+        else
+        {
+            return this;
+        }
+    }
+
+    Node* keep()
+    {
+        return add_output(0);
+    }
+
+    Node* unkeep()
+    {
+        remove_output(0);
+        return this;
     }
 
     u8 is_constant()
@@ -1788,6 +2139,8 @@ struct Node
     {
         switch (id)
         {
+            case Node::Id::ROOT:
+                return root.args;
             case Node::Id::INT_ADD:
             case Node::Id::INT_SUB:
                 {
@@ -1805,6 +2158,8 @@ struct Node
                             case Id::RETURN:
                             case Id::CONSTANT_INT:
                             case Id::SCOPE:
+                            case Id::SYMBOL_FUNCTION:
+                            case Id::CALL:
                                 trap();
                             case Id::INT_ADD:
                                 result = left_type.integer.constant + right_type.integer.constant;
@@ -1823,35 +2178,104 @@ struct Node
                                 },
                             };
                         }
+                        else
+                        {
+                            return left_type.meet(right_type);
+                        }
                     }
-                    trap();
+                    else
+                    {
+                        return Node::Type{ .id = NodeType::Id::BOTTOM };
+                    }
                 }
             case Node::Id::CONSTANT_INT:
                 return type;
+            case Node::Id::PROJECTION:
+                {
+                    auto* control_node = inputs[0];
+                    if (control_node->type.id == NodeType::Id::MULTIVALUE)
+                    {
+                        auto type = control_node->type.multi.types[this->projection.index];
+                        return type;
+                    }
+                    else
+                    {
+                        trap();
+                    }
+                } break;
+            // TODO: change
+            case Node::Id::SYMBOL_FUNCTION:
+                return { .id = Type::Id::FUNCTION };
+            case Node::Id::CALL:
+                return { .id = Type::Id::CALL };
+            case Node::Id::RETURN:
+                {
+                    Array<Type> types = {};
+                    // First INPUT: control
+                    // Second INPUT: expression
+                    types.append_one(inputs[0]->type);
+                    types.append_one(inputs[1]->type);
+                    return Type{
+                        .id = Node::Type::Id::MULTIVALUE,
+                            .multi = {
+                                .types = types.slice(),
+                            },
+                    };
+                }
             default:
                 trap();
         }
     }
+
+    Node* project(Thread* thread, Function* function, s32 index, String label)
+    {
+        assert(type.id == Node::Type::Id::MULTIVALUE);
+        auto* projection = Node::add(thread, {
+            .type = {},
+            .inputs = { .pointer = &function->root_node, .length = 1 },
+            .id = Node::Id::PROJECTION,
+        });
+        projection->projection.index = index;
+        projection->projection.name = label;
+        return projection;
+    }
+
+    Node* dead_code_elimination(Arena* arena, Node* new_node)
+    {
+        if (new_node != this && is_unused())
+        {
+            new_node->keep();
+            kill(arena);
+            new_node->unkeep();
+        }
+
+        return new_node;
+    }
+
+    Node* control(Arena* arena, Node* node)
+    {
+        return set_input(arena, 0, node);
+    }
 };
 
-[[nodiscard]] fn Node* add_constant_integer(Arena* arena, ConstantIntData data)
+static_assert(sizeof(Node) == 128);
+static_assert(page_size % sizeof(Node) == 0);
+
+[[nodiscard]] fn Node* add_constant_integer(Thread* thread, ConstantIntData data)
 {
-    auto* constant_int = Node::add(arena, {
-        .s = {
-            .type =
+    auto* constant_int = Node::add(thread, {
+        .type =
+        {
+            .id = Node::Type::Id::INTEGER,
+            .integer =
             {
-                .id = Node::Type::Id::INTEGER,
-                .integer =
-                {
-                    .constant = data.value,
-                    .bit_count = data.bit_count,
-                    .is_constant = 1,
-                },
+                .constant = data.value,
+                .bit_count = data.bit_count,
+                .is_constant = 1,
             },
-            .inputs = { .pointer = &data.input, .length = 1 },
-            .id = Node::Id::CONSTANT_INT,
         },
-        .gvn = data.gvn,
+        .inputs = { .pointer = &data.input, .length = 1 },
+        .id = Node::Id::CONSTANT_INT,
     });
     return constant_int;
 }
@@ -2159,75 +2583,6 @@ fn Thread* instance_add_thread(Instance* instance)
     return thread;
 }
 
-fn u64 safe_flag(u64 value, u64 flag)
-{
-    u64 result = value & ((u64)0 - flag);
-    return result;
-}
-
-fn u8 get_next_ch_safe(String file, u64 index)
-{
-    u64 next_index = index + 1;
-    u64 is_in_range = next_index < file.length;
-    u64 safe_index = safe_flag(next_index, is_in_range);
-    u8 unsafe_result = file.pointer[safe_index];
-    u64 safe_result = safe_flag(unsafe_result, is_in_range);
-    assert(safe_result < 256);
-    return (u8)safe_result;
-}
-
-fn u32 is_space(u8 ch, u8 next_ch)
-{
-    u32 is_comment = (ch == '/') & (next_ch == '/');
-    u32 is_whitespace = ch == ' ';
-    u32 is_vertical_tab = ch == 0x0b;
-    u32 is_horizontal_tab = ch == '\t';
-    u32 is_line_feed = ch == '\n';
-    u32 is_carry_return = ch == '\r';
-    u32 result = (((is_vertical_tab | is_horizontal_tab) | (is_line_feed | is_carry_return)) | (is_comment | is_whitespace));
-    return result;
-}
-
-fn u64 is_lower(u8 ch)
-{
-    return (ch >= 'a') & (ch <= 'z');
-}
-
-fn u64 is_upper(u8 ch)
-{
-    return (ch >= 'A') & (ch <= 'Z');
-}
-
-fn u64 is_alphabetic(u8 ch)
-{
-    return is_lower(ch) | is_upper(ch);
-}
-
-fn u64 is_decimal_digit(u8 ch)
-{
-    return (ch >= '0') & (ch <= '9');
-}
-
-fn u64 is_hex_digit(u8 ch)
-{
-    return (is_decimal_digit(ch) | ((ch == 'a' | ch == 'A') | (ch == 'b' | ch == 'B'))) | (((ch == 'c' | ch == 'C') | (ch == 'd' | ch == 'D')) | ((ch == 'e' | ch == 'E') | (ch == 'f' | ch == 'F')));
-}
-
-
-fn u64 is_identifier_start(u8 ch)
-{
-    u64 alphabetic = is_alphabetic(ch);
-    u64 is_underscore = ch == '_';
-    return alphabetic | is_underscore;
-}
-
-fn u64 is_identifier_ch(u8 ch)
-{
-    u64 identifier_start = is_identifier_start(ch);
-    u64 decimal = is_decimal_digit(ch);
-    return identifier_start | decimal;
-}
-
 struct Parser
 {
     u64 i;
@@ -2387,6 +2742,13 @@ struct Parser
 // {
 //     return parser->i - parser->column + 1;
 // }
+struct File
+{
+    String path;
+    String source_code;
+    FileStatus status;
+    Hashmap<String, Node> symbols;
+};
 
 fn File* add_file(Arena* arena, String file_path)
 {
@@ -2483,6 +2845,13 @@ struct Analyzer
 {
     Function* function;
     Node* scope;
+    File* file;
+
+    void kill_control(Arena* arena)
+    {
+        scope->control(arena, 0);
+        // scope->scope
+    }
 };
 
 fn SemaType* analyze_type(Parser* parser, Unit* unit, String src)
@@ -2622,21 +2991,8 @@ fn u64 parse_hex(String string)
     return value;
 }
 
-fn u64 parse_decimal(String string)
-{
-    u64 value = 0;
-    for (u8 ch : string)
-    {
-        assert(((ch >= '0') & (ch <= '9')));
-        value = (value * 10) + (ch - '0');
-    }
 
-    return value;
-}
-
-
-
-[[nodiscard]] fn Node* parse_constant_integer(Parser* parser, Arena* arena, String src, SemaType* type, u32 gvn, Node* input)
+[[nodiscard]] fn Node* parse_constant_integer(Parser* parser, Thread* thread, String src, SemaType* type, Node* input)
 {
     u64 value = 0;
     auto starting_index = parser->i;
@@ -2704,10 +3060,9 @@ fn u64 parse_decimal(String string)
         value = parse_decimal(slice);
     }
 
-    Node* result = add_constant_integer(arena, {
+    Node* result = add_constant_integer(thread, {
         .value = value,
         .input = input,
-        .gvn = gvn,
         .bit_count = type->get_bit_count(),
     });
 
@@ -2746,12 +3101,17 @@ fn Node* scope_update_extended(Node* scope, String name, Node* node, s32 nesting
 //     trap();
 // }
 
-fn Node* scope_lookup(Node* scope, String name)
+fn Node* scope_lookup(Analyzer* analyzer, String name)
 {
-    return scope_update_extended(scope, name, nullptr, scope->scope.stack.length - 1);
+    if (auto* node = scope_update_extended(analyzer->scope, name, nullptr, analyzer->scope->scope.stack.length - 1))
+    {
+        return node;
+    }
+
+    return analyzer->file->symbols.get(name);
 }
 
-[[nodiscard]] fn Node* analyze_single_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Arena* arena, String src, SemaType* type, Side side)
+[[nodiscard]] fn Node* analyze_single_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Thread* thread, String src, SemaType* type, Side side)
 {
     unused(side);
     enum class Unary
@@ -2821,21 +3181,71 @@ fn Node* scope_lookup(Node* scope, String name)
             fail();
         }
 
-        auto gvn = function->node_count;
-        function->node_count += 1;
-        Node* constant_int = parse_constant_integer(parser, arena, src, integer_type, gvn, function->root_node);
+        Node* constant_int = parse_constant_integer(parser, thread, src, integer_type, function->root_node);
 
         return constant_int;
     }
     else if (is_identifier)
     {
         String identifier = parser->parse_and_check_identifier(src);
-        auto* node = scope_lookup(analyzer->scope, identifier);
+        auto* node = scope_lookup(analyzer, identifier);
         if (!node)
         {
             fail();
         }
-        return node;
+
+        switch (src[parser->i])
+        {
+            case ' ':
+            case ',':
+            case ';':
+            case function_argument_end:
+                // TODO: take into account 'side'?
+                return node;
+            case function_argument_start:
+                {
+                    parser->i += 1;
+                    Array<Node*> argument_nodes = {};
+                    while (1)
+                    {
+                        parser->skip_space(src);
+
+                        if (src[parser->i] == function_argument_end)
+                        {
+                            break;
+                        }
+
+                        Node* argument_value = analyze_single_expression(analyzer, parser, unit, thread, src, type, side)->peephole(thread, function);
+                        argument_nodes.append_one(argument_value);
+
+                        parser->skip_space(src);
+
+                        switch (src[parser->i])
+                        {
+                            case function_argument_end:
+                                break;
+                            case ',':
+                                parser->i += 1;
+                                break;
+                            default:
+                                fail();
+                        }
+                    }
+
+                    parser->expect_character(src, function_argument_end);
+
+                    // Add function definition
+                    argument_nodes.append_one(node);
+
+                    Node* call_node = Node::add(thread, {
+                        .inputs = argument_nodes.slice(),
+                        .id = Node::Id::CALL,
+                    })->peephole(thread, function);
+                    return call_node;
+                }
+            default:
+                trap();
+        }
     }
     else
     {
@@ -2843,7 +3253,7 @@ fn Node* scope_lookup(Node* scope, String name)
     }
 }
 
-[[nodiscard]] fn Node* analyze_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Arena* arena, String src, SemaType* type, Side side)
+[[nodiscard]] fn Node* analyze_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Thread* thread, String src, SemaType* type, Side side)
 {
     enum class CurrentOperation
     {
@@ -2875,7 +3285,7 @@ fn Node* scope_lookup(Node* scope, String name)
         }
         else
         {
-            current_node = analyze_single_expression(analyzer, parser, unit, arena, src, iteration_type, side);
+            current_node = analyze_single_expression(analyzer, parser, unit, thread, src, iteration_type, side);
         }
 
         parser->skip_space(src);
@@ -2910,7 +3320,7 @@ fn Node* scope_lookup(Node* scope, String name)
                     current_node,
                 };
 
-                auto* binary = Node::add_from_function(arena, analyzer->function, {
+                auto* binary = Node::add(thread, {
                     .type = current_node->type,
                     .inputs = { .pointer = inputs, .length = array_length(inputs), },
                     .id = id,
@@ -2922,7 +3332,7 @@ fn Node* scope_lookup(Node* scope, String name)
             trap();
         }
 
-        previous_node = previous_node->peephole(arena, analyzer->function);
+        previous_node = previous_node->peephole(thread, analyzer->function);
 
         auto original_index = parser->i;
         u8 original = src[original_index];
@@ -2962,6 +3372,11 @@ fn Node* scope_lookup(Node* scope, String name)
                         break;
                 }
                 break;
+            case function_argument_start:
+                {
+                    assert(previous_node->id == Node::Id::SYMBOL_FUNCTION);
+                    trap();
+                } break;
             default:
                 trap();
         }
@@ -2998,10 +3413,11 @@ fn Node* define_variable(Analyzer* analyzer, String name, Node* node)
 }
 
 
-fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Arena* arena, String src)
+fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Thread* thread, String src)
 {
     push_scope(analyzer);
     parser->expect_character(src, block_start);
+    Function* function = analyzer->function;
 
     Node* node = 0;
     while (1)
@@ -3025,10 +3441,8 @@ fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Are
             {
                 parser->skip_space(src);
 
-                auto* return_value = analyze_expression(analyzer, parser, unit, arena, src, analyzer->function->prototype.original_return_type, Side::right);
+                auto* return_value = analyze_expression(analyzer, parser, unit, thread, src, analyzer->function->prototype.original_return_type, Side::right)->peephole(thread, function);
                 parser->expect_character(src, ';');
-
-                Function* function = analyzer->function;
 
                 Node* inputs[] =
                 {
@@ -3036,11 +3450,12 @@ fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Are
                     return_value,
                 };
 
-                Node* ret_node = Node::add_from_function(arena, function, {
+                Node* ret_node = Node::add(thread, {
                     .type = { .id = Node::Type::Id::CONTROL },
                     .inputs = { .pointer = inputs, .length = array_length(inputs) },
                     .id = Node::Id::RETURN,
-                });
+                })->peephole(thread, function);
+                analyzer->kill_control(thread->arena);
                 statement_node = ret_node;
             }
 
@@ -3107,7 +3522,7 @@ fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Are
                                     parser->expect_character(src, '=');
                                     parser->skip_space(src);
 
-                                    auto* initial_node = analyze_expression(analyzer, parser, unit, arena, src, type, Side::right);
+                                    auto* initial_node = analyze_expression(analyzer, parser, unit, thread, src, type, Side::right);
                                     if (!define_variable(analyzer, name, initial_node))
                                     {
                                         fail();
@@ -3128,7 +3543,7 @@ fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Are
                     } break;
                 case block_start:
                     {
-                        statement_node = analyze_local_block(analyzer, parser, unit, arena, src);
+                        statement_node = analyze_local_block(analyzer, parser, unit, thread, src);
                     } break;
                 default:
                     trap();
@@ -3278,8 +3693,9 @@ fn SemaType* systemv_get_int_type_at_offset(SemaType* type, u64 offset, SemaType
     }
 }
 
-fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
+fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file)
 {
+    String src = file->source_code;
     parser->expect_character(src, 'f');
     parser->expect_character(src, 'n');
 
@@ -3298,7 +3714,7 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
         {
             parser->skip_space(src);
 
-            if (src.pointer[parser->i] == function_attribute_end)
+            if (src[parser->i] == function_attribute_end)
             {
                 break;
             }
@@ -3377,6 +3793,27 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
     }
 
     String name = parser->parse_and_check_identifier(src);
+    if (!name.pointer | !name.length)
+    {
+        fail();
+    }
+
+    if (auto* symbol = file->symbols.get(name))
+    {
+        fail();
+    }
+
+    auto* function = thread->functions.add_one();
+    auto function_gvn = thread->node_count;
+    thread->node_count += 1;
+    file->symbols.put_assume_not_existing(name, Node{
+        .type = {},
+        .inputs = {},
+        .outputs = {},
+        .gvn = function_gvn,
+        .id = Node::Id::SYMBOL_FUNCTION,
+        .symbol = &function->symbol,
+    });
 
     parser->skip_space(src);
 
@@ -3403,7 +3840,7 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
             {
                 case symbol_attribute_end:
                     break;
-                case ',':
+                case end_of_argument:
                     parser->i += 1;
                     break;
                 default:
@@ -3458,6 +3895,9 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
 
     parser->expect_character(src, function_argument_start);
 
+    Array<SemaType*> original_argument_types = {};
+    Array<String> argument_names = {};
+
     while (1)
     {
         parser->skip_space(src);
@@ -3467,25 +3907,45 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
             break;
         }
 
-        // TODO: function arguments in function definition
-        trap();
+        String argument_name = parser->parse_and_check_identifier(src);
+        argument_names.append_one(argument_name);
+
+        parser->skip_space(src);
+        parser->expect_character(src, ':');
+        parser->skip_space(src);
+
+        SemaType* argument_type = analyze_type(parser, unit, src);
+        original_argument_types.append_one(argument_type);
+
+        parser->skip_space(src);
+
+        switch (src[parser->i])
+        {
+            case function_argument_end:
+                break;
+            case end_of_argument:
+                parser->i += 1;
+            default:
+                fail();
+        }
     }
 
     parser->expect_character(src, function_argument_end);
 
     parser->skip_space(src);
-    PinnedArray<SemaType*> original_argument_types = {};
 
     SemaType* original_return_type = analyze_type(parser, unit, src);
 
     parser->skip_space(src);
+
+    AbiInfo return_type_abi = {};
+    Array<AbiInfo> argument_type_abis = {};
 
     switch (calling_convention)
     {
     case CALLING_CONVENTION_C:
         {
             // First process the return type ABI
-            AbiInfo return_type_abi = {};
             {
                 SystemVClassification return_type_classes = systemv_classify(original_return_type, 0);
                 assert(return_type_classes.v[1] != SYSTEMV_CLASS_MEMORY | return_type_classes.v[0] == SYSTEMV_CLASS_MEMORY);
@@ -3537,6 +3997,9 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
                         {
                             return_type_abi =
                             {
+                                .payload = {
+                                    .direct = low_part->lower(),
+                                },
                                 .kind = ABI_INFO_DIRECT,
                             };
                         }
@@ -3554,7 +4017,6 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
 
             // Now process the ABI for argument types
             
-            PinnedArray<AbiInfo> argument_type_abis = {};
             // u32 abi_argument_type_count = 0;
             {
                 SystemVRegisterCount available_registers = {
@@ -3576,93 +4038,185 @@ fn void analyze_function(Parser* parser, Thread* thread, Unit* unit, String src)
                     trap();
                 }
             }
-
-            switch (return_type_abi.kind)
-            {
-            case ABI_INFO_IGNORE: case ABI_INFO_DIRECT:
-                break;
-            case ABI_INFO_DIRECT_PAIR:
-                trap();
-            case ABI_INFO_DIRECT_COERCE:
-                trap();
-            case ABI_INFO_DIRECT_COERCE_INT:
-                trap();
-            case ABI_INFO_DIRECT_SPLIT_STRUCT_I32:
-                trap();
-            case ABI_INFO_EXPAND_COERCE:
-                trap();
-            case ABI_INFO_INDIRECT:
-                trap();
-            case ABI_INFO_EXPAND:
-                trap();
-            }
-
-            // assert(abi_argument_type_count == 0);
-            // TODO: reserve memory for them
-            // Slice<Node::DataType> abi_argument_types = {};
-            for (u32 i = 0; i < argument_type_abis.length; i += 1)
-            {
-                trap();
-            }
-
-            // TODO: put them into an array?
-            auto* function = thread->arena->allocate_one<Function>();
-
-            *function = {
-                .symbol = {
-                    .name = name,
-                    .id = Symbol::Id::function,
-                    .linkage = symbol_attributes.external ? Symbol::Linkage::external : Symbol::Linkage::internal,
-                },
-                .root_node = 0,
-                .parameters = thread->arena->allocate_many<Node*>(argument_type_abis.length),
-                .prototype = {
-                    .argument_type_abis = argument_type_abis.pointer,
-                    .original_argument_types = original_argument_types.pointer,
-                    .original_return_type = original_return_type,
-                    .return_type_abi = return_type_abi,
-                    .original_argument_count = original_argument_types.length,
-                    .varags = 0,
-                },
-                .node_count = 0,
-                .parameter_count = (u16)argument_type_abis.length,
-            };
-
-            function->root_node = Node::add_from_function(thread->arena, function, {
-                .type = { .id = Node::Type::Id::TUPLE },
-                .id = Node::Id::ROOT,
-            });
-
-            switch (symbol_attributes.external)
-            {
-                case 0:
-                    {
-                        Analyzer analyzer = {
-                            .function = function,
-                            .scope = Node::add_from_function(thread->arena, function, {
-                                .type = { .id = Node::Type::Id::BOTTOM },
-                                .inputs = { .pointer = &function->root_node, .length = 1 },
-                                .id = Node::Id::SCOPE,
-                            }),
-                        };
-                        analyzer.scope->scope.stack = {};
-                        analyze_local_block(&analyzer, parser, unit, thread->arena, src);
-                        // TODO: remove hack
-                        thread->functions = {
-                            .pointer = function,
-                            .length = 1,
-                        };
-                    } break;
-                case 1:
-                    trap();
-            }
         } break;
     case CALLING_CONVENTION_CUSTOM:
-        trap();
-        break;
+        {
+            return_type_abi = {
+                .payload = {
+                    .direct = original_return_type->lower(),
+                },
+                .kind = ABI_INFO_DIRECT,
+            };
+
+            for (SemaType* original_argument_type : original_argument_types.slice())
+            {
+                argument_type_abis.append_one({
+                    .payload = {
+                        .direct = original_argument_type->lower(),
+                    },
+                    .kind = AbiInfoKind::ABI_INFO_DIRECT,
+                });
+            }
+        } break;
     case CALLING_CONVENTION_COUNT:
         trap();
         break;
+    }
+
+    switch (symbol_attributes.external)
+    {
+        case 0:
+            {
+                switch (return_type_abi.kind)
+                {
+                    case ABI_INFO_IGNORE: case ABI_INFO_DIRECT:
+                        break;
+                    case ABI_INFO_DIRECT_PAIR:
+                        trap();
+                    case ABI_INFO_DIRECT_COERCE:
+                        trap();
+                    case ABI_INFO_DIRECT_COERCE_INT:
+                        trap();
+                    case ABI_INFO_DIRECT_SPLIT_STRUCT_I32:
+                        trap();
+                    case ABI_INFO_EXPAND_COERCE:
+                        trap();
+                    case ABI_INFO_INDIRECT:
+                        trap();
+                    case ABI_INFO_EXPAND:
+                        trap();
+                }
+
+
+                *function = {
+                    .symbol = {
+                        .name = name,
+                        .id = Symbol::Id::function,
+                        .linkage = symbol_attributes.external ? Symbol::Linkage::external : Symbol::Linkage::internal,
+                    },
+                    .root_node = 0,
+                    .parameters = thread->arena->allocate_many<Node*>(argument_type_abis.length),
+                    .prototype = {
+                        .argument_type_abis = argument_type_abis.pointer,
+                        .original_argument_types = original_argument_types.pointer,
+                        .original_return_type = original_return_type,
+                        .return_type_abi = return_type_abi,
+                        .original_argument_count = original_argument_types.length,
+                        .varags = 0,
+                    },
+                    .parameter_count = (u16)argument_type_abis.length,
+                };
+
+                Array<Node::Type> abi_argument_types = {};
+                Array<Node::Type> root_arg_types = {};
+                root_arg_types.append_one({ .id = Node::Type::Id::CONTROL });
+
+                for (u32 i = 0; i < argument_type_abis.length; i += 1)
+                {
+                    u16 start = abi_argument_types.length;
+                    auto* abi_info = &argument_type_abis[i];
+
+                    // TODO: figure out how to interact with the C ABI
+                    switch (abi_info->kind)
+                    {
+                    case ABI_INFO_IGNORE:
+                        trap();
+                    case ABI_INFO_DIRECT:
+                        {
+                            auto node_type = abi_info->payload.direct;
+                            abi_argument_types.append_one(node_type);
+                        } break;
+                    case ABI_INFO_DIRECT_PAIR:
+                        trap();
+                    case ABI_INFO_DIRECT_COERCE:
+                        trap();
+                    case ABI_INFO_DIRECT_COERCE_INT:
+                        trap();
+                    case ABI_INFO_DIRECT_SPLIT_STRUCT_I32:
+                        trap();
+                    case ABI_INFO_EXPAND_COERCE:
+                        trap();
+                    case ABI_INFO_INDIRECT:
+                        trap();
+                    case ABI_INFO_EXPAND:
+                        trap();
+                    }
+
+                    u16 end = abi_argument_types.length;
+
+                    abi_info->indices[0] = start;
+                    abi_info->indices[1] = end;
+                }
+
+                root_arg_types.append(abi_argument_types.slice());
+
+                Node::Type root_type = { .id = Node::Type::Id::MULTIVALUE, .multi = { .types = root_arg_types.slice(), }, };
+                function->root_node = Node::add(thread, {
+                    .type = root_type,
+                    .id = Node::Id::ROOT,
+                });
+                function->root_node->root.args = root_type;
+                function->root_node->peephole(thread, function);
+
+                auto* scope_node = Node::add(thread, {
+                    .type = { .id = Node::Type::Id::BOTTOM },
+                    .inputs = { .pointer = &function->root_node, .length = 1 },
+                    .id = Node::Id::SCOPE,
+                });
+                scope_node->scope.stack = {};
+                Analyzer analyzer = {
+                    .function = function,
+                    .scope = scope_node,
+                    .file = file,
+                };
+                push_scope(&analyzer);
+                auto control_name = strlit("$control");
+                s32 next_index = 0;
+                Node* control_node = function->root_node->project(thread, function, next_index, control_name)->peephole(thread, function);
+                next_index += 1;
+                define_variable(&analyzer, control_name, control_node);
+                // assert(abi_argument_type_count == 0);
+                // TODO: reserve memory for them
+
+                for (u32 i = 0; i < argument_type_abis.length; i += 1)
+                {
+                    auto* abi_info = &argument_type_abis[i];
+                    auto argument_name = argument_names[i];
+
+                    // TODO: figure out how to interact with the C ABI
+                    switch (abi_info->kind)
+                    {
+                    case ABI_INFO_IGNORE:
+                        trap();
+                    case ABI_INFO_DIRECT:
+                        {
+                            auto* argument_node = function->root_node->project(thread, function, next_index, argument_name)->peephole(thread, function);
+                            define_variable(&analyzer, argument_name, argument_node);
+                            next_index += 1;
+                        } break;
+                    case ABI_INFO_DIRECT_PAIR:
+                        trap();
+                    case ABI_INFO_DIRECT_COERCE:
+                        trap();
+                    case ABI_INFO_DIRECT_COERCE_INT:
+                        trap();
+                    case ABI_INFO_DIRECT_SPLIT_STRUCT_I32:
+                        trap();
+                    case ABI_INFO_EXPAND_COERCE:
+                        trap();
+                    case ABI_INFO_INDIRECT:
+                        trap();
+                    case ABI_INFO_EXPAND:
+                        trap();
+                    }
+                }
+
+                analyze_local_block(&analyzer, parser, unit, thread, src);
+
+                pop_scope(&analyzer);
+            } break;
+        case 1:
+            trap();
     }
 }
 
@@ -3695,7 +4249,7 @@ fn void unit_file_analyze(Thread* thread, Unit* unit, File* file)
             case 'f':
                 if (get_next_ch_safe(src, declaration_start_index) == 'n')
                 {
-                    analyze_function(&parser, thread, unit, src);
+                    analyze_function(&parser, thread, unit, file);
                 }
                 else
                 {
@@ -3808,6 +4362,7 @@ String test_file_paths[] = {
     strlit("tests/first/main.nat"),
     strlit("tests/constant_prop/main.nat"),
     strlit("tests/simple_variable_declaration/main.nat"),
+    strlit("tests/function_call_args/main.nat"),
 };
 
 #ifdef __linux__

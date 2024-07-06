@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -ex
+set -e
 source ./compile.sh
 compile "build" "nest" "-g" "";
 build/nest
