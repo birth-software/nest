@@ -1,0 +1,10 @@
+fn foo(arg: s32) s32
+{
+    return arg == 0;
+}
+
+fn[cc(.c)] main [export] () s32
+{
+    >arg: s32 = 0;
+    return foo(arg);
+}
