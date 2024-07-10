@@ -84,18 +84,18 @@ forceinline fn u8 mem_equal_range(T* a, T* b, u64 count)
     return memcmp(a, b, count * sizeof(T)) == 0;
 }
 
-fn u8 memeq(u8* a, u8* b, u64 size)
-{
-    for (u64 i = 0; i < size; i += 1)
-    {
-        if (a[i] != b[i])
-        {
-            return 0;
-        }
-    }
-
-    return 1;
-}
+// fn u8 memeq(u8* a, u8* b, u64 size)
+// {
+//     for (u64 i = 0; i < size; i += 1)
+//     {
+//         if (a[i] != b[i])
+//         {
+//             return 0;
+//         }
+//     }
+//
+//     return 1;
+// }
 
 template<typename T>
 struct Slice
@@ -333,20 +333,20 @@ struct StaticList
     T array[count];
 };
 
-// global auto constexpr fnv_offset = 14695981039346656037ull;
-// global auto constexpr fnv_prime = 1099511628211ull;
+global auto constexpr fnv_offset = 14695981039346656037ull;
+global auto constexpr fnv_prime = 1099511628211ull;
 
-// fn Hash hash_bytes(String bytes)
-// {
-//     u64 result = fnv_offset;
-//     for (u64 i = 0; i < bytes.length; i += 1)
-//     {
-//         result ^= bytes.pointer[i];
-//         result *= fnv_prime;
-//     }
-//
-//     return (Hash)result;
-// }
+fn Hash hash_bytes(String bytes)
+{
+    u64 result = fnv_offset;
+    for (u64 i = 0; i < bytes.length; i += 1)
+    {
+        result ^= bytes.pointer[i];
+        result *= fnv_prime;
+    }
+
+    return (Hash)result;
+}
 
 #ifdef __linux__
 // fn forceinline long syscall0(long n)
@@ -1005,24 +1005,27 @@ may_be_unused fn void print(const char* format, ...)
 struct Arena
 {
     u64 reserved_size;
-    u64 commited;
+    u64 committed;
     u64 commit_position;
     u64 granularity;
     u8 reserved[4 * 8] = {};
 
+#if __APPLE__
+    global auto constexpr minimum_granularity = KB(16);
+#else
     global auto constexpr minimum_granularity = KB(4);
+#endif
     global auto constexpr middle_granularity = MB(2);
     global auto constexpr page_granularity = page_size;
     global auto constexpr default_size = GB(4);
 
     fn Arena* init(u64 reserved_size, u64 granularity, u64 initial_size)
     {
-        assert(initial_size % granularity == 0);
         Arena* arena = (Arena*)reserve(reserved_size);
         commit(arena, initial_size);
         *arena = {
             .reserved_size = reserved_size,
-            .commited = initial_size,
+            .committed = initial_size,
             .commit_position = sizeof(Arena),
             .granularity = granularity,
         };
@@ -1038,16 +1041,19 @@ struct Arena
     {
         u64 aligned_offset = align_forward(commit_position, alignment);
         u64 aligned_size_after = aligned_offset + size;
-        if (aligned_size_after <= commited)
+
+        if (aligned_size_after > committed)
         {
-            void* result = (u8*)this + aligned_offset;
-            commit_position = aligned_size_after;
-            return result;
+            u64 committed_size = align_forward(aligned_size_after, granularity);
+            u64 size_to_commit = committed_size - committed;
+            void* commit_pointer = (u8*)this + committed;
+            commit(commit_pointer, size_to_commit);
+            committed = committed_size;
         }
-        else
-        {
-            trap();
-        }
+
+        void* result = (u8*)this + aligned_offset;
+        commit_position = aligned_size_after;
+        return result;
     }
 
     template<typename T>
@@ -1268,7 +1274,7 @@ struct GetOrPut
     V* value;
     u8 existing;
 };
-fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
+// fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
 template <typename K, typename V>
 struct PutResult
 {
@@ -1276,8 +1282,7 @@ struct PutResult
     V* value;
 };
 
-fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
-
+// fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
 
 template<typename K, typename V>
 struct PinnedHashmap
@@ -1352,103 +1357,249 @@ struct PinnedHashmap
     }
 };
 
-template<typename K, typename V>
-using Hashmap = PinnedHashmap<K, V>;
-template <typename T>
-using Array = PinnedArray<T>;
-
 // Returns the generic value pointer if the key is present
-fn u32 generic_pinned_hashmap_get_index(PinnedHashmap<u8, u8>* hashmap, u8* key_pointer, u32 key_size)
-{
-    u32 index = hashmap->invalid_index;
+// fn u32 generic_pinned_hashmap_get_index(PinnedHashmap<u8, u8>* hashmap, u8* key_pointer, u32 key_size)
+// {
+//     u32 index = hashmap->invalid_index;
+//
+//     for (u32 i = 0; i < hashmap->length; i += 1)
+//     {
+//         u8* it_key_pointer = &hashmap->keys[i * key_size];
+//         if (memeq(it_key_pointer, key_pointer, key_size))
+//         {
+//             index = (it_key_pointer - hashmap->keys) / key_size;
+//             break;
+//         }
+//     }
+//
+//     return index;
+// }
 
-    for (u32 i = 0; i < hashmap->length; i += 1)
+// fn void generic_pinned_hashmap_ensure_capacity(PinnedHashmap<u8, u8>* hashmap, u32 key_size, u32 value_size, u32 additional_elements)
+// {
+//     if (additional_elements != 0)
+//     {
+//         if (hashmap->key_page_capacity == 0)
+//         {
+//             assert(hashmap->value_page_capacity == 0);
+//             hashmap->keys = (u8*)reserve(hashmap->reserved_size);
+//             hashmap->values = (u8*)reserve(hashmap->reserved_size);
+//         }
+//
+//         u32 target_element_capacity = hashmap->length + additional_elements;
+//
+//         {
+//             u32 key_byte_capacity = hashmap->key_page_capacity * hashmap->granularity;
+//             u32 target_byte_capacity = target_element_capacity * key_size;
+//             if (key_byte_capacity < target_byte_capacity)
+//             {
+//                 u32 aligned_target_byte_capacity = align_forward(target_byte_capacity,  hashmap->granularity);
+//                 void* commit_pointer = hashmap->keys + key_byte_capacity;
+//                 u32 commit_size = aligned_target_byte_capacity - key_byte_capacity;
+//                 commit(commit_pointer, commit_size);
+//                 hashmap->key_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
+//             }
+//         }
+//
+//         {
+//             u32 value_byte_capacity = hashmap->value_page_capacity * hashmap->granularity;
+//             u32 target_byte_capacity = target_element_capacity * value_size;
+//             if (value_byte_capacity < target_byte_capacity)
+//             {
+//                 u32 aligned_target_byte_capacity = align_forward(target_byte_capacity, hashmap->granularity);
+//                 void* commit_pointer = hashmap->values + value_byte_capacity;
+//                 u32 commit_size = aligned_target_byte_capacity - value_byte_capacity;
+//                 commit(commit_pointer, commit_size);
+//                 hashmap->value_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
+//             }
+//         }
+//     }
+// }
+
+// fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
+// {
+//     generic_pinned_hashmap_ensure_capacity(hashmap, key_size, value_size, 1);
+//     u32 new_index = hashmap->length;
+//     hashmap->length += 1;
+//     u8* key_pointer = &hashmap->keys[new_index * key_size];
+//     u8* value_pointer = &hashmap->values[new_index * value_size];
+//     memcpy(key_pointer, new_key_pointer, key_size);
+//     memcpy(value_pointer, new_value_pointer, value_size);
+//
+//     return {
+//         .key = key_pointer,
+//         .value = value_pointer,
+//     };
+// }
+
+// fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
+// {
+//     u32 index = generic_pinned_hashmap_get_index(hashmap, new_key_pointer, key_size);
+//     if (index != hashmap->invalid_index)
+//     {
+//         trap();
+//     }
+//     else
+//     {
+//         auto put_result = generic_pinned_hashmap_put_assume_not_existing(hashmap, new_key_pointer, key_size, new_value_pointer, value_size);
+//         return {
+//             .key = put_result.key,
+//             .value = put_result.value,
+//             .existing = 0,
+//         };
+//     }
+// }
+
+global constexpr auto map_initial_capacity = 16;
+
+template <typename V>
+struct StringMap
+{
+    struct Pair
     {
-        u8* it_key_pointer = &hashmap->keys[i * key_size];
-        if (memeq(it_key_pointer, key_pointer, key_size))
-        {
-            index = (it_key_pointer - hashmap->keys) / key_size;
-            break;
-        }
-    }
-
-    return index;
-}
-
-fn void generic_pinned_hashmap_ensure_capacity(PinnedHashmap<u8, u8>* hashmap, u32 key_size, u32 value_size, u32 additional_elements)
-{
-    if (additional_elements != 0)
-    {
-        if (hashmap->key_page_capacity == 0)
-        {
-            assert(hashmap->value_page_capacity == 0);
-            hashmap->keys = (u8*)reserve(hashmap->reserved_size);
-            hashmap->values = (u8*)reserve(hashmap->reserved_size);
-        }
-
-        u32 target_element_capacity = hashmap->length + additional_elements;
-
-        {
-            u32 key_byte_capacity = hashmap->key_page_capacity * hashmap->granularity;
-            u32 target_byte_capacity = target_element_capacity * key_size;
-            if (key_byte_capacity < target_byte_capacity)
-            {
-                u32 aligned_target_byte_capacity = align_forward(target_byte_capacity,  hashmap->granularity);
-                void* commit_pointer = hashmap->keys + key_byte_capacity;
-                u32 commit_size = aligned_target_byte_capacity - key_byte_capacity;
-                commit(commit_pointer, commit_size);
-                hashmap->key_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
-            }
-        }
-
-        {
-            u32 value_byte_capacity = hashmap->value_page_capacity * hashmap->granularity;
-            u32 target_byte_capacity = target_element_capacity * value_size;
-            if (value_byte_capacity < target_byte_capacity)
-            {
-                u32 aligned_target_byte_capacity = align_forward(target_byte_capacity, hashmap->granularity);
-                void* commit_pointer = hashmap->values + value_byte_capacity;
-                u32 commit_size = aligned_target_byte_capacity - value_byte_capacity;
-                commit(commit_pointer, commit_size);
-                hashmap->value_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
-            }
-        }
-    }
-}
-
-fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
-{
-    generic_pinned_hashmap_ensure_capacity(hashmap, key_size, value_size, 1);
-    u32 new_index = hashmap->length;
-    hashmap->length += 1;
-    u8* key_pointer = &hashmap->keys[new_index * key_size];
-    u8* value_pointer = &hashmap->values[new_index * value_size];
-    memcpy(key_pointer, new_key_pointer, key_size);
-    memcpy(value_pointer, new_value_pointer, value_size);
-
-    return {
-        .key = key_pointer,
-        .value = value_pointer,
+        String key;
+        V value;
     };
-}
 
-fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
-{
-    u32 index = generic_pinned_hashmap_get_index(hashmap, new_key_pointer, key_size);
-    if (index != hashmap->invalid_index)
+    Pair* pairs;
+    u32 length;
+    u32 capacity;
+
+    fn StringMap init(Arena* arena, u32 capacity)
     {
-        trap();
-    }
-    else
-    {
-        auto put_result = generic_pinned_hashmap_put_assume_not_existing(hashmap, new_key_pointer, key_size, new_value_pointer, value_size);
+        auto* pairs = arena->allocate_many<Pair>(capacity);
         return {
-            .key = put_result.key,
-            .value = put_result.value,
-            .existing = 0,
+            .pairs = pairs,
+            .length = 0,
+            .capacity = capacity,
         };
     }
-}
+
+    StringMap duplicate(Arena* arena)
+    {
+        auto new_map = init(arena, capacity);
+        new_map.length = length;
+        memcpy(new_map.pairs, pairs, sizeof(Pair) * new_map.capacity);
+
+        return new_map;
+    }
+
+    struct GetOrPut
+    {
+        Pair* pair;
+        u8 existing;
+    };
+
+    method Pair* get_pair(String key)
+    {
+        Pair* result = 0;
+        if (length)
+        {
+            assert(capacity);
+            u32 index = find_index(key);
+            auto* pair = &pairs[index];
+            if (pair->key.length)
+            {
+                result = pair;
+            }
+        }
+
+        return result;
+    }
+
+    method u32 find_index(String key)
+    {
+        u32 hash = hash_bytes(key);
+        auto index = hash & (capacity - 1);
+        return index;
+    }
+
+    method V* get(String key)
+    {
+        V* result = 0;
+        if (auto* pair = get_pair(key))
+        {
+            result = &pair->value;
+        }
+
+        return result;
+    }
+
+    method void ensure_capacity(Arena* arena, u32 additional)
+    {
+        if (length + additional > capacity)
+        {
+            auto new_capacity = max<u32>(capacity + additional, map_initial_capacity);
+            auto* new_pairs = arena->allocate_many<Pair>(new_capacity);
+
+            if (length)
+            {
+                memcpy(new_pairs, pairs, capacity * sizeof(Pair));
+            }
+
+            pairs = new_pairs;
+            capacity = new_capacity;
+        }
+    }
+
+    method GetOrPut get_or_put(Arena* arena, String key, V value)
+    {
+        if (capacity == 0)
+        {
+            ensure_capacity(arena, map_initial_capacity);
+        }
+
+        auto index = find_index(key);
+        auto* candidate_pair = &pairs[index];
+
+        if (candidate_pair->key.length)
+        {
+            for (u32 i = 0; i < capacity; i += 1)
+            {
+                auto wraparound_index = (index + i) & (capacity - 1);
+                candidate_pair = &pairs[wraparound_index];
+                if (candidate_pair->key.length == 0)
+                {
+                    return {
+                        .pair = candidate_pair,
+                        .existing = 0,
+                    };
+                }
+
+                if (candidate_pair->key.equal(key))
+                {
+                    trap();
+                }
+            }
+
+            trap();
+        }
+        else
+        {
+            ensure_capacity(arena, 1);
+            candidate_pair->key = key;
+            candidate_pair->value = value;
+            length += 1;
+            return {
+                .pair = candidate_pair,
+                .existing = 0,
+            };
+        }
+    }
+
+    method Pair* begin()
+    {
+        return pairs;
+    }
+
+    method Pair* end()
+    {
+        return pairs + capacity;
+    }
+};
+
+template <typename T>
+using Array = PinnedArray<T>;
 
 typedef enum FileStatus
 {
@@ -2003,7 +2154,7 @@ struct Node
         } projection;
         struct
         {
-            Array<Hashmap<String, u16>> stack;
+            Array<StringMap<u16>> stack;
         } scope;
         struct
         {
@@ -2991,12 +3142,16 @@ struct Node
         assert(id == Node::Id::SCOPE);
         Slice<String> names = arena->allocate_slice<String>(inputs.length);
 
-        for (auto& hashmap : payload.scope.stack.slice())
+        for (auto& string_map : payload.scope.stack.slice())
         {
-            for (String name : hashmap.key_slice())
+            for (auto& pair : string_map)
             {
-                auto index = *hashmap.get(name);
-                names[index] = name;
+                auto name = pair.key;
+                if (name.length > 0)
+                {
+                    auto index = *string_map.get(name);
+                    names[index] = name;
+                }
             }
         }
 
@@ -3120,7 +3275,7 @@ struct File
     String path;
     String source_code;
     FileStatus status;
-    Hashmap<String, Node> symbols = {};
+    StringMap<Node> symbols = {};
 };
 
 method Node* Node::scope_lookup(Thread* thread, Function* function, File* file, String name)
@@ -3757,15 +3912,7 @@ struct Analyzer
         // // TODO: make this more efficient
         for (auto& hashmap: original_scope->payload.scope.stack.slice())
         {
-            Hashmap<String, u16> duplicate_hashmap = {};
-            duplicate_hashmap.ensure_capacity(hashmap.length);
-            auto keys = hashmap.key_slice();
-            auto values = hashmap.value_slice();
-
-            for (u32 i = 0; i < hashmap.length; i += 1)
-            {
-                duplicate_hashmap.put_assume_not_existing(keys[i], values[i]);
-            }
+            auto duplicate_hashmap = hashmap.duplicate(thread->arena);
 
             duplicate_scope->payload.scope.stack.append_one(duplicate_hashmap);
         }
@@ -4433,7 +4580,7 @@ fn void pop_scope(Analyzer* analyzer)
     analyzer->scope->payload.scope.stack.pop();
 }
 
-fn Node* define_variable(Analyzer* analyzer, String name, Node* node)
+fn Node* define_variable(Analyzer* analyzer, Arena* arena, String name, Node* node)
 {
     auto* stack = &analyzer->scope->payload.scope.stack;
     assert(stack->length);
@@ -4441,7 +4588,7 @@ fn Node* define_variable(Analyzer* analyzer, String name, Node* node)
 
     auto input_index = analyzer->scope->inputs.length;
 
-    if (last->get_or_put(name, input_index).existing)
+    if (last->get_or_put(arena, name, input_index).existing)
     {
         trap();
         return 0;
@@ -4777,7 +4924,7 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
                                 parser->skip_space(src);
 
                                 auto* initial_node = analyze_expression(analyzer, parser, unit, thread, src, type, Side::right);
-                                if (!define_variable(analyzer, name, initial_node))
+                                if (!define_variable(analyzer, thread->arena, name, initial_node))
                                 {
                                     fail();
                                 }
@@ -4792,7 +4939,7 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
                                 parser->skip_space(src);
 
                                 auto* initial_node = analyze_expression(analyzer, parser, unit, thread, src, 0, Side::right);
-                                if (!define_variable(analyzer, name, initial_node))
+                                if (!define_variable(analyzer, thread->arena, name, initial_node))
                                 {
                                     fail();
                                 }
@@ -5076,15 +5223,11 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
         fail();
     }
 
-    if (auto* symbol = file->symbols.get(name))
-    {
-        fail();
-    }
-
     auto* function = thread->functions.add_one();
     auto function_gvn = thread->node_count;
     thread->node_count += 1;
-    file->symbols.put_assume_not_existing(name, Node{
+
+    auto symbol_result = file->symbols.get_or_put(thread->arena, name, Node{
         .type = {},
         .inputs = {},
         .outputs = {},
@@ -5094,6 +5237,10 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
             .symbol = &function->symbol,
         },
     });
+    if (symbol_result.existing)
+    {
+        fail();
+    }
 
     parser->skip_space(src);
 
@@ -5463,7 +5610,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                 s32 next_index = 0;
                 Node* control_node = function->root_node->project(thread, function->root_node, next_index, control_name)->peephole(thread, function);
                 next_index += 1;
-                define_variable(&analyzer, control_name, control_node);
+                define_variable(&analyzer, thread->arena, control_name, control_node);
                 // assert(abi_argument_type_count == 0);
                 // TODO: reserve memory for them
 
@@ -5483,7 +5630,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                     case ABI_INFO_DIRECT:
                         {
                             auto* argument_node = function->root_node->project(thread, function->root_node, next_index, argument_name)->peephole(thread, function);
-                            define_variable(&analyzer, argument_name, argument_node);
+                            define_variable(&analyzer, thread->arena, argument_name, argument_node);
                             next_index += 1;
                         } break;
                     case ABI_INFO_DIRECT_PAIR:
