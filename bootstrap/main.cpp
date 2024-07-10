@@ -29,12 +29,17 @@ typedef u32 Hash;
 #define breakpoint() __builtin_debugtrap()
 #define trap() __builtin_trap()
 #define array_length(arr) sizeof(arr) / sizeof((arr)[0])
-#define page_size (0x1000)
-#define unused(x) (void)(x)
 #define KB(n) ((n) * 1024)
 #define MB(n) ((n) * 1024 * 1024)
 #define GB(n) ((u64)(n) * 1024 * 1024 * 1024)
 #define TB(n) ((u64)(n) * 1024 * 1024 * 1024 * 1024)
+#define unused(x) (void)(x)
+
+#if __APPLE__
+    global auto constexpr page_size = KB(16);
+#else
+    global auto constexpr page_size = KB(4);
+#endif
 
 #define may_be_unused __attribute__((unused))
 
@@ -1010,13 +1015,8 @@ struct Arena
     u64 granularity;
     u8 reserved[4 * 8] = {};
 
-#if __APPLE__
-    global auto constexpr minimum_granularity = KB(16);
-#else
-    global auto constexpr minimum_granularity = KB(4);
-#endif
+    global auto constexpr minimum_granularity = page_size;
     global auto constexpr middle_granularity = MB(2);
-    global auto constexpr page_granularity = page_size;
     global auto constexpr default_size = GB(4);
 
     fn Arena* init(u64 reserved_size, u64 granularity, u64 initial_size)
