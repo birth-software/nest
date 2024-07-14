@@ -74,6 +74,7 @@ fn if4(arg: s32) s32
 fn if5(arg: s32) s32
 {
     >a: s32 = 1;
+
     if (arg == 1)
     {
         if (arg == 2)

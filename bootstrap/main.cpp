@@ -18,7 +18,7 @@ typedef int64_t s64;
 typedef float f32;
 typedef double f64;
 
-typedef u32 Hash;
+typedef u64 Hash;
 
 #define fn static
 #define method __attribute__((visibility("internal")))
@@ -34,6 +34,16 @@ typedef u32 Hash;
 #define GB(n) ((u64)(n) * 1024 * 1024 * 1024)
 #define TB(n) ((u64)(n) * 1024 * 1024 * 1024 * 1024)
 #define unused(x) (void)(x)
+
+#ifdef DEMAND_LIBC
+#if DEMAND_LIBC
+#define LINK_LIBC 1
+#else 
+#define LINK_LIBC 0
+#endif
+#else
+#define LINK_LIBC 0
+#endif
 
 #if __APPLE__
     global auto constexpr page_size = KB(16);
@@ -51,6 +61,28 @@ global constexpr auto parenthesis_close = ')';
 
 global constexpr auto bracket_open = '[';
 global constexpr auto bracket_close = ']';
+
+// Lehmer's generator
+// https://lemire.me/blog/2019/03/19/the-fastest-conventional-random-number-generator-that-can-pass-big-crush/
+__uint128_t rn_state;
+fn u64 generate_random_number()
+{
+    rn_state *= 0xda942042e4dd58b5;
+    return rn_state >> 64;
+}
+
+fn u64 round_up_to_next_power_of_2(u64 n)
+{
+    n -= 1;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+    n += 1;
+    return n;
+}
 
 extern "C" void* memcpy(void* __restrict dst, void* __restrict src, u64 size)
 {
@@ -88,19 +120,6 @@ forceinline fn u8 mem_equal_range(T* a, T* b, u64 count)
 {
     return memcmp(a, b, count * sizeof(T)) == 0;
 }
-
-// fn u8 memeq(u8* a, u8* b, u64 size)
-// {
-//     for (u64 i = 0; i < size; i += 1)
-//     {
-//         if (a[i] != b[i])
-//         {
-//             return 0;
-//         }
-//     }
-//
-//     return 1;
-// }
 
 template<typename T>
 struct Slice
@@ -240,6 +259,8 @@ using String = Slice<u8>;
 #define ch_to_str(ch) String{ .pointer = &ch, .length = 1 }
 #define array_to_slice(arr) { .pointer = arr, .length = array_length(arr) }
 
+#define case_to_name(prefix, e) case prefix::e: return strlit(#e)
+
 fn u64 parse_decimal(String string)
 {
     u64 value = 0;
@@ -350,25 +371,26 @@ fn Hash hash_bytes(String bytes)
         result *= fnv_prime;
     }
 
-    return (Hash)result;
+    return result;
 }
 
+#if LINK_LIBC == 0
 #ifdef __linux__
-// fn forceinline long syscall0(long n)
-// {
-// 	unsigned long ret;
-// 	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n) : "rcx", "r11", "memory");
-// 	return ret;
-// }
+may_be_unused fn forceinline long syscall0(long n)
+{
+	unsigned long ret;
+	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n) : "rcx", "r11", "memory");
+	return ret;
+}
 
-fn forceinline long syscall1(long n, long a1)
+may_be_unused fn forceinline long syscall1(long n, long a1)
 {
 	unsigned long ret;
 	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1) : "rcx", "r11", "memory");
 	return ret;
 }
 
-fn forceinline long syscall2(long n, long a1, long a2)
+may_be_unused fn forceinline long syscall2(long n, long a1, long a2)
 {
 	unsigned long ret;
 	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2)
@@ -376,7 +398,7 @@ fn forceinline long syscall2(long n, long a1, long a2)
 	return ret;
 }
 
-fn forceinline long syscall3(long n, long a1, long a2, long a3)
+may_be_unused fn forceinline long syscall3(long n, long a1, long a2, long a3)
 {
 	unsigned long ret;
 	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
@@ -384,26 +406,26 @@ fn forceinline long syscall3(long n, long a1, long a2, long a3)
 	return ret;
 }
 
-// fn forceinline long syscall4(long n, long a1, long a2, long a3, long a4)
-// {
-// 	unsigned long ret;
-// 	register long r10 __asm__("r10") = a4;
-// 	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
-// 						  "d"(a3), "r"(r10): "rcx", "r11", "memory");
-// 	return ret;
-// }
+may_be_unused fn forceinline long syscall4(long n, long a1, long a2, long a3, long a4)
+{
+	unsigned long ret;
+	register long r10 __asm__("r10") = a4;
+	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
+						  "d"(a3), "r"(r10): "rcx", "r11", "memory");
+	return ret;
+}
 
-// fn forceinline long syscall5(long n, long a1, long a2, long a3, long a4, long a5)
-// {
-// 	unsigned long ret;
-// 	register long r10 __asm__("r10") = a4;
-// 	register long r8 __asm__("r8") = a5;
-// 	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
-// 						  "d"(a3), "r"(r10), "r"(r8) : "rcx", "r11", "memory");
-// 	return ret;
-// }
+may_be_unused fn forceinline long syscall5(long n, long a1, long a2, long a3, long a4, long a5)
+{
+	unsigned long ret;
+	register long r10 __asm__("r10") = a4;
+	register long r8 __asm__("r8") = a5;
+	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
+						  "d"(a3), "r"(r10), "r"(r8) : "rcx", "r11", "memory");
+	return ret;
+}
 
-fn forceinline long syscall6(long n, long a1, long a2, long a3, long a4, long a5, long a6)
+may_be_unused fn forceinline long syscall6(long n, long a1, long a2, long a3, long a4, long a5, long a6)
 {
 	unsigned long ret;
 	register long r10 __asm__("r10") = a4;
@@ -413,7 +435,6 @@ fn forceinline long syscall6(long n, long a1, long a2, long a3, long a4, long a5
 						  "d"(a3), "r"(r10), "r"(r8), "r"(r9) : "rcx", "r11", "memory");
 	return ret;
 }
-
 
 enum class SyscallX86_64 : u64 {
     read = 0,
@@ -785,70 +806,98 @@ enum class SyscallX86_64 : u64 {
     futex_wait = 455,
     futex_requeue = 456,
 };
-
+#endif
 #endif
 
 fn void* syscall_mmap(void* address, size_t length, int protection_flags, int map_flags, int fd, signed long offset)
 {
+#if LINK_LIBC
+    return mmap(address, length, protection_flags, map_flags, fd, offset);
+#else 
 #ifdef __linux__
     return (void*) syscall6(static_cast<long>(SyscallX86_64::mmap), (unsigned long)address, length, protection_flags, map_flags, fd, offset);
 #else
-    return mmap(address, length, protection_flags, map_flags, fd, offset);
+#error "Unsupported operating system for static linking" 
+#endif
 #endif
 }
 
 fn int syscall_mprotect(void *address, size_t length, int protection_flags)
 {
+#if LINK_LIBC
+    return mprotect(address, length, protection_flags);
+#else 
 #ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::mprotect), (unsigned long)address, length, protection_flags);
 #else
     return mprotect(address, length, protection_flags);
 #endif
+#endif
 }
 
 fn int syscall_open(const char *file_path, int flags, int mode)
 {
+#if LINK_LIBC
+    return open(file_path, flags, mode);
+#else
 #ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::open), (unsigned long)file_path, flags, mode);
 #else
     return open(file_path, flags, mode);
 #endif
+#endif
 }
 
 fn int syscall_fstat(int fd, struct stat *buffer)
 {
+#if LINK_LIBC
+    return fstat(fd, buffer);
+#else
 #ifdef __linux__
     return syscall2(static_cast<long>(SyscallX86_64::fstat), fd, (unsigned long)buffer);
 #else
     return fstat(fd, buffer);
 #endif
+#endif
 }
 
 fn ssize_t syscall_read(int fd, void* buffer, size_t bytes)
 {
+#if LINK_LIBC
+    return read(fd, buffer, bytes);
+#else
 #ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::read), fd, (unsigned long)buffer, bytes);
 #else
     return read(fd, buffer, bytes);
 #endif
+#endif
 }
 
 may_be_unused fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
 {
+#if LINK_LIBC
+    return write(fd, buffer, bytes);
+#else
 #ifdef __linux__
     return syscall3(static_cast<long>(SyscallX86_64::write), fd, (unsigned long)buffer, bytes);
 #else
     return write(fd, buffer, bytes);
 #endif
+#endif
 }
 
 [[noreturn]] [[gnu::cold]] fn void syscall_exit(int status)
 {
+#if LINK_LIBC
+    _exit(status);
+#else
 #ifdef __linux__
     (void)syscall1(231, status);
     trap();
 #else
     _exit(status);
+#endif
 #endif
 }
 
@@ -944,6 +993,40 @@ may_be_unused fn void print(const char* format, ...)
                                 auto* bit_count_end = it;
                                 auto bit_count = parse_decimal(String::from_pointer_range((u8*)bit_count_start, (u8*)bit_count_end));
 
+                                enum class IntegerFormat
+                                {
+                                    hexadecimal,
+                                    decimal,
+                                    octal,
+                                    binary,
+                                };
+
+                                IntegerFormat format = IntegerFormat::decimal;
+
+                                if (*it == ':')
+                                {
+                                    it += 1;
+                                    switch (*it)
+                                    {
+                                        case 'x':
+                                            format = IntegerFormat::hexadecimal;
+                                            break;
+                                        case 'd':
+                                            format = IntegerFormat::decimal;
+                                            break;
+                                        case 'o':
+                                            format = IntegerFormat::octal;
+                                            break;
+                                        case 'b':
+                                            format = IntegerFormat::binary;
+                                            break;
+                                        default:
+                                            trap();
+                                    }
+
+                                    it += 1;
+                                }
+
                                 u64 original_value;
                                 switch (bit_count)
                                 {
@@ -959,32 +1042,63 @@ may_be_unused fn void print(const char* format, ...)
                                         trap();
                                 }
 
-                                // TODO: maybe print in one go?
-
-                                u8 reverse_buffer[64];
-                                u8 reverse_index = 0;
                                 u64 value = original_value;
                                 if (value)
                                 {
-                                    while (value)
+                                    switch (format)
                                     {
-                                        u8 decimal_value = (value % 10);
-                                        u8 ascii_ch = decimal_value + '0';
-                                        value /= 10;
-                                        reverse_buffer[reverse_index] = ascii_ch;
-                                        reverse_index += 1;
+                                        case IntegerFormat::hexadecimal:
+                                            {
+                                                u8 reverse_buffer[16];
+                                                u8 reverse_index = 0;
+
+                                                while (value)
+                                                {
+                                                    u8 digit_value = value % 16;
+                                                    u8 ascii_ch = digit_value >= 10 ? (digit_value + 'a' - 10) : (digit_value + '0');
+                                                    value /= 16;
+                                                    reverse_buffer[reverse_index] = ascii_ch;
+                                                    reverse_index += 1;
+                                                }
+
+                                                while (reverse_index > 0)
+                                                {
+                                                    reverse_index -= 1;
+                                                    buffer[buffer_i] = reverse_buffer[reverse_index];
+                                                    buffer_i += 1;
+                                                }
+                                            } break;
+                                        case IntegerFormat::decimal:
+                                            {
+                                                // TODO: maybe print in one go?
+
+                                                u8 reverse_buffer[64];
+                                                u8 reverse_index = 0;
+
+                                                while (value)
+                                                {
+                                                    u8 digit_value = (value % 10);
+                                                    u8 ascii_ch = digit_value + '0';
+                                                    value /= 10;
+                                                    reverse_buffer[reverse_index] = ascii_ch;
+                                                    reverse_index += 1;
+                                                }
+
+                                                while (reverse_index > 0)
+                                                {
+                                                    reverse_index -= 1;
+                                                    buffer[buffer_i] = reverse_buffer[reverse_index];
+                                                    buffer_i += 1;
+                                                }
+                                            } break;
+                                        case IntegerFormat::octal:
+                                        case IntegerFormat::binary:
+                                            trap();
                                     }
                                 }
                                 else
                                 {
-                                    reverse_buffer[0] = '0';
-                                    reverse_index += 1;
-                                }
-
-                                while (reverse_index > 0)
-                                {
-                                    reverse_index -= 1;
-                                    buffer[buffer_i] = reverse_buffer[reverse_index];
+                                    buffer[buffer_i] = '0';
                                     buffer_i += 1;
                                 }
                             } break;
@@ -1053,6 +1167,7 @@ struct Arena
 
         void* result = (u8*)this + aligned_offset;
         commit_position = aligned_size_after;
+        assert(commit_position <= committed);
         return result;
     }
 
@@ -1075,6 +1190,12 @@ struct Arena
             .pointer = allocate_many<T>(count),
             .length = count,
         };
+    }
+
+    method void reset()
+    {
+        this->commit_position = sizeof(Arena);
+        memset(this + 1, 0, this->committed - sizeof(Arena));
     }
 };
 static_assert(sizeof(Arena) == 64, "Arena must be cache aligned");
@@ -1129,6 +1250,8 @@ template<typename T> struct PinnedArray;
 fn void generic_pinned_array_ensure_capacity(PinnedArray<u8>* array, u32 additional_T, u32 size_of_T);
 fn u8* generic_pinned_array_add_with_capacity(PinnedArray<u8>* array, u32 additional_T, u32 size_of_T);
 
+global constexpr auto granularity = page_size;
+global constexpr auto reserved_size = ((u64)GB(4) - granularity);
 
 template <typename T>
 struct PinnedArray
@@ -1136,9 +1259,6 @@ struct PinnedArray
     T* pointer;
     u32 length;
     u32 capacity;
-
-    global constexpr auto granularity = page_size;
-    global constexpr auto reserved_size = ((u64)GB(4) - granularity);
 
     // static_assert(sizeof(T) % granularity == 0);
 
@@ -1243,11 +1363,11 @@ fn void generic_pinned_array_ensure_capacity(PinnedArray<u8>* array, u32 additio
         {
             assert(array->length == 0);
             assert(array->pointer == 0);
-            array->pointer = static_cast<u8*>(reserve(PinnedArray<u8>::reserved_size));
+            array->pointer = static_cast<u8*>(reserve(reserved_size));
         }
 
-        u64 currently_committed_size = align_forward(array->capacity * size_of_T, array->granularity);
-        u64 wanted_committed_size = align_forward(wanted_capacity * size_of_T, array->granularity);
+        u64 currently_committed_size = align_forward(array->capacity * size_of_T, granularity);
+        u64 wanted_committed_size = align_forward(wanted_capacity * size_of_T, granularity);
         void* commit_pointer = array->pointer + currently_committed_size;
         u64 commit_size = wanted_committed_size - currently_committed_size;
         assert(commit_size > 0);
@@ -1259,196 +1379,31 @@ fn void generic_pinned_array_ensure_capacity(PinnedArray<u8>* array, u32 additio
 fn u8* generic_pinned_array_add_with_capacity(PinnedArray<u8>* array, u32 additional_T, u32 size_of_T)
 {
     u32 current_length_bytes = generic_pinned_array_length(array, size_of_T);
-    assert(current_length_bytes < PinnedArray<u8>::reserved_size);
+    assert(current_length_bytes < reserved_size);
     u8* pointer = array->pointer + current_length_bytes;
     array->length += additional_T;
     return pointer;
 }
 
-template <typename K, typename V> struct PinnedHashmap;
+template <typename K, typename V>
+struct Put
+{
+    K* key;
+    V* value;
+};
 
 template <typename K, typename V>
 struct GetOrPut
 {
-    K* key;
-    V* value;
+    Put<K, V> result;
     u8 existing;
 };
-// fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
 template <typename K, typename V>
 struct PutResult
 {
     K* key;
     V* value;
 };
-
-// fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size);
-
-template<typename K, typename V>
-struct PinnedHashmap
-{
-    K* keys;
-    V* values;
-    u32 length;
-    u16 key_page_capacity;
-    u16 value_page_capacity;
-
-    global constexpr auto invalid_index = ~0u;
-    global constexpr auto granularity = PinnedArray<V>::granularity;
-    global constexpr auto reserved_size = PinnedArray<V>::reserved_size;
-
-    static_assert(granularity % sizeof(K) == 0, "");
-    static_assert(granularity % sizeof(V) == 0, "");
-
-    method forceinline Slice<K> key_slice()
-    {
-        return {
-            .pointer = keys,
-            .length = length,
-        };
-    }
-
-    method forceinline Slice<V> value_slice()
-    {
-        return {
-            .pointer = values,
-            .length = length,
-        };
-    }
-
-    method V* get(K key)
-    {
-        V* result = 0;
-
-        for (u32 i = 0; i < length; i += 1)
-        {
-            K k = keys[i];
-            if (k == key)
-            {
-                result = &values[i];
-                break;
-            }
-        }
-
-        return result;
-    }
-
-    method forceinline PinnedHashmap<u8, u8>* generic()
-    {
-        auto* generic_hashmap = (PinnedHashmap<u8, u8>*)(this);
-        return generic_hashmap;
-    }
-
-    method forceinline void ensure_capacity(u32 additional)
-    {
-        generic_pinned_hashmap_ensure_capacity(generic(), sizeof(K), sizeof(K), additional);
-    }
-
-    method forceinline GetOrPut<K, V> get_or_put(K key, V value)
-    {
-        auto generic_get_or_put = generic_pinned_hashmap_get_or_put(generic(), (u8*)&key, sizeof(K), (u8*)&value, sizeof(V));
-        return *(GetOrPut<K, V>*)&generic_get_or_put;
-    }
-
-    method forceinline V* put_assume_not_existing(K key, V value)
-    {
-        auto result = generic_pinned_hashmap_put_assume_not_existing(generic(), (u8*)&key, sizeof(K), (u8*)&value, sizeof(V));
-        return (V*)(result.value);
-    }
-};
-
-// Returns the generic value pointer if the key is present
-// fn u32 generic_pinned_hashmap_get_index(PinnedHashmap<u8, u8>* hashmap, u8* key_pointer, u32 key_size)
-// {
-//     u32 index = hashmap->invalid_index;
-//
-//     for (u32 i = 0; i < hashmap->length; i += 1)
-//     {
-//         u8* it_key_pointer = &hashmap->keys[i * key_size];
-//         if (memeq(it_key_pointer, key_pointer, key_size))
-//         {
-//             index = (it_key_pointer - hashmap->keys) / key_size;
-//             break;
-//         }
-//     }
-//
-//     return index;
-// }
-
-// fn void generic_pinned_hashmap_ensure_capacity(PinnedHashmap<u8, u8>* hashmap, u32 key_size, u32 value_size, u32 additional_elements)
-// {
-//     if (additional_elements != 0)
-//     {
-//         if (hashmap->key_page_capacity == 0)
-//         {
-//             assert(hashmap->value_page_capacity == 0);
-//             hashmap->keys = (u8*)reserve(hashmap->reserved_size);
-//             hashmap->values = (u8*)reserve(hashmap->reserved_size);
-//         }
-//
-//         u32 target_element_capacity = hashmap->length + additional_elements;
-//
-//         {
-//             u32 key_byte_capacity = hashmap->key_page_capacity * hashmap->granularity;
-//             u32 target_byte_capacity = target_element_capacity * key_size;
-//             if (key_byte_capacity < target_byte_capacity)
-//             {
-//                 u32 aligned_target_byte_capacity = align_forward(target_byte_capacity,  hashmap->granularity);
-//                 void* commit_pointer = hashmap->keys + key_byte_capacity;
-//                 u32 commit_size = aligned_target_byte_capacity - key_byte_capacity;
-//                 commit(commit_pointer, commit_size);
-//                 hashmap->key_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
-//             }
-//         }
-//
-//         {
-//             u32 value_byte_capacity = hashmap->value_page_capacity * hashmap->granularity;
-//             u32 target_byte_capacity = target_element_capacity * value_size;
-//             if (value_byte_capacity < target_byte_capacity)
-//             {
-//                 u32 aligned_target_byte_capacity = align_forward(target_byte_capacity, hashmap->granularity);
-//                 void* commit_pointer = hashmap->values + value_byte_capacity;
-//                 u32 commit_size = aligned_target_byte_capacity - value_byte_capacity;
-//                 commit(commit_pointer, commit_size);
-//                 hashmap->value_page_capacity = aligned_target_byte_capacity / hashmap->granularity;
-//             }
-//         }
-//     }
-// }
-
-// fn PutResult<u8, u8> generic_pinned_hashmap_put_assume_not_existing(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
-// {
-//     generic_pinned_hashmap_ensure_capacity(hashmap, key_size, value_size, 1);
-//     u32 new_index = hashmap->length;
-//     hashmap->length += 1;
-//     u8* key_pointer = &hashmap->keys[new_index * key_size];
-//     u8* value_pointer = &hashmap->values[new_index * value_size];
-//     memcpy(key_pointer, new_key_pointer, key_size);
-//     memcpy(value_pointer, new_value_pointer, value_size);
-//
-//     return {
-//         .key = key_pointer,
-//         .value = value_pointer,
-//     };
-// }
-
-// fn GetOrPut<u8, u8> generic_pinned_hashmap_get_or_put(PinnedHashmap<u8, u8>* hashmap, u8* new_key_pointer, u32 key_size, u8* new_value_pointer, u32 value_size)
-// {
-//     u32 index = generic_pinned_hashmap_get_index(hashmap, new_key_pointer, key_size);
-//     if (index != hashmap->invalid_index)
-//     {
-//         trap();
-//     }
-//     else
-//     {
-//         auto put_result = generic_pinned_hashmap_put_assume_not_existing(hashmap, new_key_pointer, key_size, new_value_pointer, value_size);
-//         return {
-//             .key = put_result.key,
-//             .value = put_result.value,
-//             .existing = 0,
-//         };
-//     }
-// }
 
 global constexpr auto map_initial_capacity = 16;
 
@@ -1507,9 +1462,9 @@ struct StringMap
         return result;
     }
 
-    method u32 find_index(String key)
+    method Hash find_index(String key)
     {
-        u32 hash = hash_bytes(key);
+        auto hash = hash_bytes(key);
         auto index = hash & (capacity - 1);
         return index;
     }
@@ -1558,17 +1513,24 @@ struct StringMap
             {
                 auto wraparound_index = (index + i) & (capacity - 1);
                 candidate_pair = &pairs[wraparound_index];
+
                 if (candidate_pair->key.length == 0)
                 {
+                    *candidate_pair = {
+                        .key = key,
+                        .value = value,
+                    };
                     return {
                         .pair = candidate_pair,
                         .existing = 0,
                     };
                 }
-
-                if (candidate_pair->key.equal(key))
+                else if (candidate_pair->key.equal(key))
                 {
-                    trap();
+                    return {
+                        .pair = candidate_pair,
+                        .existing = 1,
+                    };
                 }
             }
 
@@ -1596,6 +1558,288 @@ struct StringMap
     {
         return pairs + capacity;
     }
+
+    method void clear()
+    {
+        *this = {};
+    }
+};
+
+template <typename T>
+struct InternPool
+{
+    T** pointer;
+    u32 length;
+    u32 capacity;
+
+    struct InternGetOrPut
+    {
+        T* result;
+        u8 existing;
+    };
+
+    Hash get_index(Hash hash)
+    {
+        assert(capacity % 2 == 0);
+        auto index = hash & (capacity - 1);
+        assert(index <= 0xffffffff);
+        static_assert(sizeof(index) == 8);
+        return index;
+    }
+
+    method void ensure_capacity(Arena* arena, u32 additional)
+    {
+        u64 wanted_capacity = max<u64>(round_up_to_next_power_of_2(length + additional), 32);
+
+        if (capacity < wanted_capacity)
+        {
+            T** new_array = arena->allocate_many<T*>(wanted_capacity);
+            memset(new_array, 0, sizeof(T*) * wanted_capacity);
+
+            auto* old_pointer = pointer;
+            auto old_capacity = capacity;
+
+            length = 0;
+            pointer = new_array;
+            capacity = wanted_capacity;
+
+            // print("==========\nPUTTING\n==================\n");
+            for (u32 i = 0; i < old_capacity; i += 1)
+            {
+                auto* key = old_pointer[i];
+                if (key)
+                {
+                    put_assume_capacity_assume_not_existent(key);
+                }
+            }
+            // print("==========\nEND PUTTING\n==================\n");
+
+            for (u32 i = 0; i < old_capacity; i += 1)
+            {
+                auto* key = old_pointer[i];
+                if (key)
+                {
+                    // print("Getting {u64:x} (hash: {u64:x})\n", key, key->hash);
+                    auto* result = get(key);
+                    assert(result);
+                    assert(result == key);
+                }
+            }
+        }
+    }
+
+    method T* get(T* key)
+    {
+        auto hash = key->hash;
+        assert(hash);
+        assert(hash == key->get_hash());
+
+        auto original_index = get_index(hash);
+        auto it_index = original_index;
+
+        for (u32 i = 0; i < capacity; i += 1)
+        {
+            auto index = it_index & (capacity - 1);
+            auto* element = &pointer[index];
+            auto* map_key = *element;
+
+            if (!map_key)
+            {
+                // TODO:
+                // Linear probing makes holes into the hash table, so we gotta skip null spots,
+                // otherwise the removal operation will fail
+                // fail();
+            }
+            else if (map_key->equal(key))
+            {
+                return map_key;
+            }
+            else
+            {
+                // TODO:
+                // assert(map_key->hash);
+                // assert(hash != map_key->hash);
+            }
+
+            it_index += 1;
+        }
+
+        return 0;
+    }
+
+    method Hash put_assume_not_existent(Arena* arena, T* key)
+    {
+        ensure_capacity(arena, 1);
+        return put_assume_capacity_assume_not_existent(key);
+    }
+
+    method Hash get_suitable_index(T* key, Hash original_index)
+    {
+        auto it_index = original_index;
+
+        for (u32 i = 0; i < capacity; i += 1)
+        {
+            auto index = it_index & (capacity - 1);
+            auto* element = &pointer[index];
+            auto* map_key = *element;
+
+            if (!map_key)
+            {
+                return index;
+            }
+            else if (map_key->equal(key))
+            {
+                trap();
+            }
+            else
+            {
+                // TODO:
+                // assert(map_key->hash);
+                // assert(hash != map_key->hash);
+            }
+
+            it_index += 1;
+        }
+
+        trap();
+    }
+
+    method Hash put_assume_capacity_assume_not_existent(T* key)
+    {
+        assert(key->hash);
+        auto original_index = get_index(key->hash);
+        auto suitable_index = get_suitable_index(key, original_index);
+        // print("Putting {u64:x} (hash: {u64:x}) at index {u64}\n", key, key->hash, suitable_index);
+        put_at_assume_capacity_not_existent(key, suitable_index);
+        return suitable_index;
+    }
+
+    method void put_at_assume_capacity_not_existent(T* key, u32 index)
+    {
+        assert(length < capacity);
+        pointer[index] = key;
+        length += 1;
+    }
+
+    method T* remove(T* value_to_remove)
+    {
+        auto hash = value_to_remove->hash;
+        assert(hash);
+        assert(hash == value_to_remove->get_hash());
+
+        auto original_index = get_index(hash);
+        auto it_index = original_index;
+
+        // print("Trying to remove {u64:x} (hash: {u64:x}, original index: {u64:x}, capacity: {u32}\n", value_to_remove, hash, original_index, capacity);
+
+        for (u32 i = 0; i < capacity; i += 1)
+        {
+            auto index = it_index & (capacity - 1);
+            auto* element = &pointer[index];
+            auto* map_key = *element;
+
+            if (!map_key)
+            {
+                // TODO:
+                // Linear probing makes holes into the hash table, so we gotta skip null spots,
+                // otherwise the removal operation will fail
+                // fail();
+            }
+            else if (value_to_remove->equal(map_key))
+            {
+                *element = {};
+                length -= 1;
+                return map_key;
+            }
+            else
+            {
+                // TODO:
+                // assert(map_key->hash);
+                // assert(hash != map_key->hash);
+            }
+
+            it_index += 1;
+        }
+
+        trap();
+    }
+
+    method InternGetOrPut get_or_put(Arena* arena, T* new_value)
+    {
+        auto hash = new_value->get_hash();
+        auto original_index = get_index(hash);
+        auto it_index = original_index;
+
+        s32 first_free_spot = -1;
+
+        for (u32 i = 0; i < capacity; i += 1)
+        {
+            auto index = it_index & (capacity - 1);
+            assert(index <= 0xffffffff);
+            static_assert(sizeof(index) == 8);
+
+            auto* element = &pointer[index];
+            auto* map_key = *element;
+            // if (hash == 0x800040e1)
+            // {
+                // print("Comparing {u64:x} with {u64:x} ({u64:x})\n", new_value, map_key, map_key ? map_key->hash : (u64)0);
+            // }
+
+            // TODO: This is a mess, undo
+            if (!map_key)
+            {
+                if (first_free_spot == -1)
+                {
+                    first_free_spot = index;
+                }
+            }
+            else if (new_value->equal(map_key))
+            {
+                assert(hash == map_key->hash);
+                // print("Getting {u64:x} with hash {u64:x} at index {u64:x} (from {u64:x} with hash {u64:x})\n", map_key, map_key->hash, index, new_value, hash);
+                return {
+                    .result = map_key,
+                    .existing = 1,
+                };
+            }
+            else
+            {
+                // TODO:
+                // assert(map_key->hash);
+                // assert(hash != map_key->hash);
+            }
+
+            it_index += 1;
+        }
+
+        Hash index;
+        if (length < capacity)
+        {
+            index = first_free_spot;
+            index &= capacity - 1;
+            put_at_assume_capacity_not_existent(new_value, index);
+        }
+        else if (length == capacity)
+        {
+            index = put_assume_not_existent(arena, new_value);
+        }
+        else
+        {
+            trap();
+        }
+
+        // print("Adding {u64:x} with hash {u64:x} at index {u64}\n", new_value, hash, index);
+
+        return {
+            .result = new_value,
+            .existing = 0,
+        };
+    }
+
+    method void clear()
+    {
+        *this = {};
+    }
 };
 
 template <typename T>
@@ -1609,7 +1853,7 @@ typedef enum FileStatus
     FILE_STATUS_ANALYZING = 3,
 } FileStatus;
 
-enum class SemaTypeId: u8
+enum class DebugTypeId: u8
 {
     VOID,
     NORETURN,
@@ -1621,28 +1865,25 @@ enum class SemaTypeId: u8
     COUNT,
 };
 global auto constexpr type_id_bit_count = 3;
-static_assert(static_cast<u8>(SemaTypeId::COUNT) < (1 << type_id_bit_count), "Type bit count for id must be respected");
+static_assert(static_cast<u8>(DebugTypeId::COUNT) < (1 << type_id_bit_count), "Type bit count for id must be respected");
 
 global auto constexpr type_flags_bit_count = 32 - (type_id_bit_count + 1);
+
+struct Thread;
 struct NodeType
 {
     enum class Id: u8
     {
-        INVALID,
-        BOTTOM,
+        BOTTOM = 1,
         TOP,
         LIVE_CONTROL,
         DEAD_CONTROL,
         INTEGER,
         MULTIVALUE,
-        MEMORY,
-        POINTER,
         // TODO: this is mine. Check if it is correct:
         FUNCTION,
         CALL,
     };
-
-    Id id;
 
     union
     {
@@ -1653,16 +1894,17 @@ struct NodeType
         } constant;
         struct
         {
-            Slice<NodeType> types;
+            Slice<NodeType*> types;
         } multi;
     } payload = {};
+    Hash hash = 0;
+    Id id;
+
 
     method u8 is_simple()
     {
         switch (id)
         {
-            case Id::INVALID:
-                trap();
             case Id::BOTTOM:
             case Id::TOP:
             case Id::LIVE_CONTROL:
@@ -1673,23 +1915,47 @@ struct NodeType
         }
     }
 
-    method u8 equal(NodeType other)
+    method u8 equal(NodeType* other)
     {
-        if (id != other.id)
+        if (this == other)
+        {
+            return 1;
+        }
+
+        if (id != other->id)
         {
             return 0;
         }
 
         switch (id)
         {
-            case NodeType::Id::INTEGER:
-                return (payload.constant.is_constant == other.payload.constant.is_constant) & (payload.constant.constant == other.payload.constant.constant);
-            case NodeType::Id::LIVE_CONTROL:
-            case NodeType::Id::DEAD_CONTROL:
-            case NodeType::Id::BOTTOM:
+        case Id::BOTTOM:
+        case Id::TOP:
+        case Id::LIVE_CONTROL:
+        case Id::DEAD_CONTROL:
+        case Id::FUNCTION:
+        case Id::CALL:
+            return 1;
+        case Id::INTEGER:
+            return (payload.constant.is_constant == other->payload.constant.is_constant) &
+                (payload.constant.constant == other->payload.constant.constant);
+        case Id::MULTIVALUE:
+            if (payload.multi.types.length == other->payload.multi.types.length)
+            {
+                for (u32 i = 0; i < payload.multi.types.length; i += 1)
+                {
+                    if (payload.multi.types[i] != other->payload.multi.types[i])
+                    {
+                        return 0;
+                    }
+                }
+
                 return 1;
-            default:
-                trap();
+            }
+            else
+            {
+                return 0;
+            }
         }
     }
 
@@ -1697,125 +1963,39 @@ struct NodeType
     {
         switch (id)
         {
-            case Id::DEAD_CONTROL:
-            case Id::TOP:
-                return 1;
             case Id::INTEGER:
                 return payload.constant.is_constant;
-            case Id::LIVE_CONTROL:
-            case Id::MULTIVALUE:
-            case Id::BOTTOM:
-                return 0;
-            case Id::FUNCTION:
-            case Id::CALL:
-                return 0;
             default:
-                trap();
+                return 0;
         }
     }
 
-    method NodeType meet(NodeType other)
+    method NodeType* meet(Thread* thread, NodeType* other)
     {
-        if (equal(other))
+        if (this == other)
         {
-            return *this;
+            return this;
         }
 
-        if (id == other.id)
+        if (id == other->id)
         {
-            return x_meet(other);
+            return x_meet(thread, other);
         }
         
         if (is_simple())
         {
-            return x_meet(other);
+            return x_meet(thread, other);
         }
 
-        if (other.is_simple())
+        if (other->is_simple())
         {
-            return other.x_meet(*this);
+            return other->x_meet(thread, this);
         }
 
-        return { .id = NodeType::Id::BOTTOM };
+        return x_meet(thread, other);
     }
 
-    method NodeType x_meet(NodeType other)
-    {
-        switch (id)
-        {
-            case Id::BOTTOM:
-            case Id::TOP:
-            case Id::LIVE_CONTROL:
-            case Id::DEAD_CONTROL:
-                {
-                    assert(is_simple());
-                    if ((id == Id::BOTTOM) | (other.id == Id::TOP))
-                    {
-                        return *this;
-                    }
-
-                    if ((id == Id::TOP) | (other.id == Id::BOTTOM))
-                    {
-                        return other;
-                    }
-
-                    if (!other.is_simple())
-                    {
-                        return NodeType{ .id = NodeType::Id::BOTTOM };
-                    }
-
-                    auto new_id = ((id == Id::LIVE_CONTROL) | (other.id == Id::LIVE_CONTROL)) ? Id::LIVE_CONTROL : Id::DEAD_CONTROL;
-                    return { .id = new_id };
-                }
-            case Id::INTEGER:
-                {
-                    if (equal(other))
-                    {
-                        return *this;
-                    }
-
-                    if (other.id != Id::INTEGER)
-                    {
-                        return meet(other);
-                    }
-
-                    if (is_bot())
-                    {
-                        return *this;
-                    }
-
-                    if (other.is_bot())
-                    {
-                        return other;
-                    }
-
-                    if (other.is_top())
-                    {
-                        return *this;
-                    }
-
-                    if (is_top())
-                    {
-                        return other;
-                    }
-
-                    assert(is_constant() & other.is_constant());
-
-                    if (payload.constant.constant == other.payload.constant.constant)
-                    {
-                        return *this;
-                    }
-                    else
-                    {
-                        return { .id = Id::BOTTOM };
-                    }
-                }
-            case Id::MULTIVALUE:
-                fail();
-            default:
-                trap();
-        }
-    }
+    method NodeType* x_meet(Thread* thread, NodeType* other);
 
     method u8 is_bot()
     {
@@ -1828,99 +2008,99 @@ struct NodeType
         assert(id == Id::INTEGER);
         return !payload.constant.is_constant & (payload.constant.constant == 0);
     }
+
+    method u8 is_a(Thread* thread, NodeType* other)
+    {
+        return this->meet(thread, other) == other;
+    }
+
+    method NodeType* dual()
+    {
+        switch (id)
+        {
+            case Id::TOP:
+            case Id::BOTTOM:
+            case Id::DEAD_CONTROL:
+            case Id::LIVE_CONTROL:
+                trap();
+                // return { .id = id };
+            default:
+                trap();
+        }
+    }
+
+    method NodeType* join(Thread* thread, NodeType* other)
+    {
+        if (this == other)
+        {
+            return this;
+        }
+
+        return dual()->meet(thread, other->dual())->dual();
+    }
+    method NodeType* intern_type(Thread* thread);
+    method u8 is_high_or_const()
+    {
+        switch (id)
+        {
+        case Id::TOP:
+        case Id::DEAD_CONTROL:
+            return 1;
+        case Id::LIVE_CONTROL:
+        case Id::BOTTOM:
+        case Id::MULTIVALUE:
+            return 0;
+        case Id::FUNCTION:
+        case Id::CALL:
+            return 0;
+        case Id::INTEGER:
+            return payload.constant.is_constant | (payload.constant.constant == 0);
+        }
+    }
+
+    method Hash get_hash()
+    {
+        if (!hash)
+        {
+            switch (id)
+            {
+                case NodeType::Id::MULTIVALUE:
+                    {
+                        Hash sum = 0;
+                        // print("{u64:x} Field count: {u64}\n", this, payload.multi.types.length);
+                        for (auto* type : payload.multi.types)
+                        {
+                            auto field_hash = type->get_hash();
+                            // print("Field of {u64:x} hash {u64:x}: {u32:x}\n", this, type, field_hash);
+                            sum ^= field_hash;
+                        }
+
+                        hash = sum;
+                    }
+                    break;
+                case NodeType::Id::INTEGER:
+                    hash = payload.constant.constant ^ (payload.constant.is_constant ? 0 : 0x4000);
+                    break;
+                default:
+                    hash = (Hash)id;
+                    break;
+            }
+
+            if (!hash)
+            {
+                hash = 0xDEADBEEF;
+            }
+        }
+
+        return hash;
+    }
 };
 
-may_be_unused global auto constexpr integer_top = NodeType{
-    .id = NodeType::Id::INTEGER,
-    .payload = {
-        .constant = {
-            .constant = 0,
-            .is_constant = 0,
-        },
-    },
-};
-
-may_be_unused global auto constexpr integer_bot = NodeType{
-    .id = NodeType::Id::INTEGER,
-    .payload = {
-        .constant = {
-            .constant = 1,
-            .is_constant = 0,
-        },
-    },
-};
-
-may_be_unused global auto constexpr integer_zero = NodeType{
-    .id = NodeType::Id::INTEGER,
-    .payload = {
-        .constant = {
-            .constant = 0,
-            .is_constant = 1,
-        },
-    },
-};
-
-global NodeType if_both_types[2] = {
-    { .id = NodeType::Id::LIVE_CONTROL },
-    { .id = NodeType::Id::LIVE_CONTROL },
-};
-
-global NodeType if_neither_types[2] = {
-    { .id = NodeType::Id::DEAD_CONTROL },
-    { .id = NodeType::Id::DEAD_CONTROL },
-};
-
-global NodeType if_true_types[2] = {
-    { .id = NodeType::Id::LIVE_CONTROL },
-    { .id = NodeType::Id::DEAD_CONTROL },
-};
-
-global NodeType if_false_types[2] = {
-    { .id = NodeType::Id::DEAD_CONTROL },
-    { .id = NodeType::Id::LIVE_CONTROL },
-};
-
-global auto constexpr type_if_both = NodeType{
-    .id = NodeType::Id::MULTIVALUE,
-    .payload = {
-        .multi = {
-            .types = array_to_slice(if_both_types),
-        },
-    },
-};
-
-global auto constexpr type_if_neither = NodeType{
-    .id = NodeType::Id::MULTIVALUE,
-    .payload = {
-        .multi = {
-            .types = array_to_slice(if_neither_types),
-        },
-    },
-};
-
-global auto constexpr type_if_true = NodeType{
-    .id = NodeType::Id::MULTIVALUE,
-    .payload = {
-        .multi = {
-            .types = array_to_slice(if_true_types),
-        },
-    },
-};
-
-global auto constexpr type_if_false = NodeType{
-    .id = NodeType::Id::MULTIVALUE,
-    .payload = {
-        .multi = {
-            .types = array_to_slice(if_false_types),
-        },
-    },
-};
-
-struct SemaType
+struct DebugType
 {
     u64 size;
     u64 alignment;
-    SemaTypeId id : type_id_bit_count;
+    DebugTypeId id : type_id_bit_count;
     u32 resolved: 1;
     u32 flags: type_flags_bit_count;
     u32 reserved = 0;
@@ -1928,7 +2108,7 @@ struct SemaType
 
     method u8 get_bit_count()
     {
-        assert(id == SemaTypeId::INTEGER);
+        assert(id == DebugTypeId::INTEGER);
         u32 bit_count_mask = (1 << (type_flags_bit_count - 1)) - 1;
         u8 bit_count = flags & bit_count_mask;
         assert(bit_count <= size * 8);
@@ -1936,30 +2116,9 @@ struct SemaType
         return bit_count;
     }
 
-    method NodeType lower()
-    {
-        switch (id)
-        {
-        case SemaTypeId::VOID:
-            trap();
-        case SemaTypeId::NORETURN:
-            trap();
-        case SemaTypeId::POINTER:
-            trap();
-        case SemaTypeId::INTEGER:
-            return integer_bot;
-        case SemaTypeId::ARRAY:
-            trap();
-        case SemaTypeId::STRUCT:
-            trap();
-        case SemaTypeId::UNION:
-            trap();
-        case SemaTypeId::COUNT:
-            trap();
-        }
-    }
+    method NodeType* lower(Thread* thread);
 };
-static_assert(sizeof(SemaType) == sizeof(u64) * 5, "Type must be 24 bytes");
+static_assert(sizeof(DebugType) == sizeof(u64) * 5, "Type must be 24 bytes");
 
 struct Symbol
 {
@@ -1993,13 +2152,6 @@ typedef enum AbiInfoKind : u8
     ABI_INFO_EXPAND,
 } AbiInfoKind;
 
-enum class Side : u8
-{
-    left,
-    right,
-};
-
-
 global auto constexpr void_type_index = 0;
 global auto constexpr noreturn_type_index = 1;
 global auto constexpr opaque_pointer_type_index = 2;
@@ -2010,12 +2162,240 @@ global auto constexpr integer_type_count = 64 * 2;
 global auto constexpr builtin_type_count = integer_type_count + integer_type_offset + 1;
 
 struct Function;
+struct Node;
+
+struct Bitset
+{
+    PinnedArray<u64> arr;
+
+    method u8 get(u64 index)
+    {
+        auto element_index = index / (sizeof(u64) * 8);
+        if (element_index < arr.length)
+        {
+            auto bit_index = index % (sizeof(u64) * 8);
+            auto result = (arr[element_index] & (1 << bit_index)) != 0;
+            return result;
+        }
+
+        return 0;
+    }
+
+    method void ensure_length(u64 max)
+    {
+        auto length = (max / (sizeof(u64) * 8)) + (max % (sizeof(u64) * 8) != 0);
+        auto old_length = arr.length;
+        if (old_length < length)
+        {
+            auto new_element_count = length - old_length;
+            unused(arr.add(new_element_count));
+            for (u64 byte : arr.slice().slice(old_length, length))
+            {
+                assert(!byte);
+            }
+        }
+    }
+
+    method void set_assert_unset(u64 index)
+    {
+        ensure_length(index + 1);
+        auto element_index = index / (sizeof(u64) * 8);
+        auto bit_index = index % (sizeof(u64) * 8);
+        assert((arr[element_index] & (1 << bit_index)) == 0);
+        arr[element_index] |= (1 << bit_index);
+    }
+
+    method u8 is_empty()
+    {
+        return arr.length == 0;
+    }
+
+    method void clear(u64 index)
+    {
+        auto bit_index = index % (sizeof(u64) * 8);
+        auto element_index = index / (sizeof(u64) * 8);
+        auto mask = ~(1 << bit_index);
+        static_assert(sizeof(bit_index) == sizeof(arr.pointer[0]));
+        arr[element_index] &= mask;
+    }
+
+    method void clear()
+    {
+        memset(arr.pointer, 0, arr.capacity * sizeof(u64));
+        arr.clear();
+    }
+};
+
+struct WorkList
+{
+    PinnedArray<Node*> nodes = {};
+    Bitset bitset = {};
+
+    method void add_many(Slice<Node*> nodes)
+    {
+        for (auto* node : nodes)
+        {
+            push(node);
+        }
+    }
+
+    method Node* push(Node* node);
+
+    method Node* pop()
+    {
+        Node* result = 0;
+
+        if (nodes.length)
+        {
+            u64 rng = generate_random_number();
+            u32 index = rng & (nodes.capacity - 1);
+            result = nodes[index];
+            nodes[index] = nodes[nodes.length - 1];
+            nodes.length -= 1;
+            bitset.clear(index);
+        }
+
+        return result;
+    }
+
+    method u8 on(Node* node);
+
+    method void clear()
+    {
+        nodes.clear();
+        bitset.clear();
+    }
+};
+
 struct Thread
 {
     Arena* arena;
     PinnedArray<Function> functions = {};
+    PinnedArray<NodeType> types = {};
+    PinnedArray<Node> nodes = {};
+    InternPool<NodeType> interned_types = {};
+    InternPool<Node> interned_nodes = {};
+    WorkList worklist = {};
+    Bitset visited = {};
+
+    struct
+    {
+        NodeType* bottom;
+        NodeType* top;
+        NodeType* live_control;
+        NodeType* dead_control;
+        NodeType* integer_bot;
+        NodeType* integer_top;
+        NodeType* integer_zero;
+        NodeType* if_both;
+        NodeType* if_neither;
+        NodeType* if_true;
+        NodeType* if_false;
+    } common_types;
+    u64 peephole_iteration_count = 0;
+    u64 peephole_nop_iteration_count = 0;
     u32 node_count = 0;
+    u8 mid_assert = 0;
+
+
+    method void init();
+    method void clear();
+
+    method u8 progress_on_list(Function* function, Node* node);
 };
+
+method NodeType* NodeType::x_meet(Thread* thread, NodeType* other)
+{
+    switch (id)
+    {
+        case Id::BOTTOM:
+        case Id::TOP:
+        case Id::LIVE_CONTROL:
+        case Id::DEAD_CONTROL:
+            {
+                assert(is_simple());
+                if (this == thread->common_types.bottom || other == thread->common_types.top)
+                {
+                    return this;
+                }
+
+                if ((this == thread->common_types.top) | (other == thread->common_types.bottom))
+                {
+                    return other;
+                }
+
+                if (!other->is_simple())
+                {
+                    return thread->common_types.bottom;
+                }
+
+                if (this == thread->common_types.live_control || other == thread->common_types.live_control)
+                {
+                    return thread->common_types.live_control;
+                }
+                else
+                {
+                    return thread->common_types.dead_control;
+                }
+            }
+        case Id::INTEGER:
+            if (this == thread->common_types.integer_bot)
+            {
+                return this;
+            }
+
+            if (other == thread->common_types.integer_bot)
+            {
+                return other;
+            }
+
+            if (other == thread->common_types.integer_top)
+            {
+                return this;
+            }
+
+            if (this == thread->common_types.integer_top)
+            {
+                return other;
+            }
+
+            return thread->common_types.integer_bot;
+        case Id::MULTIVALUE:
+            fail();
+        default:
+            trap();
+    }
+}
+
+method NodeType* DebugType::lower(Thread* thread)
+{
+    switch (id)
+    {
+        case DebugTypeId::VOID:
+            trap();
+        case DebugTypeId::NORETURN:
+            trap();
+        case DebugTypeId::POINTER:
+            trap();
+        case DebugTypeId::INTEGER:
+            return thread->common_types.integer_bot;
+        case DebugTypeId::ARRAY:
+            trap();
+        case DebugTypeId::STRUCT:
+            trap();
+        case DebugTypeId::UNION:
+            trap();
+        case DebugTypeId::COUNT:
+            trap();
+    }
+}
+
+
+method NodeType* NodeType::intern_type(Thread* thread)
+{
+    auto result = thread->interned_types.get_or_put(thread->arena, this);
+    return result.result;
+}
 
 struct Unit
 {
@@ -2024,27 +2404,24 @@ struct Unit
     // Arena* arena;
     // Arena* node_arena;
     // Arena* type_arena;
-    // PinnedHashmap<Hash, String> identifiers;
-    SemaType* builtin_types;
+    DebugType* builtin_types;
     u64 generate_debug_information : 1;
 
-    method SemaType* get_integer_type(u8 bit_count, u8 signedness)
+    method DebugType* get_integer_type(u8 bit_count, u8 signedness)
     {
         auto index = integer_type_offset + signedness * 64 + bit_count - 1;
         return &builtin_types[index];
     }
 };
 
-
-
 union AbiInfoPayload
 {
-    NodeType direct;
-    NodeType direct_pair[2];
-    NodeType direct_coerce;
+    NodeType* direct;
+    NodeType* direct_pair[2];
+    NodeType* direct_coerce;
     struct
     {
-        NodeType type;
+        NodeType* type;
         u32 alignment;
     } indirect;
 };
@@ -2068,17 +2445,16 @@ struct AbiInfo
     AbiInfoKind kind;
 };
 
-struct Node;
 struct Function
 {
     struct Prototype
     {
         AbiInfo* argument_type_abis; // The count for this array is "original_argument_count", not "abi_argument_count"
-        SemaType** original_argument_types;
+        DebugType** original_argument_types;
         // TODO: are these needed?
         // Node::DataType* abi_argument_types;
         // u32 abi_argument_count;
-        SemaType* original_return_type;
+        DebugType* original_return_type;
         AbiInfo return_type_abi;
         u32 original_argument_count;
         // TODO: is this needed?
@@ -2092,17 +2468,17 @@ struct Function
     Node** parameters;
     Function::Prototype prototype;
     // u32 node_count;
+    u32 uid;
     u16 parameter_count;
+
+    method Node* iterate(Thread* thread);
 };
 
 struct ConstantIntData
 {
     u64 value;
     Node* input;
-    u8 bit_count;
 };
-
-[[nodiscard]] fn Node* add_constant_integer(Thread* thread, ConstantIntData data);
 
 struct File;
 // This is a node in the "sea of nodes" sense:
@@ -2116,8 +2492,7 @@ struct Node
         PROJECTION,
         RETURN,
         IF,
-        CONSTANT_INT,
-        CONSTANT_CONTROL,
+        CONSTANT,
         SCOPE,
         SYMBOL_FUNCTION,
         CALL,
@@ -2138,10 +2513,12 @@ struct Node
 
     using Type = NodeType;
 
-    Type type;
-    Array<Node*> inputs;
-    Array<Node*> outputs;
-    u32 gvn;
+    Array<Node*> inputs = {};
+    Array<Node*> outputs = {};
+    Array<Node*> dependencies = {};
+    Type* type = 0;
+    u32 uid;
+    Hash hash = 0;
     Id id;
     s32 immediate_depth = 0;
 
@@ -2158,7 +2535,8 @@ struct Node
         } scope;
         struct
         {
-            Type args;
+            Type* args;
+            Function* function;
         } root;
         Symbol* symbol;
         struct
@@ -2169,9 +2547,13 @@ struct Node
         {
             Node* immediate_dominator = 0;
         } region;
+        struct
+        {
+            Type* type;
+        } constant;
     } payload;
 
-    u8 padding[32] = {};
+    u8 padding[20 ] = {};
 
     method forceinline Slice<Node*> get_inputs()
     {
@@ -2191,22 +2573,18 @@ struct Node
 
     struct NodeData
     {
-        Type type;
         Slice<Node*> inputs;
         Id id;
     };
 
     [[nodiscard]] fn Node* add(Thread* thread, NodeData data)
     {
-        auto gvn = thread->node_count;
+        auto node_id = thread->node_count;
         thread->node_count += 1;
 
-        auto* node = thread->arena->allocate_one<Node>();
+        auto* node = thread->nodes.add_one();
         *node = {
-            .type = data.type,
-            .inputs = {},
-            .outputs = {},
-            .gvn = gvn,
+            .uid = node_id,
             .id = data.id,
             .payload = {},
         };
@@ -2231,8 +2609,9 @@ struct Node
         return this;
     }
 
-    method Node* add_input(Node* input)
+    method Node* add_input(Thread* thread, Node* input)
     {
+        unlock(thread);
         inputs.append_one(input);
         if (input)
         {
@@ -2241,8 +2620,36 @@ struct Node
         return input;
     }
 
-    method Node* set_input(Arena* arena, s32 index, Node* new_input)
+    method Node* add_dependency(Thread* thread, Node* dependency)
     {
+        if (thread->mid_assert)
+        {
+            return this;
+        }
+
+        if (dependencies.slice().find(dependency))
+        {
+            return this;
+        }
+
+        if (inputs.slice().find(dependency))
+        {
+            return this;
+        }
+
+        if (outputs.slice().find(dependency))
+        {
+            return this;
+        }
+
+        dependencies.append_one(dependency);
+
+        return this;
+    }
+
+    method Node* set_input(Thread* thread, s32 index, Node* new_input)
+    {
+        unlock(thread);
         Node* old_input = inputs[index];
         if (old_input == new_input)
         {
@@ -2256,7 +2663,7 @@ struct Node
 
         if (old_input && old_input->remove_output(this))
         {
-            old_input->kill(arena);
+            old_input->kill(thread);
         }
 
         inputs[index] = new_input;
@@ -2272,13 +2679,14 @@ struct Node
         return outputs.length == 0;
     }
 
-    method void remove_input(Arena* arena, u32 index)
+    method void remove_input(Thread* thread, u32 index)
     {
+        unlock(thread);
         if (Node* old_input = inputs[index])
         {
             if (old_input->remove_output(this))
             {
-                old_input->kill(arena);
+                old_input->kill(thread);
             }
         }
 
@@ -2298,17 +2706,16 @@ struct Node
             {
                 return 0;
             }
-        case Id::CONSTANT_INT:
-        case Id::CONSTANT_CONTROL:
+        case Id::CONSTANT:
             return 0;
         case Id::STOP:
             {
                 auto input_count = inputs.length;
                 for (u32 i = 0; i < inputs.length; i += 1)
                 {
-                    if (inputs[i]->type.id == NodeType::Id::DEAD_CONTROL)
+                    if (inputs[i]->type == thread->common_types.dead_control)
                     {
-                        remove_input(thread->arena, i);
+                        remove_input(thread, i);
                         i -= 1;
                     }
                 }
@@ -2325,11 +2732,11 @@ struct Node
         case Id::PROJECTION:
             {
                 auto* control = get_control();
-                if (control->type.id == NodeType::Id::MULTIVALUE)
+                if (control->type->id == NodeType::Id::MULTIVALUE)
                 {
-                    auto control_types = control->type.payload.multi.types;
+                    auto control_types = control->type->payload.multi.types;
                     auto projection_index = payload.projection.index;
-                    if (control_types[projection_index].id == NodeType::Id::DEAD_CONTROL)
+                    if (control_types[projection_index] == thread->common_types.dead_control)
                     {
                         trap();
                     }
@@ -2339,7 +2746,7 @@ struct Node
                     // auto index = 1 - projection_index;
                     // assert(index >= 0);
                     // assert((u32)index < control_types.length);
-                    // if (control_types[index].id == NodeType::Id::DEAD_CONTROL)
+                    // if (control_types[index] == thread->common_types.dead_control)
                     // {
                     //     trap();
                     // }
@@ -2348,15 +2755,28 @@ struct Node
                 return 0;
             }
         case Id::ROOT:
+            return 0;
         case Id::IF:
+            if (!predicate()->type->is_high_or_const())
+            {
+                for (Node* dominator = get_immediate_dominator(), *prior = this; dominator; prior = dominator, dominator = dominator->get_immediate_dominator())
+                {
+                    auto* dep = dominator->add_dependency(thread, this);
+                    if (dep->id == Id::IF && dep->predicate()->add_dependency(thread, this) == predicate() && prior->id == Id::PROJECTION)
+                    {
+                        trap();
+                    }
+                }
+            }
+
             return 0;
         case Id::INTEGER_ADD:
             {
                 auto* left = inputs[1];
                 auto* right = inputs[2];
-                assert(!(left->type.is_constant() && right->type.is_constant()));
+                assert(!(left->type->is_constant() && right->type->is_constant()));
 
-                if (right->type.id == NodeType::Id::INTEGER && right->type.payload.constant.constant == 0)
+                if (right->type->id == NodeType::Id::INTEGER && right->type->payload.constant.constant == 0)
                 {
                     return left;
                 }
@@ -2375,18 +2795,18 @@ struct Node
                 // Find dead input
                 for (u32 i = 1; i < inputs.length; i += 1)
                 {
-                    if (inputs[i]->type.id == NodeType::Id::DEAD_CONTROL)
+                    if (inputs[i]->type == thread->common_types.dead_control)
                     {
                         for (u32 output_index = 0; output_index < outputs.length; output_index += 1)
                         {
                             Node* output = outputs[output_index];
                             if (output->id == Id::PHI)
                             {
-                                output->remove_input(thread->arena, i);
+                                output->remove_input(thread, i);
                             }
                         }
 
-                        remove_input(thread->arena, i);
+                        remove_input(thread, i);
 
                         if (inputs.length == 2)
                         {
@@ -2412,7 +2832,7 @@ struct Node
 
             return 0;
         case Id::SCOPE:
-            trap();
+            return 0;
         // TODO:
         case Id::SYMBOL_FUNCTION:
         case Id::CALL:
@@ -2434,20 +2854,24 @@ struct Node
         case Id::PHI:
             {
                 auto* region = phi_get_region();
-                auto is_r = region->is_region();
-                if (!is_r || region->region_in_progress())
+                if (!region->is_region())
+                {
+                    return inputs[1];
+                }
+
+                if (region->region_in_progress() || region->inputs.length <= 1)
                 {
                     return 0;
                 }
-                else
+
+                Node* single_unique_input = 0;
+                if (!(region->id == Id::REGION_LOOP && region->loop_entry()->type == thread->common_types.dead_control))
                 {
-                    // Single unique input search
                     Node* live = 0;
-                    Node* region = phi_get_region();
+
                     for (u32 i = 1; i < inputs.length; i += 1)
                     {
-
-                        if (region->inputs[i]->type.id != NodeType::Id::DEAD_CONTROL && inputs[i] != this)
+                        if (region->inputs[i]->add_dependency(thread, this)->type != thread->common_types.dead_control && inputs[i] != this)
                         {
                             if (!live || live == inputs[i])
                             {
@@ -2461,54 +2885,54 @@ struct Node
                         }
                     }
 
-                    if (live)
+                    single_unique_input = live;
+                }
+
+                if (single_unique_input)
+                {
+                    return single_unique_input;
+                }
+
+                Node* operand = inputs[1];
+
+                if (operand->inputs.length == 3 && !operand->inputs[0] && !operand->is_cfg() && phi_same_operand())
+                {
+                    u32 input_count = inputs.length;
+                    auto lefts = thread->arena->allocate_slice<Node*>(input_count);
+                    auto rights = thread->arena->allocate_slice<Node*>(input_count);
+
+                    lefts[0] = inputs[0];
+                    rights[0] = inputs[0];
+
+                    for (u32 i = 1; i < input_count; i += 1)
                     {
-                        return live;
+                        lefts[i] = inputs[i]->inputs[1];
+                        rights[i] = inputs[i]->inputs[2];
                     }
 
-                    Node* operand = inputs[1];
-
-                    if (operand->inputs.length == 3 && !operand->inputs[0] && !operand->is_cfg() && phi_same_operand())
-                    {
-                        u32 input_count = inputs.length;
-                        auto lefts = thread->arena->allocate_slice<Node*>(input_count);
-                        auto rights = thread->arena->allocate_slice<Node*>(input_count);
-
-                        lefts[0] = inputs[0];
-                        rights[0] = inputs[0];
-                        
-                        for (u32 i = 1; i < input_count; i += 1)
-                        {
-                            lefts[i] = inputs[i]->inputs[1];
-                            rights[i] = inputs[i]->inputs[2];
-                        }
-
-                        auto* left_phi = Node::add(thread, {
-                            .type = {},
+                    auto* left_phi = Node::add(thread, {
                             .inputs = lefts,
                             .id = Node::Id::PHI,
-                        });
-                        left_phi->payload.phi.label = payload.phi.label;
-                        left_phi = left_phi->peephole(thread, function);
+                            });
+                    left_phi->payload.phi.label = payload.phi.label;
+                    left_phi = left_phi->peephole(thread, function);
 
-                        auto* right_phi = Node::add(thread, {
-                            .type = {},
+                    auto* right_phi = Node::add(thread, {
                             .inputs = rights,
                             .id = Node::Id::PHI,
-                        });
-                        right_phi->payload.phi.label = payload.phi.label;
-                        right_phi = right_phi->peephole(thread, function);
+                            });
+                    right_phi->payload.phi.label = payload.phi.label;
+                    right_phi = right_phi->peephole(thread, function);
 
-                        auto* result = operand->copy(thread, left_phi, right_phi);
-                        return result;
-                    }
-
-                    return 0;
+                    auto* result = operand->copy(thread, left_phi, right_phi);
+                    return result;
                 }
+
+                return 0;
             }
         case Id::RETURN:
             {
-                if (get_control()->type.id == Node::Type::Id::DEAD_CONTROL)
+                if (get_control()->type->id == Node::Type::Id::DEAD_CONTROL)
                 {
                     trap();
                 }
@@ -2534,7 +2958,6 @@ struct Node
                 {
                     Node* inputs[] = { 0, left, right };
                     auto* result = Node::add(thread, {
-                        .type = {},
                         .inputs = array_to_slice(inputs),
                         .id = id,
                     });
@@ -2601,11 +3024,12 @@ struct Node
 
     method u8 is_dead()
     {
-        return is_unused() & (inputs.length == 0) & (type.id == Node::Type::Id::INVALID);
+        return is_unused() & (inputs.length == 0) && !type;
     }
 
-    method void pop_inputs(Arena* arena, u32 count)
+    method void pop_inputs(Thread* thread, u32 count)
     {
+        unlock(thread);
         for (u32 i = 0; i < count; i += 1)
         {
             Node* old_input = inputs.pop();
@@ -2613,52 +3037,145 @@ struct Node
             {
                 if (old_input->remove_output(this))
                 {
-                    old_input->kill(arena);
+                    old_input->kill(thread);
                 }
             }
         }
     }
 
-    method void kill(Arena* arena)
+    method String get_id_name()
     {
-        assert(is_unused());
+        switch (id)
+        {
+            case_to_name(Id, ROOT);
+            case_to_name(Id, STOP);
+            case_to_name(Id, PROJECTION);
+            case_to_name(Id, RETURN);
+            case_to_name(Id, IF);
+            case_to_name(Id, CONSTANT);
+            case_to_name(Id, SCOPE);
+            case_to_name(Id, SYMBOL_FUNCTION);
+            case_to_name(Id, CALL);
+            case_to_name(Id, REGION);
+            case_to_name(Id, REGION_LOOP);
+            case_to_name(Id, PHI);
+            case_to_name(Id, INTEGER_ADD);
+            case_to_name(Id, INTEGER_SUB);
+            case_to_name(Id, INTEGER_COMPARE_EQUAL);
+            case_to_name(Id, INTEGER_COMPARE_NOT_EQUAL);
+            case_to_name(Id, INTEGER_COMPARE_LESS);
+            case_to_name(Id, INTEGER_COMPARE_LESS_EQUAL);
+            case_to_name(Id, INTEGER_COMPARE_GREATER);
+            case_to_name(Id, INTEGER_COMPARE_GREATER_EQUAL);
+        }
+    }
 
-        pop_inputs(arena, get_inputs().length);
-        type = {};
+    method void kill(Thread* thread)
+    {
+        unlock(thread);
+        assert(is_unused());
+        type = 0;
+
+        while (inputs.length > 0)
+        {
+            if (Node* old_input = inputs.pop())
+            {
+                thread->worklist.push(old_input);
+                if (old_input->remove_output(this))
+                {
+                    old_input->kill(thread);
+                }
+            }
+        }
 
         assert(is_dead());
     }
 
     global auto constexpr enable_peephole = 1;
 
-    method Node* peephole(Thread* thread, Function* function)
+    [[gnu::hot]] method Node* peephole(Thread* thread, Function* function)
     {
-        Node::Type type = this->type = compute();
-
         if (!enable_peephole)
         {
+            type = compute(thread);
             return this;
-        }
-
-        if ((!is_constant()) & type.is_constant())
-        {
-            auto* constant_int = Node::add(thread, {
-                .type = type,
-                .inputs = { .pointer = &function->root_node, .length = 1 },
-                .id = Id::CONSTANT_INT,
-            });
-            auto* result = constant_int->peephole(thread, function);
-            return dead_code_elimination(thread->arena, result);
-        }
-
-        Node* idealized = idealize(thread, function);
-        if (idealized)
-        {
-            return dead_code_elimination(thread->arena, idealized->peephole(thread, function));
         }
         else
         {
-            return this;
+            if (Node* node = peephole_optimize(thread, function))
+            {
+                auto* new_node = node->peephole(thread, function);
+                auto* result = dead_code_elimination(thread, new_node);
+                return result;
+            }
+            else
+            {
+                return this;
+            }
+        }
+    }
+
+    method Node::Type* set_type(Thread* thread, Node::Type* new_type)
+    {
+        auto* old_type = type;
+
+        assert(!old_type || new_type->is_a(thread, old_type));
+
+        if (old_type != new_type)
+        {
+            type = new_type;
+            thread->worklist.add_many(outputs.slice());
+            move_dependencies_to_worklist(thread);
+        }
+
+        return old_type;
+    }
+
+    method void move_dependencies_to_worklist(Thread* thread)
+    {
+        thread->worklist.add_many(dependencies.slice());
+        dependencies.clear();
+    }
+
+    [[gnu::hot]] method Node* peephole_optimize(Thread* thread, Function* function)
+    {
+        thread->peephole_iteration_count += 1;
+        auto old_type = set_type(thread, compute(thread));
+        if (!is_constant() && type->is_high_or_const())
+        {
+            auto* constant_node = Node::add(thread, {
+                .inputs = { .pointer = &function->root_node, .length = 1 },
+                .id = Id::CONSTANT,
+            });
+            constant_node->payload.constant.type = type;
+            return constant_node->peephole_optimize(thread, function);
+        }
+
+        if (!hash)
+        {
+            auto gop = thread->interned_nodes.get_or_put(thread->arena, this);
+            // print("{s} node {u64:x} ({u64:x}) -> {u64:x} ({u64:x})\n", gop.existing ? strlit("Getting") : strlit("Adding"), this, this->get_hash(), gop.result, gop.result->get_hash());
+            if (gop.existing)
+            {
+                Node* found = gop.result;
+                found->set_type(thread, found->type->join(thread, type));
+                hash = 0;
+                auto* result = dead_code_elimination(thread, found);
+                return result;
+            }
+        }
+
+        Node* node = idealize(thread, function);
+        if (node)
+        {
+            return node;
+        }
+        else
+        {
+            u8 condition = old_type == type;
+            thread->peephole_nop_iteration_count += condition;
+            auto* result = condition ? 0 : this;
+            return result;
         }
     }
 
@@ -2679,8 +3196,7 @@ struct Node
         {
             default:
                 return 0;
-            case Id::CONSTANT_INT:
-            case Id::CONSTANT_CONTROL:
+            case Id::CONSTANT:
                 return 1;
         }
     }
@@ -2691,48 +3207,45 @@ struct Node
         return inputs[1];
     }
 
-    method Node::Type compute()
+    method Node::Type* compute(Thread* thread)
     {
         switch (id)
         {
             case Node::Id::ROOT:
                 return payload.root.args;
             case Node::Id::STOP:
-                return { .id = Type::Id::BOTTOM };
+                return thread->common_types.bottom;
             case Node::Id::IF:
                 {
                     auto* control_node = get_control();
-                    if (control_node->type.id != NodeType::Id::LIVE_CONTROL && control_node->type.id != Node::Type::Id::BOTTOM)
+                    if (control_node->type != thread->common_types.live_control && control_node->type != thread->common_types.bottom)
                     {
-                        return type_if_neither;
+                        return thread->common_types.if_neither;
                     }
 
                     auto* this_predicate = predicate();
-                    if ((this_predicate->type.id == Node::Type::Id::INTEGER) & this_predicate->type.is_constant())
+                    auto* predicate_type = this_predicate->type;
+
+                    if (predicate_type == thread->common_types.top || predicate_type == thread->common_types.integer_top)
                     {
-                        auto value = this_predicate->type.payload.constant.constant;
+                        return thread->common_types.if_neither;
+                    }
+
+                    if ((predicate_type->id == Node::Type::Id::INTEGER) & predicate_type->is_constant())
+                    {
+                        auto value = predicate_type->payload.constant.constant;
                         if (value)
                         {
-                            return type_if_true;
+                            return thread->common_types.if_true;
                         }
                         else
                         {
-                            return type_if_false;
+                            return thread->common_types.if_false;
                         }
                     }
 
-                    for (Node* dom = get_immediate_dominator(), *prior = this; dom; prior = dom, dom = dom->get_immediate_dominator())
-                    {
-                        if ((dom->id == Id::IF) && dom->predicate() == this_predicate)
-                        {
-                            unused(prior);
-                            trap();
-                        }
-                    }
-
-                    return type_if_both;
+                    return thread->common_types.if_both;
                 }
-                // return type_if;
             case Node::Id::INTEGER_ADD:
             case Node::Id::INTEGER_SUB:
             case Node::Id::INTEGER_COMPARE_EQUAL:
@@ -2744,71 +3257,65 @@ struct Node
                 {
                     auto left_type = inputs[1]->type;
                     auto right_type = inputs[2]->type;
-                    if ((left_type.id == Node::Type::Id::INTEGER) & (right_type.id == Node::Type::Id::INTEGER))
+
+                    if ((left_type->id == Node::Type::Id::INTEGER) & (right_type->id == Node::Type::Id::INTEGER))
                     {
-                        if (left_type.is_constant() & right_type.is_constant())
+                        if (left_type->is_constant() & right_type->is_constant())
                         {
                             u64 result;
                             switch (id)
                             {
                                 default:
                                     trap();
-                            case Id::INTEGER_ADD:
-                                result = left_type.payload.constant.constant + right_type.payload.constant.constant;
-                                break;
-                            case Id::INTEGER_SUB:
-                                result = left_type.payload.constant.constant - right_type.payload.constant.constant;
-                                break;
-                            case Id::INTEGER_COMPARE_EQUAL:
-                                result = left_type.payload.constant.constant == right_type.payload.constant.constant;
-                                break;
-                            case Id::INTEGER_COMPARE_NOT_EQUAL:
-                                result = left_type.payload.constant.constant != right_type.payload.constant.constant;
-                                break;
-                            case Id::INTEGER_COMPARE_LESS:
-                                result = left_type.payload.constant.constant < right_type.payload.constant.constant;
-                                break;
-                            case Id::INTEGER_COMPARE_LESS_EQUAL:
-                                result = left_type.payload.constant.constant <= right_type.payload.constant.constant;
-                                break;
-                            case Id::INTEGER_COMPARE_GREATER:
-                                result = left_type.payload.constant.constant > right_type.payload.constant.constant;
-                                break;
-                            case Id::INTEGER_COMPARE_GREATER_EQUAL:
-                                result = left_type.payload.constant.constant >= right_type.payload.constant.constant;
-                                break;
+                                case Id::INTEGER_ADD:
+                                    result = left_type->payload.constant.constant + right_type->payload.constant.constant;
+                                    break;
+                                case Id::INTEGER_SUB:
+                                    result = left_type->payload.constant.constant - right_type->payload.constant.constant;
+                                    break;
+                                case Id::INTEGER_COMPARE_EQUAL:
+                                    result = left_type->payload.constant.constant == right_type->payload.constant.constant;
+                                    break;
+                                case Id::INTEGER_COMPARE_NOT_EQUAL:
+                                    result = left_type->payload.constant.constant != right_type->payload.constant.constant;
+                                    break;
+                                case Id::INTEGER_COMPARE_LESS:
+                                    result = left_type->payload.constant.constant < right_type->payload.constant.constant;
+                                    break;
+                                case Id::INTEGER_COMPARE_LESS_EQUAL:
+                                    result = left_type->payload.constant.constant <= right_type->payload.constant.constant;
+                                    break;
+                                case Id::INTEGER_COMPARE_GREATER:
+                                    result = left_type->payload.constant.constant > right_type->payload.constant.constant;
+                                    break;
+                                case Id::INTEGER_COMPARE_GREATER_EQUAL:
+                                    result = left_type->payload.constant.constant >= right_type->payload.constant.constant;
+                                    break;
                             }
 
-                            return Node::Type{
-                                .id = Node::Type::Id::INTEGER,
+                            return thread->types.append_one({
                                 .payload = {
                                     .constant = {
                                         .constant = result,
-                                        // .bit_count = left_type.payload.integer.bit_count,
                                         .is_constant = 1,
                                     },
                                 },
-                            };
-                        }
-                        else
-                        {
-                            return left_type.meet(right_type);
+                                .id = Node::Type::Id::INTEGER,
+                            })->intern_type(thread);
                         }
                     }
-                    else
-                    {
-                        return Node::Type{ .id = NodeType::Id::BOTTOM };
-                    }
+
+                    auto* result = left_type->meet(thread, right_type);
+                    return result;
                 }
-            case Node::Id::CONSTANT_INT:
-            case Node::Id::CONSTANT_CONTROL:
-                return type;
+            case Node::Id::CONSTANT:
+                return payload.constant.type;
             case Node::Id::PROJECTION:
                 {
                     auto* control_node = inputs[0];
-                    if (control_node->type.id == NodeType::Id::MULTIVALUE)
+                    if (control_node->type->id == NodeType::Id::MULTIVALUE)
                     {
-                        auto type = control_node->type.payload.multi.types[this->payload.projection.index];
+                        auto type = control_node->type->payload.multi.types[this->payload.projection.index];
                         return type;
                     }
                     else
@@ -2818,29 +3325,38 @@ struct Node
                 } break;
             // TODO: change
             case Node::Id::SYMBOL_FUNCTION:
-                return { .id = Type::Id::FUNCTION };
+                trap();
+                // return { .id = Type::Id::FUNCTION };
             case Node::Id::CALL:
-                return { .id = Type::Id::CALL };
+                {
+                    // TODO: undo this mess
+                    return thread->common_types.integer_bot;
+                }
+                // return { .id = Type::Id::CALL };
             case Node::Id::RETURN:
                 {
-                    Array<Type> types = {};
+                    Array<Type*> types = {};
                     // First INPUT: control
                     // Second INPUT: expression
                     types.append_one(inputs[0]->type);
                     types.append_one(inputs[1]->type);
-                    return Type{
-                        .id = Node::Type::Id::MULTIVALUE,
+
+                    auto* ty = thread->types.append_one({
                         .payload = {
                             .multi = {
                                 .types = types.slice(),
                             },
                         },
-                    };
+                        .id = Node::Type::Id::MULTIVALUE,
+                    });
+                    auto* interned_type = ty->intern_type(thread);
+                    // print("Ty: {u64:x} -> interned {u64:x}\n", ty, interned_type);
+                    return interned_type;
                 }
             case Node::Id::REGION_LOOP:
                 if (region_in_progress())
                 {
-                    return { .id = Type::Id::LIVE_CONTROL };
+                    return thread->common_types.live_control;
                 }
                 else
                 {
@@ -2850,40 +3366,44 @@ struct Node
             case Node::Id::REGION:
                 if (region_in_progress())
                 {
-                    return { .id = Type::Id::LIVE_CONTROL };
+                    trap();
+                    // return { .id = Type::Id::LIVE_CONTROL };
                 }
                 else
                 {
-                    Type ty =  { .id = Type::Id::DEAD_CONTROL };
+                    auto* ty = thread->common_types.dead_control;
                     for (u32 i = 1; i < inputs.length; i += 1)
                     {
-                        ty = ty.meet(inputs[i]->type);
+                        ty = ty->meet(thread, inputs[i]->type);
                     }
-
                     return ty;
                 }
             case Node::Id::PHI:
                 {
                     auto* region = phi_get_region();
-                    auto is_r = region->is_region();
-                    if (!is_r || region->region_in_progress())
+                    auto is_reg = region->is_region();
+                    if (!is_reg)
                     {
-                        return { .id = Type::Id::BOTTOM };
+                        trap();
                     }
-                    else
+                    if (region->region_in_progress())
                     {
-                        Node::Type ty = { .id = Type::Id::TOP };
+                        return thread->common_types.bottom;
+                    }
 
-                        for (u32 i = 1; i < inputs.length; i += 1)
+                    Type* ty = thread->common_types.top;
+                    for (u32 i = 1; i < inputs.length; i += 1)
+                    {
+                        if (region->inputs[i]->add_dependency(thread, this)->type != thread->common_types.dead_control && inputs[i] != this)
                         {
-                            ty = ty.meet(inputs[i]->type);
+                            ty = ty->meet(thread, inputs[i]->type);
                         }
-                        
-                        return ty;
                     }
+
+                    return ty;
                 }
-            default:
-                trap();
+            case Id::SCOPE:
+                return thread->common_types.bottom;
         }
     }
 
@@ -2917,9 +3437,8 @@ struct Node
 
     method Node* project(Thread* thread, Node* control, s32 index, String label)
     {
-        assert(type.id == Node::Type::Id::MULTIVALUE);
+        assert(type->id == Node::Type::Id::MULTIVALUE);
         auto* projection = Node::add(thread, {
-            .type = {},
             .inputs = { .pointer = &control, .length = 1 },
             .id = Node::Id::PROJECTION,
         });
@@ -2928,24 +3447,22 @@ struct Node
         return projection;
     }
 
-    method Node* dead_code_elimination(Arena* arena, Node* new_node)
+    [[gnu::hot]] method Node* dead_code_elimination(Thread* thread, Node* new_node)
     {
         if (new_node != this && is_unused())
         {
             new_node->keep();
-            kill(arena);
+            kill(thread);
             new_node->unkeep();
         }
 
         return new_node;
     }
 
-    method SemaType* get_debug_type(Unit* unit)
+    method DebugType* get_debug_type(Unit* unit)
     {
-        switch (type.id)
+        switch (type->id)
         {
-        case NodeType::Id::INVALID:
-            trap();
         case NodeType::Id::BOTTOM:
             // TODO:
             return unit->get_integer_type(32, 1);
@@ -2958,10 +3475,6 @@ struct Node
             // TODO:
             return unit->get_integer_type(32, 1);
         case NodeType::Id::MULTIVALUE:
-            trap();
-        case NodeType::Id::MEMORY:
-            trap();
-        case NodeType::Id::POINTER:
             trap();
         case NodeType::Id::FUNCTION:
             trap();
@@ -2984,8 +3497,9 @@ struct Node
         }
     }
 
-    method Node* swap_inputs_1_2()
+    method Node* swap_inputs_1_2(Thread* thread)
     {
+        unlock(thread);
         Node* temporal = inputs[1];
         inputs[1] = inputs[2];
         inputs[2] = temporal;
@@ -3006,7 +3520,7 @@ struct Node
 
         for (u32 i = 1; i < inputs.length; i += 1)
         {
-            if (!inputs[i]->type.is_constant())
+            if (!inputs[i]->type->is_constant())
             {
                 return 0;
             }
@@ -3093,6 +3607,12 @@ struct Node
     method u8 region_in_progress()
     {
         assert(is_region());
+        return inputs.length > 1 && !(inputs[inputs.length - 1]);
+    }
+
+    method u8 phi_in_progress()
+    {
+        assert(id == Id::PHI);
         return !(inputs[inputs.length - 1]);
     }
 
@@ -3108,11 +3628,11 @@ struct Node
         return inputs[2];
     }
 
-    method Node* set_control(Arena* arena, Node* node)
+    method Node* set_control(Thread* thread, Node* node)
     {
         assert(id == Id::SCOPE);
 
-        return set_input(arena, 0, node);
+        return set_input(thread, 0, node);
     }
 
     method Node* phi_get_region()
@@ -3121,20 +3641,21 @@ struct Node
         return inputs[0];
     }
 
-    method void subsume(Arena* arena, Node* node)
+    method void subsume(Thread* thread, Node* node)
     {
         assert(node != this);
 
         while (outputs.length > 0)
         {
             Node* n = outputs.pop();
+            n->unlock(thread);
             s32 index = n->inputs.slice().find_index(this);
             assert(index != -1);
             n->inputs[index] = node;
             node->add_output(n);
         }
 
-        kill(arena);
+        kill(thread);
     }
 
     method Slice<String> scope_reverse_names(Arena* arena)
@@ -3189,21 +3710,20 @@ struct Node
                         0,
                     };
                     auto* phi_node = Node::add(thread, {
-                        .type = {},
                         .inputs = array_to_slice(phi_inputs),
                         .id = Node::Id::PHI,
                     });
                     phi_node->payload.phi.label = name;
                     phi_node = phi_node->peephole(thread, function);
-                    old = loop->set_input(thread->arena, index, phi_node);
+                    old = loop->set_input(thread, index, phi_node);
                 }
 
-                set_input(thread->arena, index, old);
+                set_input(thread, index, old);
             }
 
             if (node)
             {
-                return set_input(thread->arena, index, node);
+                return set_input(thread, index, node);
             }
             else
             {
@@ -3231,7 +3751,7 @@ struct Node
         Node* control_node = get_control();
         assert(control_node->id == Id::REGION_LOOP);
         assert(control_node->region_in_progress());
-        control_node->set_input(thread->arena, 2, back->get_control());
+        control_node->set_input(thread, 2, back->get_control());
         for (u32 i = 1; i < inputs.length; i += 1)
         {
             if (back->inputs[i] != this)
@@ -3240,16 +3760,16 @@ struct Node
                 assert(phi->id == Id::PHI);
                 assert(phi->phi_get_region() == get_control());
                 assert(!phi->inputs[2]);
-                phi->set_input(thread->arena, 2, back->inputs[i]);
+                phi->set_input(thread, 2, back->inputs[i]);
             }
 
             if (exit->inputs[i] == this)
             {
-                exit->set_input(thread->arena, i, inputs[i]);
+                exit->set_input(thread, i, inputs[i]);
             }
         }
 
-        back->kill(thread->arena);
+        back->kill(thread);
 
         for (u32 i = 1; i < inputs.length; i += 1)
         {
@@ -3259,16 +3779,216 @@ struct Node
                 Node* input = node->peephole(thread, function);
                 if (input != node)
                 {
-                    node->subsume(thread->arena, input);
-                    set_input(thread->arena, i, input);
+                    node->subsume(thread, input);
+                    set_input(thread, i, input);
                 }
             }
         }
     }
 
+    method Hash get_hash()
+    {
+        if (!hash)
+        {
+            Hash new_hash;
+            switch (id)
+            {
+                case Id::PROJECTION:
+                    new_hash = payload.projection.index;
+                    break;
+                case Id::CONSTANT:
+                    new_hash = payload.constant.type->get_hash();
+                    break;
+                default:
+                    new_hash = 0;
+                    break;
+            }
+
+            for (Node* input : inputs.slice())
+            {
+                if (input)
+                {
+                    new_hash = new_hash ^ (new_hash << 17) ^ (new_hash >> 13) ^ input->uid;
+                }
+            }
+
+            if (!new_hash)
+            {
+                new_hash = 0xDEADBEEF;
+            }
+
+            hash = new_hash;
+        }
+
+        // print("Hashing node {u64:x} -> {u32:x}\n", this, hash);
+
+        return hash;
+    }
+
+    method void unlock(Thread* thread)
+    {
+        // print("Removing node {u64:x} (in: {u32}, out: {u32}, id: {s}, hash: {u64:x})\n", this, inputs.length, outputs.length, get_id_name(), hash);
+        if (hash)
+        {
+            Node* old = thread->interned_nodes.remove(this);
+            if (old != this)
+            {
+                // print("Tried to remove node {u64:x} ({u64:x}), but got {u64:x} instead ({u64:x})\n", this, this->hash, old, old->hash);
+                trap();
+            }
+            hash = 0;
+        }
+    }
+
+    method u8 equal(Node* other)
+    {
+        if (this == other)
+        {
+            return 1;
+        }
+        else if (id != other->id)
+        {
+            return 0;
+        }
+        else if (inputs.length != other->inputs.length)
+        {
+            return 0;
+        }
+        else
+        {
+            u32 input_count = inputs.length;
+            for (u32 i = 0; i < input_count; i += 1)
+            {
+                if (inputs[i] != other->inputs[i])
+                {
+                    return 0;
+                }
+            }
+
+            switch (id)
+            {
+            case Id::PROJECTION:
+                return payload.projection.index == other->payload.projection.index;
+            case Id::PHI:
+                return !phi_in_progress();
+            case Id::CONSTANT:
+                return type == other->type;
+            case Id::REGION:
+            case Id::REGION_LOOP:
+                trap();
+            case Id::ROOT:
+                return payload.root.function == other->payload.root.function;
+            case Id::SCOPE:
+                return 1;
+            case Id::STOP:
+            case Id::RETURN:
+            case Id::IF:
+            case Id::SYMBOL_FUNCTION:
+            case Id::CALL:
+            case Id::INTEGER_ADD:
+            case Id::INTEGER_SUB:
+            case Id::INTEGER_COMPARE_EQUAL:
+            case Id::INTEGER_COMPARE_NOT_EQUAL:
+            case Id::INTEGER_COMPARE_LESS:
+            case Id::INTEGER_COMPARE_LESS_EQUAL:
+            case Id::INTEGER_COMPARE_GREATER:
+            case Id::INTEGER_COMPARE_GREATER_EQUAL:
+                trap();
+            }
+        }
+    }
+
+    method Node* walk(Thread* thread, Function* function, Node* (*callback)(Thread*, Function*, Node*))
+    {
+        assert(thread->visited.is_empty());
+        Node* node = walk_internal(thread, function, callback);
+        thread->visited.clear();
+        return node;
+    }
+
+
+    method Node* walk_internal(Thread* thread, Function* function, Node* (*callback)(Thread*, Function*, Node*))
+    {
+        if (!thread->visited.get(this->uid))
+        {
+            thread->visited.set_assert_unset(this->uid);
+            if (Node* node = callback(thread, function, this))
+            {
+                return node;
+            }
+
+            Slice<Node*> lists[] = {inputs.slice(), outputs.slice()};
+            for (auto list : lists)
+            {
+                for (Node* node : list)
+                {
+                    if (node)
+                    {
+                        if (Node* result = node->walk_internal(thread, function, callback))
+                        {
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+
+        return 0;
+    }
+
     method Node* scope_lookup(Thread* thread, Function* function, File* file, String name);
     method Node* merge_scopes(Thread* thread, File* file, Function* function, Node* other);
 };
+
+Node* Function::iterate(Thread* thread)
+{
+    assert(thread->progress_on_list(this, stop_node));
+    u64 count = 0;
+    unused(count);
+
+    while (auto* node = thread->worklist.pop())
+    {
+        if (!node->is_dead())
+        {
+            count += 1;
+            if (Node* x = node->peephole_optimize(thread, this))
+            {
+                if (!x->is_dead())
+                {
+                    if (!x->type)
+                    {
+                        x->set_type(thread, x->compute(thread));
+                    }
+
+                    if (x != node || x->id != Node::Id::CONSTANT)
+                    {
+                        for (Node* output : node->outputs.slice())
+                        {
+                            thread->worklist.push(output);
+                        }
+
+                        thread->worklist.push(x);
+
+                        if (x != node)
+                        {
+                            for (Node* input : node->inputs.slice())
+                            {
+                                thread->worklist.push(input);
+                            }
+
+                            node->subsume(thread, x);
+                        }
+                    }
+
+                    node->move_dependencies_to_worklist(thread);
+                    assert(thread->progress_on_list(this, stop_node));
+                }
+            }
+        }
+    }
+
+    return stop_node;
+}
 
 struct File
 {
@@ -3300,8 +4020,7 @@ method Node* Node::merge_scopes(Thread* thread, File* file, Function* function, 
         other_scope->get_control(),
     };
 
-    auto* region_node = set_control(thread->arena, Node::add(thread, {
-                .type = {},
+    auto* region_node = set_control(thread, Node::add(thread, {
                 .inputs = array_to_slice(region_inputs),
                 .id = Node::Id::REGION,
                 })->keep());
@@ -3323,56 +4042,22 @@ method Node* Node::merge_scopes(Thread* thread, File* file, Function* function, 
             };
 
             auto* phi_node = Node::add(thread, {
-                    .type = {},
                     .inputs = array_to_slice(inputs),
                     .id = Node::Id::PHI,
                     });
             phi_node->payload.phi.label = label;
             phi_node = phi_node->peephole(thread, function);
 
-            set_input(thread->arena, i, phi_node);
+            set_input(thread, i, phi_node);
         }
     }
 
-    other_scope->kill(thread->arena);
+    other_scope->kill(thread);
     return region_node->unkeep()->peephole(thread, function);
 }
 
 static_assert(sizeof(Node) == 128);
 static_assert(page_size % sizeof(Node) == 0);
-
-[[nodiscard]] fn Node* add_constant_integer(Thread* thread, ConstantIntData data)
-{
-    auto* constant_int = Node::add(thread, {
-        .type =
-        {
-            .id = Node::Type::Id::INTEGER,
-            .payload = {
-                .constant = {
-                    .constant = data.value,
-                    // .bit_count = data.bit_count,
-                    .is_constant = 1,
-                },
-            },
-        },
-        .inputs = { .pointer = &data.input, .length = 1 },
-        .id = Node::Id::CONSTANT_INT,
-    });
-    return constant_int;
-}
-
-fn u64 round_up_to_next_power_of_2(u64 n)
-{
-    n -= 1;
-    n |= n >> 1;
-    n |= n >> 2;
-    n |= n >> 4;
-    n |= n >> 8;
-    n |= n >> 16;
-    n |= n >> 32;
-    n += 1;
-    return n;
-}
 
 global String integer_names[] =
 {
@@ -3509,7 +4194,7 @@ global String integer_names[] =
 fn void unit_initialize(Unit* unit)
 {
     Arena* type_arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(64));
-    SemaType* builtin_types = type_arena->allocate_many<SemaType>(builtin_type_count);
+    DebugType* builtin_types = type_arena->allocate_many<DebugType>(builtin_type_count);
 
     *unit = {
         // .arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(4)),
@@ -3522,7 +4207,7 @@ fn void unit_initialize(Unit* unit)
     builtin_types[void_type_index] = {
         .size = 0,
         .alignment = 1,
-        .id = SemaTypeId::VOID,
+        .id = DebugTypeId::VOID,
         .resolved = 1,
         .flags = 0,
         .name = strlit("void"),
@@ -3530,7 +4215,7 @@ fn void unit_initialize(Unit* unit)
     builtin_types[noreturn_type_index] = {
         .size = 0,
         .alignment = 1,
-        .id = SemaTypeId::NORETURN,
+        .id = DebugTypeId::NORETURN,
         .resolved = 1,
         .flags = 0,
         .name = strlit("noreturn"),
@@ -3538,7 +4223,7 @@ fn void unit_initialize(Unit* unit)
     builtin_types[opaque_pointer_type_index] = {
         .size = 8,
         .alignment = 8,
-        .id = SemaTypeId::POINTER,
+        .id = DebugTypeId::POINTER,
         .resolved = 1,
         .flags = 0,
         .name = strlit("*any"),
@@ -3558,7 +4243,7 @@ fn void unit_initialize(Unit* unit)
         {
             .size = byte_count,
             .alignment = byte_count,
-            .id = SemaTypeId::INTEGER,
+            .id = DebugTypeId::INTEGER,
             .resolved = 1,
             .flags = static_cast<u32>(bit_count),
             .name = integer_names[bit_count - 1],
@@ -3577,7 +4262,7 @@ fn void unit_initialize(Unit* unit)
         {
             .size = byte_count,
             .alignment = byte_count,
-            .id = SemaTypeId::INTEGER,
+            .id = DebugTypeId::INTEGER,
             .resolved = 1,
             .flags = static_cast<u32>(bit_count | (1 << (type_flags_bit_count - 1))), // Signedness bit
             .name = integer_names[bit_count + 63],
@@ -3607,6 +4292,7 @@ fn Thread* instance_add_thread(Instance* instance)
     auto* thread = instance->arena->allocate_one<Thread>();
     *thread = {
         .arena = Arena::init_default(KB(64)),
+        .common_types = {},
     };
     return thread;
 }
@@ -3617,7 +4303,7 @@ struct Parser
     u32 line;
     u32 column;
 
-    method void skip_space(String src)
+    [[gnu::hot]] method void skip_space(String src)
     {
         u64 original_i = i;
 
@@ -3665,7 +4351,7 @@ struct Parser
         }
     }
 
-    method void expect_character(String src, u8 expected_ch)
+    [[gnu::hot]] method void expect_character(String src, u8 expected_ch)
     {
         u64 index = i;
         if (expect(index < src.length, 1))
@@ -3693,7 +4379,7 @@ struct Parser
         }
     }
 
-    method String parse_raw_identifier(String src)
+    [[gnu::hot]] method String parse_raw_identifier(String src)
     {
         u64 identifier_start_index = i;
         u64 is_string_literal = src.pointer[identifier_start_index] == '"';
@@ -3792,7 +4478,7 @@ global constexpr auto local_symbol_declaration_start = '>';
 global constexpr auto array_expression_start = bracket_open;
 // global constexpr auto array_expression_end = bracket_close;
 
-global constexpr auto composite_initialization_start = brace_open;
+// global constexpr auto composite_initialization_start = brace_open;
 // global constexpr auto composite_initialization_end = brace_close;
 
 global String function_attributes[] =
@@ -3847,10 +4533,10 @@ static_assert(array_length(global_symbol_attributes) == GLOBAL_SYMBOL_ATTRIBUTE_
 Node* create_scope(Thread* thread)
 {
     auto* scope = Node::add(thread, {
-            .type = { .id = Node::Type::Id::BOTTOM },
-            .inputs = {},
-            .id = Node::Id::SCOPE,
-            });
+        .inputs = {},
+        .id = Node::Id::SCOPE,
+    });
+    scope->type = thread->common_types.bottom;
     scope->payload.scope.stack = {};
 
     return scope;
@@ -3865,14 +4551,14 @@ struct Analyzer
     File* file;
 
 
-    method Node* set_control(Arena* arena, Node* node)
+    method Node* set_control(Thread* thread, Node* node)
     {
-        return scope->set_control(arena, node);
+        return scope->set_control(thread, node);
     }
 
-    method void kill_control(Arena* arena)
+    method void kill_control(Thread* thread)
     {
-        set_control(arena, 0);
+        set_control(thread, 0);
     }
 
     method Node* add_return(Thread* thread, Node* return_value)
@@ -3880,21 +4566,21 @@ struct Analyzer
         Node* inputs[] = { get_control(), return_value };
 
         auto* return_node = Node::add(thread, {
-            .type = {},
             .inputs = array_to_slice(inputs),
             .id = Node::Id::RETURN,
         })->peephole(thread, function);
 
-        auto* node = function->stop_node->add_input(return_node);
+        auto* node = function->stop_node->add_input(thread, return_node);
 
         // Kill control
         auto* dead_control = Node::add(thread, {
-            .type = { .id = Node::Type::Id::DEAD_CONTROL },
             .inputs = { .pointer = &function->root_node, .length = 1 },
-            .id = Node::Id::CONSTANT_CONTROL,
-        })->peephole(thread, function);
-        set_control(thread->arena, dead_control);
-
+            .id = Node::Id::CONSTANT,
+        });
+        dead_control->payload.constant.type = thread->common_types.dead_control;
+        dead_control = dead_control->peephole(thread, function);
+        set_control(thread, dead_control);
+        
         return node;
     }
 
@@ -3917,11 +4603,11 @@ struct Analyzer
             duplicate_scope->payload.scope.stack.append_one(duplicate_hashmap);
         }
         
-        duplicate_scope->add_input(get_control());
+        duplicate_scope->add_input(thread, get_control());
       
         for (u32 i = 1; i < original_scope->inputs.length; i += 1)
         {
-            duplicate_scope->add_input(loop ? original_scope : original_scope->inputs[i]);
+            duplicate_scope->add_input(thread, loop ? original_scope : original_scope->inputs[i]);
         }
         assert(duplicate_scope->inputs.length == original_input_count);
         return duplicate_scope;
@@ -3929,7 +4615,7 @@ struct Analyzer
 
 };
 
-fn SemaType* analyze_type(Parser* parser, Unit* unit, String src)
+fn DebugType* analyze_type(Parser* parser, Unit* unit, String src)
 {
     u64 start_index = parser->i;
     u8 start_ch = src.pointer[start_index];
@@ -4066,508 +4752,350 @@ fn u64 parse_hex(String string)
     return value;
 }
 
+[[nodiscard]] [[gnu::hot]] fn Node* analyze_expression(Analyzer* analyzer, Parser* parser, Thread* thread, String src);
 
-[[nodiscard]] fn Node* parse_constant_integer(Parser* parser, Thread* thread, String src, SemaType* type, Node* input)
+[[nodiscard]] [[gnu::hot]] fn Node* analyze_primary_expression(Analyzer* analyzer, Parser* parser, Thread* thread, String src)
 {
-    u64 value = 0;
-    auto starting_index = parser->i;
-    auto starting_ch = src[starting_index];
-
-    if (starting_ch == '0')
-    {
-        auto follow_up_character = src[parser->i + 1];
-        auto is_hex_start = follow_up_character == 'x';
-        auto is_octal_start = follow_up_character == 'o';
-        auto is_bin_start = follow_up_character == 'b';
-        auto is_prefixed_start = is_hex_start | is_octal_start | is_bin_start;
-        auto follow_up_alpha = is_alphabetic(follow_up_character);
-        auto follow_up_digit = is_decimal_digit(follow_up_character);
-        auto is_valid_after_zero = is_space(follow_up_character, get_next_ch_safe(src, follow_up_character)) | (!follow_up_digit and !follow_up_alpha);
-
-        if (is_prefixed_start) {
-            enum class IntegerPrefix {
-                hexadecimal,
-                octal,
-                binary,
-            };
-            IntegerPrefix prefix;
-            switch (follow_up_character) {
-                case 'x': prefix = IntegerPrefix::hexadecimal; break;
-                case 'o': prefix = IntegerPrefix::octal; break;
-                case 'b': prefix = IntegerPrefix::binary; break;
-                default: fail();
-            };
-
-            parser->i += 2;
-
-            auto start = parser->i;
-
-            switch (prefix) {
-                case IntegerPrefix::hexadecimal:
-                    {
-                        while (is_hex_digit(src[parser->i])) {
-                            parser->i += 1;
-                        }
-
-                        auto slice = src.slice(start, parser->i);
-                        value = parse_hex(slice);
-                    }
-                case IntegerPrefix::octal: 
-                    trap();
-                case IntegerPrefix::binary:
-                    trap();
-            }
-        } else if (is_valid_after_zero) {
-            value = 0;
-            parser->i += 1;
-        } else {
-            fail();
-        }
-    }
-    else
-    {
-        while (is_decimal_digit(src[parser->i]))
-        {
-            parser->i += 1;
-        }
-
-        auto slice = src.slice(starting_index, parser->i);
-        value = parse_decimal(slice);
-    }
-
-    Node* result = add_constant_integer(thread, {
-        .value = value,
-        .input = input,
-        .bit_count = type->get_bit_count(),
-    });
-
-    return result;
-}
-
-
-[[nodiscard]] fn Node* analyze_single_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Thread* thread, String src, SemaType* type, Side side)
-{
-    unused(side);
-    enum class Unary
-    {
-        NONE,
-        ONE_COMPLEMENT,
-        NEGATION,
-    };
-    auto unary_operation = Unary::NONE;
-    auto* function = analyzer->function;
-
-    auto original_starting_ch_index = parser->i;
-    u8 original_starting_ch = src[original_starting_ch_index];
-
-    switch (src[parser->i])
-    {
-        case '\'':
-            trap();
-        case '"':
-            trap();
-        case '-':
-            trap();
-        case '~':
-            trap();
-        case '#':
-            trap();
-        case composite_initialization_start:
-            trap();
-        case array_expression_start:
-            trap();
-        default:
-            assert(is_decimal_digit(original_starting_ch) | is_identifier_start(original_starting_ch));
-            break;
-    }
-
+    parser->skip_space(src);
     auto starting_ch_index = parser->i; 
     u8 starting_ch = src[starting_ch_index];
     auto is_digit = is_decimal_digit(starting_ch);
     auto is_identifier = is_identifier_start(starting_ch);
+    auto is_open_parenthesis = starting_ch == parenthesis_open;
 
-    // auto line = get_line(parser);
-    // auto column = get_column(parser);
-
-    if (is_digit)
-    {
-        SemaType* integer_type;
-        if (type)
-        {
-            integer_type = type;
-        }
-        else
-        {
-            switch (unary_operation)
-            {
-            case Unary::NONE:
-                integer_type = unit->get_integer_type(64, 0);
-                break;
-            case Unary::ONE_COMPLEMENT:
-                fail();
-            case Unary::NEGATION:
-                fail();
-            }
-        }
-
-        if (integer_type->id != SemaTypeId::INTEGER)
-        {
-            fail();
-        }
-
-        Node* constant_int = parse_constant_integer(parser, thread, src, integer_type, function->root_node);
-
-        return constant_int;
-    }
-    else if (is_identifier)
+    if (is_identifier)
     {
         String identifier = parser->parse_and_check_identifier(src);
-        auto* node = analyzer->scope->scope_lookup(thread, function, analyzer->file, identifier);
+        auto* node = analyzer->scope->scope_lookup(thread, analyzer->function, analyzer->file, identifier);
         if (!node)
         {
             fail();
         }
 
-        switch (src[parser->i])
+        return node;
+    }
+    else if (is_digit)
+    {
+        u64 value = 0;
+
+        if (starting_ch == '0')
         {
-            case ' ':
-            case ',':
-            case ';':
-            case function_argument_end:
-                // TODO: take into account 'side'?
-                return node;
-            case function_argument_start:
-                {
-                    parser->i += 1;
-                    Array<Node*> argument_nodes = {};
-                    while (1)
-                    {
-                        parser->skip_space(src);
+            auto follow_up_character = src[parser->i + 1];
+            auto is_hex_start = follow_up_character == 'x';
+            auto is_octal_start = follow_up_character == 'o';
+            auto is_bin_start = follow_up_character == 'b';
+            auto is_prefixed_start = is_hex_start | is_octal_start | is_bin_start;
+            auto follow_up_alpha = is_alphabetic(follow_up_character);
+            auto follow_up_digit = is_decimal_digit(follow_up_character);
+            auto is_valid_after_zero = is_space(follow_up_character, get_next_ch_safe(src, follow_up_character)) | (!follow_up_digit and !follow_up_alpha);
 
-                        if (src[parser->i] == function_argument_end)
+            if (is_prefixed_start) {
+                enum class IntegerPrefix {
+                    hexadecimal,
+                    octal,
+                    binary,
+                };
+                IntegerPrefix prefix;
+                switch (follow_up_character) {
+                    case 'x': prefix = IntegerPrefix::hexadecimal; break;
+                    case 'o': prefix = IntegerPrefix::octal; break;
+                    case 'b': prefix = IntegerPrefix::binary; break;
+                    default: fail();
+                };
+
+                parser->i += 2;
+
+                auto start = parser->i;
+
+                switch (prefix) {
+                    case IntegerPrefix::hexadecimal:
                         {
-                            break;
-                        }
-
-                        Node* argument_value = analyze_single_expression(analyzer, parser, unit, thread, src, type, side)->peephole(thread, function);
-                        argument_nodes.append_one(argument_value);
-
-                        parser->skip_space(src);
-
-                        switch (src[parser->i])
-                        {
-                            case function_argument_end:
-                                break;
-                            case ',':
+                            while (is_hex_digit(src[parser->i])) {
                                 parser->i += 1;
-                                break;
-                            default:
-                                fail();
+                            }
+
+                            auto slice = src.slice(start, parser->i);
+                            value = parse_hex(slice);
                         }
-                    }
-
-                    parser->expect_character(src, function_argument_end);
-
-                    // Add function definition
-                    argument_nodes.append_one(node);
-
-                    Node* call_node = Node::add(thread, {
-                        .type = {},
-                        .inputs = argument_nodes.slice(),
-                        .id = Node::Id::CALL,
-                    })->peephole(thread, function);
-                    return call_node;
+                    case IntegerPrefix::octal: 
+                        trap();
+                    case IntegerPrefix::binary:
+                        trap();
                 }
-            default:
-                trap();
+            } else if (is_valid_after_zero) {
+                value = 0;
+                parser->i += 1;
+            } else {
+                fail();
+            }
         }
+        else
+        {
+            while (is_decimal_digit(src[parser->i]))
+            {
+                parser->i += 1;
+            }
+
+            auto slice = src.slice(starting_ch_index, parser->i);
+            value = parse_decimal(slice);
+        }
+
+        NodeType* type;
+        if (value == 0)
+        {
+            type = thread->common_types.integer_zero;
+        }
+        else
+        {
+            type = thread->types.append_one({
+                    .payload = {
+                    .constant = {
+                    .constant = value,
+                    .is_constant = 1,
+                    },
+                    },
+                    .id = NodeType::Id::INTEGER,
+                    })->intern_type(thread);
+        }
+
+        auto* constant_int = Node::add(thread, {
+            .inputs = { .pointer = &analyzer->function->root_node, .length = 1 },
+            .id = Node::Id::CONSTANT,
+        });
+        constant_int->payload.constant.type = type;
+        return constant_int->peephole(thread, analyzer->function);
+    }
+    else if (is_open_parenthesis)
+    {
+        trap();
     }
     else
     {
-        fail();
+        trap();
     }
+
+    trap();
 }
 
-[[nodiscard]] fn Node* analyze_expression(Analyzer* analyzer, Parser* parser, Unit* unit, Thread* thread, String src, SemaType* type, Side side)
+[[nodiscard]] fn Node* analyze_unary_expression(Analyzer* analyzer, Parser* parser, Thread* thread, String src)
 {
-    enum class CurrentOperation
+    parser->skip_space(src);
+    Node* result;
+
+    switch (src[parser->i])
     {
-        NONE,
-        ASSIGN,
-        INTEGER_ADD,
-        INTEGER_ADD_ASSIGN,
-        INTEGER_SUB,
-        INTEGER_SUB_ASSIGN,
-        INTEGER_COMPARE_EQUAL,
-        INTEGER_COMPARE_NOT_EQUAL,
-        INTEGER_COMPARE_LESS,
-        INTEGER_COMPARE_LESS_EQUAL,
-        INTEGER_COMPARE_GREATER,
-        INTEGER_COMPARE_GREATER_EQUAL,
-        INTEGER_SHIFT_LEFT,
-        INTEGER_SHIFT_LEFT_ASSIGN,
-        INTEGER_SHIFT_RIGHT,
-        INTEGER_SHIFT_RIGHT_ASSIGN,
-    };
+        case '-':
+            trap();
+        default:
+            result = analyze_primary_expression(analyzer, parser, thread, src);
+            break;
+    }
 
-    u64 iterations = 0;
-    SemaType* iteration_type = type;
-    auto current_operation = CurrentOperation::NONE;
-    Node* previous_node = 0;
+    switch (src[parser->i])
+    {
+        // Function call
+        case function_argument_start:
+            {
+                parser->i += 1;
+                Array<Node*> argument_nodes = {};
+                while (1)
+                {
+                    parser->skip_space(src);
 
+                    if (src[parser->i] == function_argument_end)
+                    {
+                        break;
+                    }
+
+                    Node* argument_value = analyze_expression(analyzer, parser, thread, src)->peephole(thread, analyzer->function);
+                    argument_nodes.append_one(argument_value);
+
+                    parser->skip_space(src);
+
+                    switch (src[parser->i])
+                    {
+                        case function_argument_end:
+                            break;
+                        case ',':
+                            parser->i += 1;
+                            break;
+                        default:
+                            fail();
+                    }
+                }
+
+                parser->expect_character(src, function_argument_end);
+
+                // Add function definition
+                argument_nodes.append_one(result);
+
+                Node* call_node = Node::add(thread, {
+                        .inputs = argument_nodes.slice(),
+                        .id = Node::Id::CALL,
+                        })->peephole(thread, analyzer->function);
+                result = call_node;
+            }
+        default:
+            break;
+    }
+
+    return result;
+}
+
+[[nodiscard]] fn Node* analyze_multiplication_expression(Analyzer* analyzer, Parser* parser, Thread* thread, String src)
+{
+    auto* result = analyze_unary_expression(analyzer, parser, thread, src);
     while (1)
     {
-        if ((iterations == 1) & !iteration_type)
-        {
-            iteration_type = previous_node->get_debug_type(unit);
-        }
+        parser->skip_space(src);
 
-        // u32 line = get_line(parser);
-        // u32 column = get_column(parser);
-        Node* current_node;
-        if (src[parser->i] == '(')
+        u8 op_ch = src[parser->i];
+        if (op_ch == '*')
+        {
+            trap();
+        }
+        else if (op_ch == '/')
         {
             trap();
         }
         else
         {
-            current_node = analyze_single_expression(analyzer, parser, unit, thread, src, iteration_type, side);
-        }
-
-        parser->skip_space(src);
-
-        switch (current_operation)
-        {
-        case CurrentOperation::NONE:
-            previous_node = current_node;
             break;
-        case CurrentOperation::INTEGER_ADD:
-        case CurrentOperation::INTEGER_SUB:
-            {
-                Node::Id id;
-                switch (current_operation)
-                {
-                case CurrentOperation::NONE:
-                    trap();
-                case CurrentOperation::INTEGER_ADD:
-                    id = Node::Id::INTEGER_ADD;
-                    break;
-                case CurrentOperation::INTEGER_SUB:
-                    id = Node::Id::INTEGER_SUB;
-                    break;
-                case CurrentOperation::INTEGER_ADD_ASSIGN:
-                case CurrentOperation::INTEGER_SUB_ASSIGN:
-                    trap();
-                case CurrentOperation::INTEGER_COMPARE_EQUAL:
-                    trap();
-                case CurrentOperation::ASSIGN:
-                case CurrentOperation::INTEGER_COMPARE_NOT_EQUAL:
-                case CurrentOperation::INTEGER_COMPARE_LESS:
-                case CurrentOperation::INTEGER_COMPARE_LESS_EQUAL:
-                case CurrentOperation::INTEGER_COMPARE_GREATER:
-                case CurrentOperation::INTEGER_COMPARE_GREATER_EQUAL:
-                case CurrentOperation::INTEGER_SHIFT_LEFT:
-                case CurrentOperation::INTEGER_SHIFT_LEFT_ASSIGN:
-                case CurrentOperation::INTEGER_SHIFT_RIGHT:
-                case CurrentOperation::INTEGER_SHIFT_RIGHT_ASSIGN:
-                    trap();
-                }
-
-                Node* inputs[] = {
-                    0,
-                    previous_node,
-                    current_node,
-                };
-
-                auto* binary = Node::add(thread, {
-                    .type = current_node->type,
-                    .inputs = array_to_slice(inputs),
-                    .id = id,
-                });
-
-                previous_node = binary;
-            } break;
-            case CurrentOperation::INTEGER_COMPARE_EQUAL:
-            case CurrentOperation::INTEGER_COMPARE_NOT_EQUAL:
-            case CurrentOperation::INTEGER_COMPARE_LESS:
-            case CurrentOperation::INTEGER_COMPARE_LESS_EQUAL:
-            case CurrentOperation::INTEGER_COMPARE_GREATER:
-            case CurrentOperation::INTEGER_COMPARE_GREATER_EQUAL:
-            {
-                Node::Id id;
-                switch (current_operation)
-                {
-                    case CurrentOperation::INTEGER_COMPARE_EQUAL:
-                        id = Node::Id::INTEGER_COMPARE_EQUAL;
-                        break;
-                    case CurrentOperation::INTEGER_COMPARE_NOT_EQUAL:
-                        id = Node::Id::INTEGER_COMPARE_NOT_EQUAL;
-                        break;
-                    case CurrentOperation::INTEGER_COMPARE_LESS:
-                        id = Node::Id::INTEGER_COMPARE_LESS;
-                        break;
-                    case CurrentOperation::INTEGER_COMPARE_LESS_EQUAL:
-                        id = Node::Id::INTEGER_COMPARE_LESS_EQUAL;
-                        break;
-                    case CurrentOperation::INTEGER_COMPARE_GREATER:
-                        id = Node::Id::INTEGER_COMPARE_GREATER;
-                        break;
-                    case CurrentOperation::INTEGER_COMPARE_GREATER_EQUAL:
-                        id = Node::Id::INTEGER_COMPARE_GREATER_EQUAL;
-                        break;
-                    default:
-                        trap();
-                }
-
-                Node* inputs[] = {
-                    0,
-                    previous_node,
-                    current_node,
-                };
-
-                auto* binary = Node::add(thread, {
-                    .type = current_node->type,
-                    .inputs = { .pointer = inputs, .length = array_length(inputs), },
-                    .id = id,
-                });
-
-                previous_node = binary;
-            } break;
-            case CurrentOperation::ASSIGN:
-            case CurrentOperation::INTEGER_SHIFT_LEFT:
-            case CurrentOperation::INTEGER_SHIFT_LEFT_ASSIGN:
-            case CurrentOperation::INTEGER_SHIFT_RIGHT:
-            case CurrentOperation::INTEGER_SHIFT_RIGHT_ASSIGN:
-            case CurrentOperation::INTEGER_ADD_ASSIGN:
-            case CurrentOperation::INTEGER_SUB_ASSIGN:
-                trap();
-            }
-
-        previous_node = previous_node->peephole(thread, analyzer->function);
-
-        auto original_index = parser->i;
-        u8 original = src[original_index];
-
-        switch (original)
-        {
-            case end_of_statement:
-            case end_of_argument:
-            case parenthesis_close:
-            case bracket_close:
-                return previous_node;
-            case '+':
-                current_operation = CurrentOperation::INTEGER_ADD;
-                parser->i += 1;
-
-                switch (src[parser->i])
-                {
-                    case '=':
-                        current_operation = CurrentOperation::INTEGER_ADD_ASSIGN;
-                        parser->i += 1;
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case '-':
-                current_operation = CurrentOperation::INTEGER_SUB;
-                parser->i += 1;
-
-                switch (src[parser->i])
-                {
-                    case '=':
-                        current_operation = CurrentOperation::INTEGER_SUB_ASSIGN;
-                        parser->i += 1;
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case '=':
-                current_operation = CurrentOperation::ASSIGN;
-                parser->i += 1;
-
-                switch (src[parser->i])
-                {
-                    case '=':
-                        current_operation = CurrentOperation::INTEGER_COMPARE_EQUAL;
-                        parser->i += 1;
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case '<':
-                current_operation = CurrentOperation::INTEGER_COMPARE_LESS;
-                parser->i += 1;
-
-                switch (src[parser->i])
-                {
-                    case '=':
-                        current_operation = CurrentOperation::INTEGER_COMPARE_LESS_EQUAL;
-                        parser->i += 1;
-                        break;
-                    case '<': // Shift left
-                        current_operation = CurrentOperation::INTEGER_SHIFT_LEFT;
-                        parser->i += 1;
-
-                        switch (src[parser->i])
-                        {
-                            case '=':
-                                current_operation = CurrentOperation::INTEGER_SHIFT_LEFT_ASSIGN;
-                                parser->i += 1;
-                                break;
-                            default:
-                                break;
-                        }
-
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case '>':
-                current_operation = CurrentOperation::INTEGER_COMPARE_GREATER;
-                parser->i += 1;
-
-                switch (src[parser->i])
-                {
-                    case '=':
-                        current_operation = CurrentOperation::INTEGER_COMPARE_GREATER_EQUAL;
-                        parser->i += 1;
-                        break;
-                    case '>': // Shift right
-                        current_operation = CurrentOperation::INTEGER_SHIFT_RIGHT;
-                        parser->i += 1;
-
-                        switch (src[parser->i])
-                        {
-                            case '=':
-                                current_operation = CurrentOperation::INTEGER_SHIFT_RIGHT_ASSIGN;
-                                parser->i += 1;
-                                break;
-                            default:
-                                break;
-                        }
-
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case function_argument_start:
-                {
-                    assert(previous_node->id == Node::Id::SYMBOL_FUNCTION);
-                    trap();
-                } break;
-            default:
-                trap();
         }
 
+        trap();
+    }
+
+    return result;
+}
+
+[[nodiscard]] fn Node* analyze_addition_expression(Analyzer* analyzer, Parser* parser, Thread* thread, String src)
+{
+    auto* result = analyze_multiplication_expression(analyzer, parser, thread, src);
+    while (1)
+    {
         parser->skip_space(src);
 
-        iterations += 1;
+        auto* left = result;
+        u8 op_ch = src[parser->i];
+        Node* inputs[] = {
+            0,
+            left,
+            0,
+        };
+
+        Node::Id new_node_id;
+
+        if (op_ch == '+')
+        {
+            new_node_id = Node::Id::INTEGER_ADD;
+        }
+        else if (op_ch == '-')
+        {
+            new_node_id = Node::Id::INTEGER_SUB;
+        }
+        else
+        {
+            break;
+        }
+
+        parser->i += 1;
+
+        result = Node::add(thread, {
+            .inputs = array_to_slice(inputs),
+            .id = new_node_id,
+        });
+
+        auto* right = analyze_addition_expression(analyzer, parser, thread, src);
+        result->set_input(thread, 2, right);
+        result = result->peephole(thread, analyzer->function);
     }
+
+    return result;
+}
+
+[[nodiscard]] fn Node* analyze_comparison_expression(Analyzer* analyzer, Parser* parser, Thread* thread, String src)
+{
+    auto* result = analyze_addition_expression(analyzer, parser, thread, src);
+    while (1)
+    {
+        parser->skip_space(src);
+
+        auto* left = result;
+        Node* inputs[] = {
+            0,
+            left,
+            0,
+        };
+        u8 op_ch = src[parser->i];
+        u8 next_ch = src[parser->i + 1];
+
+        Node::Id id;
+        u8 negate = 0;
+
+        if (op_ch == '=' && next_ch == '=')
+        {
+            parser->i += 1;
+            id = Node::Id::INTEGER_COMPARE_EQUAL;
+        }
+        else if (op_ch == '!' && next_ch == '=')
+        {
+            parser->i += 1;
+            id = Node::Id::INTEGER_COMPARE_NOT_EQUAL;
+            negate = 1;
+        }
+        else if (op_ch == '<')
+        {
+            if (next_ch == '=')
+            {
+                parser->i += 1;
+                id = Node::Id::INTEGER_COMPARE_LESS_EQUAL;
+            }
+            else
+            {
+                id = Node::Id::INTEGER_COMPARE_LESS;
+            }
+        }
+        else if (op_ch == '>')
+        {
+            if (next_ch == '=')
+            {
+                parser->i += 1;
+                id = Node::Id::INTEGER_COMPARE_GREATER_EQUAL;
+            }
+            else
+            {
+                id = Node::Id::INTEGER_COMPARE_GREATER;
+            }
+        }
+        else
+        {
+            break;
+        }
+
+        parser->i += 1;
+
+        result = Node::add(thread, {
+            .inputs = array_to_slice(inputs),
+            .id = id,
+        });
+
+        auto* right = analyze_addition_expression(analyzer, parser, thread, src);
+        result->set_input(thread, 2, right);
+
+        result = result->peephole(thread, analyzer->function);
+        if (negate)
+        {
+            trap();
+        }
+    }
+
+    return result;
+}
+
+[[nodiscard]] [[gnu::hot]] fn Node* analyze_expression(Analyzer* analyzer, Parser* parser, Thread* thread, String src)
+{
+    return analyze_comparison_expression(analyzer, parser, thread, src);
 }
 
 fn void push_scope(Analyzer* analyzer)
@@ -4575,12 +5103,12 @@ fn void push_scope(Analyzer* analyzer)
     analyzer->scope->payload.scope.stack.append_one({});
 }
 
-fn void pop_scope(Analyzer* analyzer)
+fn void pop_scope(Analyzer* analyzer, Thread* thread)
 {
-    analyzer->scope->payload.scope.stack.pop();
+    analyzer->scope->pop_inputs(thread, analyzer->scope->payload.scope.stack.pop().length);
 }
 
-fn Node* define_variable(Analyzer* analyzer, Arena* arena, String name, Node* node)
+fn Node* define_variable(Analyzer* analyzer, Thread* thread, String name, Node* node)
 {
     auto* stack = &analyzer->scope->payload.scope.stack;
     assert(stack->length);
@@ -4588,13 +5116,13 @@ fn Node* define_variable(Analyzer* analyzer, Arena* arena, String name, Node* no
 
     auto input_index = analyzer->scope->inputs.length;
 
-    if (last->get_or_put(arena, name, input_index).existing)
+    if (last->get_or_put(thread->arena, name, input_index).existing)
     {
         trap();
         return 0;
     }
 
-    return analyzer->scope->add_input(node);
+    return analyzer->scope->add_input(thread, node);
 }
 
 fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Thread* thread, String src);
@@ -4604,24 +5132,23 @@ fn Node* jump_to(Analyzer* analyzer, Thread* thread, Node* target_scope)
     auto* current_scope = analyzer->duplicate_scope(thread, 0);
     // Kill current scope
     auto* dead_control = Node::add(thread, {
-        .type = { .id = Node::Type::Id::DEAD_CONTROL, },
         .inputs = { .pointer = &analyzer->function->root_node, .length = 1 },
-        .id = Node::Id::CONSTANT_CONTROL,
-    })->peephole(thread, analyzer->function);
-    analyzer->set_control(thread->arena, dead_control);
-
+        .id = Node::Id::CONSTANT,
+    });
+    dead_control->payload.constant.type = thread->common_types.dead_control;
+    dead_control = dead_control->peephole(thread, analyzer->function);
+    analyzer->set_control(thread, dead_control);
+    
     while (current_scope->payload.scope.stack.length > analyzer->break_scope->payload.scope.stack.length)
     {
         current_scope->payload.scope.stack.pop();
     }
-
+    
     if (target_scope)
     {
         assert(target_scope->payload.scope.stack.length <= analyzer->break_scope->payload.scope.stack.length);
         auto* result = target_scope->merge_scopes(thread, analyzer->file, analyzer->function, current_scope);
-        unused(result);
-        // TODO: is this right?
-        // assert(result == target_scope);
+        target_scope->set_control(thread, result);
         return target_scope;
     }
     else
@@ -4645,7 +5172,7 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
         {
             parser->skip_space(src);
 
-            auto* return_value = analyze_expression(analyzer, parser, unit, thread, src, analyzer->function->prototype.original_return_type, Side::right)->peephole(thread, function);
+            auto* return_value = analyze_expression(analyzer, parser, thread, src)->peephole(thread, function);
             parser->expect_character(src, ';');
 
             auto* return_node = analyzer->add_return(thread, return_value);
@@ -4654,17 +5181,13 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
         else if (identifier.equal(strlit("if")))
         {
             parser->skip_space(src);
-
             parser->expect_character(src, parenthesis_open);
-
             parser->skip_space(src);
 
-            auto* predicate_node = analyze_expression(analyzer, parser, unit, thread, src, 0, Side::right);
+            auto* predicate_node = analyze_expression(analyzer, parser, thread, src);
 
             parser->skip_space(src);
-
             parser->expect_character(src, parenthesis_close);
-
             parser->skip_space(src);
 
             Node* if_inputs[] = {
@@ -4673,30 +5196,23 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
             };
 
             auto* if_node = Node::add(thread, {
-                    .type = {},
-                    .inputs = array_to_slice(if_inputs),
-                    .id = Node::Id::IF,
-                    })->keep()->peephole(thread, function);
+                .inputs = array_to_slice(if_inputs),
+                .id = Node::Id::IF,
+            })->peephole(thread, function);
 
-            Node* if_true = if_node->project(thread, if_node, 0, strlit("True"))->peephole(thread, function);
-            if_node->unkeep();
-            Node* if_false = if_node->project(thread, if_node, 1, strlit("False"))->peephole(thread, function);
+            Node* if_true = if_node->project(thread, if_node->keep(), 0, strlit("True"))->peephole(thread, function)->keep();
+            Node* if_false = if_node->project(thread, if_node->unkeep(), 1, strlit("False"))->peephole(thread, function)->keep();
 
             u32 original_input_count = analyzer->scope->inputs.length;
             auto* false_scope = analyzer->duplicate_scope(thread, 0);
 
-            analyzer->set_control(thread->arena, if_true);
-            assert(analyzer->scope->get_control());
-
+            analyzer->set_control(thread, if_true->unkeep());
             analyze_statement(analyzer, parser, unit, thread, src);
-
+            parser->skip_space(src);
             auto* true_scope = analyzer->scope;
 
             analyzer->scope = false_scope;
-            analyzer->set_control(thread->arena, if_false);
-            assert(analyzer->scope->get_control());
-
-            parser->skip_space(src);
+            analyzer->set_control(thread, if_false->unkeep());
 
             if (is_identifier_start(src[parser->i]))
             {
@@ -4724,14 +5240,14 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
             analyzer->scope = true_scope;
 
             auto* merged_scope = true_scope->merge_scopes(thread, analyzer->file, analyzer->function, false_scope);
-            statement_node = analyzer->set_control(thread->arena, merged_scope);
+            statement_node = analyzer->set_control(thread, merged_scope);
             assert(statement_node);
         }
         else if (identifier.equal(strlit("while")))
         {
             parser->skip_space(src);
-
             parser->expect_character(src, parenthesis_open);
+            parser->skip_space(src);
 
             auto* old_break_scope = analyzer->break_scope;
             auto* old_continue_scope = analyzer->continue_scope;
@@ -4742,57 +5258,51 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
                 0,
             };
             auto* loop_node = Node::add(thread, {
-                .type = {},
                 .inputs = array_to_slice(loop_inputs),
                 .id = Node::Id::REGION_LOOP,
             })->peephole(thread, function);
 
-            analyzer->set_control(thread->arena, loop_node);
+            analyzer->set_control(thread, loop_node);
 
-            Node* head = analyzer->scope->keep();
+            Node* head_scope = analyzer->scope->keep();
             analyzer->scope = analyzer->duplicate_scope(thread, 1);
 
-            parser->skip_space(src);
-
-            auto* predicate_node = analyze_expression(analyzer, parser, unit, thread, src, 0, Side::right);
+            auto* predicate_node = analyze_expression(analyzer, parser, thread, src);
 
             parser->skip_space(src);
-
             parser->expect_character(src, parenthesis_close);
-
             parser->skip_space(src);
+
             Node* if_inputs[] = {
                 analyzer->get_control(),
                 predicate_node,
             };
 
             auto* if_node = Node::add(thread, {
-                .type = {},
                 .inputs = array_to_slice(if_inputs),
                 .id = Node::Id::IF,
-            })->keep()->peephole(thread, function);
+            })->peephole(thread, function);
 
-            Node* if_true = if_node->project(thread, if_node, 0, strlit("True"))->peephole(thread, function);
-            if_node->unkeep();
-            Node* if_false = if_node->project(thread, if_node, 1, strlit("False"))->peephole(thread, function);
+            Node* if_true = if_node->project(thread, if_node->keep(), 0, strlit("True"))->peephole(thread, function)->keep();
+            Node* if_false = if_node->project(thread, if_node->unkeep(), 1, strlit("False"))->peephole(thread, function);
 
-            analyzer->set_control(thread->arena, if_false);
+            analyzer->set_control(thread, if_false);
             analyzer->break_scope = analyzer->duplicate_scope(thread, 0);
             analyzer->continue_scope = 0;
 
-            analyzer->set_control(thread->arena, if_true);
+            analyzer->set_control(thread, if_true->unkeep());
             analyze_statement(analyzer, parser, unit, thread, src);
 
             if (analyzer->continue_scope)
             {
                 analyzer->continue_scope = jump_to(analyzer, thread, analyzer->continue_scope);
-                analyzer->scope->kill(thread->arena);
+                analyzer->scope->kill(thread);
                 analyzer->scope = analyzer->continue_scope;
             }
 
             auto* exit_scope = analyzer->break_scope;
-            head->scope_end_loop(thread, function, analyzer->scope, exit_scope);
-            head->unkeep()->kill(thread->arena);
+            head_scope->scope_end_loop(thread, function, analyzer->scope, exit_scope);
+            head_scope->unkeep()->kill(thread);
 
             analyzer->break_scope = old_break_scope;
             analyzer->continue_scope = old_continue_scope;
@@ -4838,15 +5348,15 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
             {
                 parser->skip_space(src);
 
-                enum class StatementOperation : u8
+                enum class LoadStoreOperation : u8
                 {
-                    ASSIGN,
+                    NONE
                 };
-                StatementOperation operation;
+                LoadStoreOperation operation;
                 switch (src[parser->i])
                 {
                     case '=':
-                        operation = StatementOperation::ASSIGN;
+                        operation = LoadStoreOperation::NONE;
                         parser->i += 1;
                         break;
                     default:
@@ -4855,14 +5365,14 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
 
                 parser->skip_space(src);
 
-                Node* right_expression = analyze_expression(analyzer, parser, unit, thread, src, 0, Side::right); 
+                Node* right_expression = analyze_expression(analyzer, parser, thread, src); 
 
                 parser->skip_space(src);
                 parser->expect_character(src, ';');
 
                 switch (operation)
                 {
-                    case StatementOperation::ASSIGN:
+                    case LoadStoreOperation::NONE:
                         if (!analyzer->scope->scope_update(thread, function, identifier, right_expression))
                         {
                             fail();
@@ -4906,7 +5416,7 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
                     struct LocalResult
                     {
                         Node* node;
-                        SemaType* type;
+                        DebugType* type;
                     };
 
                     LocalResult local_result = {};
@@ -4917,14 +5427,14 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
                                 parser->i += 1;
                                 parser->skip_space(src);
 
-                                SemaType* type = analyze_type(parser, unit, src);
+                                DebugType* type = analyze_type(parser, unit, src);
 
                                 parser->skip_space(src);
                                 parser->expect_character(src, '=');
                                 parser->skip_space(src);
 
-                                auto* initial_node = analyze_expression(analyzer, parser, unit, thread, src, type, Side::right);
-                                if (!define_variable(analyzer, thread->arena, name, initial_node))
+                                auto* initial_node = analyze_expression(analyzer, parser, thread, src);
+                                if (!define_variable(analyzer, thread, name, initial_node))
                                 {
                                     fail();
                                 }
@@ -4938,8 +5448,8 @@ fn Node* analyze_statement(Analyzer* analyzer, Parser* parser, Unit* unit, Threa
                                 parser->i += 1;
                                 parser->skip_space(src);
 
-                                auto* initial_node = analyze_expression(analyzer, parser, unit, thread, src, 0, Side::right);
-                                if (!define_variable(analyzer, thread->arena, name, initial_node))
+                                auto* initial_node = analyze_expression(analyzer, parser, thread, src);
+                                if (!define_variable(analyzer, thread, name, initial_node))
                                 {
                                     fail();
                                 }
@@ -4985,7 +5495,7 @@ fn Node* analyze_local_block(Analyzer* analyzer, Parser* parser, Unit* unit, Thr
 
     parser->expect_character(src, block_end);
 
-    pop_scope(analyzer);
+    pop_scope(analyzer, thread);
 
     return 0;
 }
@@ -5010,7 +5520,7 @@ struct SystemVRegisterCount
     u32 sse_registers;
 };
 
-fn SystemVClassification systemv_classify(SemaType* type, u64 base_offset)
+fn SystemVClassification systemv_classify(DebugType* type, u64 base_offset)
 {
     SystemVClassification result;
     u32 is_memory = base_offset >= 8;
@@ -5020,13 +5530,13 @@ fn SystemVClassification systemv_classify(SemaType* type, u64 base_offset)
 
     switch (type->id)
     {
-        case SemaTypeId::VOID:
+        case DebugTypeId::VOID:
             trap();
-        case SemaTypeId::NORETURN:
+        case DebugTypeId::NORETURN:
             trap();
-        case SemaTypeId::POINTER:
+        case DebugTypeId::POINTER:
             trap();
-        case SemaTypeId::INTEGER:
+        case DebugTypeId::INTEGER:
         {
             u8 bit_count = type->get_bit_count();
             switch (bit_count)
@@ -5038,7 +5548,7 @@ fn SystemVClassification systemv_classify(SemaType* type, u64 base_offset)
                     trap();
             }
         } break;
-        case SemaTypeId::COUNT:
+        case DebugTypeId::COUNT:
             trap();
         default:
             trap();
@@ -5047,7 +5557,7 @@ fn SystemVClassification systemv_classify(SemaType* type, u64 base_offset)
     return result;
 }
 
-fn u8 contains_no_user_data(SemaType* type, u64 start, u64 end)
+fn u8 contains_no_user_data(DebugType* type, u64 start, u64 end)
 {
     unused(end);
     if (type->size <= start)
@@ -5057,32 +5567,32 @@ fn u8 contains_no_user_data(SemaType* type, u64 start, u64 end)
 
     switch (type->id)
     {
-        case SemaTypeId::ARRAY:
+        case DebugTypeId::ARRAY:
             trap();
-        case SemaTypeId::STRUCT:
+        case DebugTypeId::STRUCT:
             trap();
-        case SemaTypeId::UNION:
+        case DebugTypeId::UNION:
             trap();
         default:
             return 0;
-        case SemaTypeId::COUNT:
+        case DebugTypeId::COUNT:
             trap();
     }
 }
 
-fn SemaType* systemv_get_int_type_at_offset(SemaType* type, u64 offset, SemaType* source_type, u64 source_offset)
+fn DebugType* systemv_get_int_type_at_offset(DebugType* type, u64 offset, DebugType* source_type, u64 source_offset)
 {
     unused(source_type);
 
     switch (type->id)
     {
-        case SemaTypeId::VOID:
+        case DebugTypeId::VOID:
             trap();
-        case SemaTypeId::NORETURN:
+        case DebugTypeId::NORETURN:
             trap();
-        case SemaTypeId::POINTER:
+        case DebugTypeId::POINTER:
             trap();
-        case SemaTypeId::INTEGER:
+        case DebugTypeId::INTEGER:
         {
             u8 bit_count = type->get_bit_count();
             switch (bit_count)
@@ -5107,18 +5617,18 @@ fn SemaType* systemv_get_int_type_at_offset(SemaType* type, u64 offset, SemaType
             }
             trap();
         } break;
-        case SemaTypeId::COUNT:
+        case DebugTypeId::COUNT:
             trap();
-        case SemaTypeId::ARRAY:
+        case DebugTypeId::ARRAY:
             trap();
-        case SemaTypeId::STRUCT:
+        case DebugTypeId::STRUCT:
             trap();
-        case SemaTypeId::UNION:
+        case DebugTypeId::UNION:
             trap();
     }
 }
 
-fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file)
+fn Function* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file)
 {
     String src = file->source_code;
     parser->expect_character(src, 'f');
@@ -5223,20 +5733,20 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
         fail();
     }
 
+    auto function_index = thread->functions.length;
     auto* function = thread->functions.add_one();
-    auto function_gvn = thread->node_count;
+    auto node_id = thread->node_count;
     thread->node_count += 1;
 
     auto symbol_result = file->symbols.get_or_put(thread->arena, name, Node{
         .type = {},
-        .inputs = {},
-        .outputs = {},
-        .gvn = function_gvn,
+        .uid = node_id,
         .id = Node::Id::SYMBOL_FUNCTION,
         .payload = {
             .symbol = &function->symbol,
         },
     });
+
     if (symbol_result.existing)
     {
         fail();
@@ -5322,7 +5832,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
 
     parser->expect_character(src, function_argument_start);
 
-    Array<SemaType*> original_argument_types = {};
+    Array<DebugType*> original_argument_types = {};
     Array<String> argument_names = {};
 
     while (1)
@@ -5341,7 +5851,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
         parser->expect_character(src, ':');
         parser->skip_space(src);
 
-        SemaType* argument_type = analyze_type(parser, unit, src);
+        DebugType* argument_type = analyze_type(parser, unit, src);
         original_argument_types.append_one(argument_type);
 
         parser->skip_space(src);
@@ -5361,7 +5871,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
 
     parser->skip_space(src);
 
-    SemaType* original_return_type = analyze_type(parser, unit, src);
+    DebugType* original_return_type = analyze_type(parser, unit, src);
 
     parser->skip_space(src);
 
@@ -5377,12 +5887,12 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                 SystemVClassification return_type_classes = systemv_classify(original_return_type, 0);
                 assert(return_type_classes.v[1] != SYSTEMV_CLASS_MEMORY | return_type_classes.v[0] == SYSTEMV_CLASS_MEMORY);
                 assert(return_type_classes.v[1] != SYSTEMV_CLASS_SSEUP | return_type_classes.v[0] == SYSTEMV_CLASS_SSE);
-                SemaType* low_part = 0;
+                DebugType* low_part = 0;
                 switch (return_type_classes.v[0])
                 {
                     case SYSTEMV_CLASS_INTEGER:
                         {
-                            SemaType* result_type = systemv_get_int_type_at_offset(original_return_type, 0, original_return_type, 0);
+                            DebugType* result_type = systemv_get_int_type_at_offset(original_return_type, 0, original_return_type, 0);
                             if (return_type_classes.v[1] == SYSTEMV_CLASS_NONE & original_return_type->get_bit_count() < 32)
                             {
                                 trap();
@@ -5395,7 +5905,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                 }
                 assert(low_part);
 
-                SemaType* high_part = 0;
+                DebugType* high_part = 0;
                 switch (return_type_classes.v[1])
                 {
                     case SYSTEMV_CLASS_NONE:
@@ -5425,7 +5935,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                             return_type_abi =
                             {
                                 .payload = {
-                                    .direct = low_part->lower(),
+                                    .direct = low_part->lower(thread),
                                 },
                                 .kind = ABI_INFO_DIRECT,
                             };
@@ -5470,16 +5980,16 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
         {
             return_type_abi = {
                 .payload = {
-                    .direct = original_return_type->lower(),
+                    .direct = original_return_type->lower(thread),
                 },
                 .kind = ABI_INFO_DIRECT,
             };
 
-            for (SemaType* original_argument_type : original_argument_types.slice())
+            for (DebugType* original_argument_type : original_argument_types.slice())
             {
                 argument_type_abis.append_one({
                     .payload = {
-                        .direct = original_argument_type->lower(),
+                        .direct = original_argument_type->lower(thread),
                     },
                     .kind = AbiInfoKind::ABI_INFO_DIRECT,
                 });
@@ -5514,7 +6024,6 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                         trap();
                 }
 
-
                 *function = {
                     .symbol = {
                         .name = name,
@@ -5532,12 +6041,13 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                         .original_argument_count = original_argument_types.length,
                         .varags = 0,
                     },
+                    .uid = function_index,
                     .parameter_count = (u16)argument_type_abis.length,
                 };
 
-                Array<Node::Type> abi_argument_types = {};
-                Array<Node::Type> root_arg_types = {};
-                root_arg_types.append_one({ .id = Node::Type::Id::LIVE_CONTROL });
+                Array<Node::Type*> abi_argument_types = {};
+                Array<Node::Type*> root_arg_types = {};
+                root_arg_types.append_one(thread->common_types.live_control);
 
                 for (u32 i = 0; i < argument_type_abis.length; i += 1)
                 {
@@ -5578,24 +6088,25 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
 
                 root_arg_types.append(abi_argument_types.slice());
 
-                Node::Type root_type = {
-                    .id = Node::Type::Id::MULTIVALUE,
+                auto* root_type = thread->types.append_one({
                     .payload = {
                         .multi = {
                             .types = root_arg_types.slice(),
                         },
                     },
-                };
+                    .id = NodeType::Id::MULTIVALUE,
+                })->intern_type(thread);
+
                 function->root_node = Node::add(thread, {
-                    .type = root_type,
                     .inputs = {},
                     .id = Node::Id::ROOT,
                 });
+                function->root_node->type = root_type,
                 function->root_node->payload.root.args = root_type;
+                function->root_node->payload.root.function = function;
                 function->root_node->peephole(thread, function);
 
                 function->stop_node = Node::add(thread, {
-                    .type = {},
                     .inputs = {},
                     .id = Node::Id::STOP,
                 });
@@ -5610,7 +6121,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                 s32 next_index = 0;
                 Node* control_node = function->root_node->project(thread, function->root_node, next_index, control_name)->peephole(thread, function);
                 next_index += 1;
-                define_variable(&analyzer, thread->arena, control_name, control_node);
+                define_variable(&analyzer, thread, control_name, control_node);
                 // assert(abi_argument_type_count == 0);
                 // TODO: reserve memory for them
 
@@ -5630,7 +6141,7 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
                     case ABI_INFO_DIRECT:
                         {
                             auto* argument_node = function->root_node->project(thread, function->root_node, next_index, argument_name)->peephole(thread, function);
-                            define_variable(&analyzer, thread->arena, argument_name, argument_node);
+                            define_variable(&analyzer, thread, argument_name, argument_node);
                             next_index += 1;
                         } break;
                     case ABI_INFO_DIRECT_PAIR:
@@ -5652,11 +6163,11 @@ fn Node* analyze_function(Parser* parser, Thread* thread, Unit* unit, File* file
 
                 analyze_local_block(&analyzer, parser, unit, thread, src);
 
-                pop_scope(&analyzer);
+                pop_scope(&analyzer, thread);
 
                 function->stop_node->peephole(thread, function);
 
-                return function->stop_node;
+                return function;
             } break;
         case 1:
             trap();
@@ -5694,7 +6205,8 @@ fn void unit_file_analyze(Thread* thread, Unit* unit, File* file)
             case 'f':
                 if (get_next_ch_safe(src, declaration_start_index) == 'n')
                 {
-                    analyze_function(&parser, thread, unit, file);
+                    auto* function = analyze_function(&parser, thread, unit, file);
+                    function->iterate(thread);
                 }
                 else
                 {
@@ -5705,6 +6217,177 @@ fn void unit_file_analyze(Thread* thread, Unit* unit, File* file)
                 fail();
         }
     }
+}
+
+method void Thread::init()
+{
+    auto* live_control = types.append_one({
+        .id = NodeType::Id::LIVE_CONTROL,
+    })->intern_type(this);
+    auto* dead_control = types.append_one({
+        .id = NodeType::Id::DEAD_CONTROL,
+    })->intern_type(this);
+
+    auto if_both_types = arena->allocate_slice<NodeType*>(2);
+    if_both_types[0] = live_control;
+    if_both_types[1] = live_control;
+
+    auto if_neither_types = arena->allocate_slice<NodeType*>(2);
+    if_neither_types[0] = dead_control;
+    if_neither_types[1] = dead_control;
+
+    auto if_true_types = arena->allocate_slice<NodeType*>(2);
+    if_true_types[0] = live_control;
+    if_true_types[1] = dead_control;
+
+    auto if_false_types = arena->allocate_slice<NodeType*>(2);
+    if_false_types[0] = dead_control;
+    if_false_types[1] = live_control;
+
+    common_types = {
+        .bottom = types.append_one({
+                .id = NodeType::Id::BOTTOM,
+                })->intern_type(this),
+        .top = types.append_one({
+                .id = NodeType::Id::TOP,
+                })->intern_type(this),
+        .live_control = types.append_one({
+                .id = NodeType::Id::LIVE_CONTROL,
+                })->intern_type(this),
+        .dead_control = types.append_one({
+                .id = NodeType::Id::DEAD_CONTROL,
+                })->intern_type(this),
+        .integer_bot = types.append_one({
+                .payload = {
+                .constant = {
+                .constant = 0,
+                .is_constant = 0,
+                },
+                },
+                .id = NodeType::Id::INTEGER,
+                })->intern_type(this),
+        .integer_top = types.append_one({
+                .payload = {
+                .constant = {
+                .constant = 1,
+                .is_constant = 0,
+                },
+                },
+                .id = NodeType::Id::INTEGER,
+                })->intern_type(this),
+        .integer_zero = types.append_one({
+                .payload = {
+                .constant = {
+                .constant = 0,
+                .is_constant = 1,
+                },
+                },
+                .id = NodeType::Id::INTEGER,
+                })->intern_type(this),
+        .if_both = types.append_one({
+                .payload = {
+                .multi = {
+                .types = if_both_types, 
+                },
+                },
+                .id = NodeType::Id::MULTIVALUE,
+                })->intern_type(this),
+        .if_neither = types.append_one({
+                .payload = {
+                .multi = {
+                .types = if_neither_types, 
+                },
+                },
+                .id = NodeType::Id::MULTIVALUE,
+                })->intern_type(this),
+        .if_true = types.append_one({
+                .payload = {
+                .multi = {
+                .types = if_true_types, 
+                },
+                },
+                .id = NodeType::Id::MULTIVALUE,
+                })->intern_type(this),
+        .if_false = types.append_one({
+                .payload = {
+                .multi = {
+                .types = if_false_types, 
+                },
+                },
+                .id = NodeType::Id::MULTIVALUE,
+                })->intern_type(this),
+    };
+
+}
+
+method void Thread::clear()
+{
+    functions.clear();
+    nodes.clear();
+    types.clear();
+    interned_nodes.clear();
+    interned_types.clear();
+    worklist.clear();
+    visited.clear();
+    common_types = {};
+    node_count = 0;
+    peephole_iteration_count = 0;
+    peephole_nop_iteration_count = 0;
+    arena->reset();
+}
+
+fn Node* progress_on_list_callback(Thread* thread, Function* function, Node* node)
+{
+    Node* result = 0;
+
+    if (!thread->worklist.on(node))
+    {
+        Node* new_node = node->peephole_optimize(thread, function);
+        if (new_node)
+        {
+            result = new_node;
+        }
+    }
+
+    return result;
+}
+
+method u8 Thread::progress_on_list(Function* function, Node* stop)
+{
+    mid_assert = 1;
+    auto old_iteration_count = peephole_iteration_count;
+    auto old_nop_iteration_count = peephole_nop_iteration_count;
+
+    Node* changed = stop->walk(this, function, &progress_on_list_callback);
+    peephole_iteration_count = old_iteration_count;
+    peephole_nop_iteration_count = old_nop_iteration_count;
+    mid_assert = 0;
+    assert(changed == 0);
+    return changed == 0;
+}
+
+method u8 WorkList::on(Node* node)
+{
+    return bitset.get(node->uid);
+}
+
+method Node* WorkList::push(Node* node)
+{
+    Node* result = 0;
+
+    if (node)
+    {
+        result = node;
+        u32 index = node->uid;
+
+        if (!bitset.get(index))
+        {
+            bitset.set_assert_unset(index);
+            nodes.append_one(node);
+        }
+    }
+
+    return result;
 }
 
 global Instance instance;
@@ -5720,24 +6403,26 @@ global String test_file_paths[] = {
     strlit("tests/break_continue/main.nat"),
 };
 
-#ifdef __linux__
-extern "C" void entry_point()
-#else
+#if LINK_LIBC
 int main()
+#else
+extern "C" void entry_point()
 #endif
 {
     instance.arena = Arena::init(Arena::default_size, Arena::minimum_granularity, KB(4));
-
+    Thread* thread = instance_add_thread(&instance);
     for (String test_file_path : test_file_paths)
     {
+        thread->init();
         print(test_file_path);
         print(strlit("... "));
         Unit* unit = instance_add_unit(&instance);
         unit_initialize(unit);
-        Thread* thread = instance_add_thread(&instance);
         File* file = add_file(thread->arena, test_file_path);
         unit_file_analyze(thread, unit, file);
         print(strlit("[\x1b[32mOK\x1b[0m]\n"));
+        file->symbols.clear();
+        thread->clear();
     }
 
     print(strlit("\x1b[32mTESTS SUCCEEDED!\x1b[0m\n"));
