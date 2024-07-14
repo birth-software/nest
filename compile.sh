@@ -12,9 +12,9 @@ function compile()
     compile_command="clang++ -o $build_dir/$exe_name $debug_info $optimizations -std=gnu++20 -Wall -Wextra -Wpedantic -Wno-nested-anon-types -pedantic -fno-exceptions -fno-stack-protector -ferror-limit=1 -MJ $build_dir/compile_commands.json"
 
     case "$OSTYPE" in
-        darwin*)  ;;
-        linux*)   compile_command="$compile_command -ffreestanding -nostdlib -static bootstrap/entry.S" ;;
-        *)        echo "unknown: $OSTYPE" ;;
+        darwin*)  compile_command="$compile_command -DDEMAND_LIBC=1";;
+        linux*)   compile_command="$compile_command -ffreestanding -nostdlib -static bootstrap/entry.S -DDEMAND_LIBC=0" ;;
+        *)        echo "Unknown operating system $OSTYPE: no specific flags were added" ;;
     esac
 
     compile_command="$compile_command bootstrap/main.cpp"
