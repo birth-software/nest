@@ -1558,7 +1558,7 @@ typedef struct Thread Thread;
 typedef enum TypeId : u32
 {
     // Simple types
-    TYPE_BOT = 0,
+    TYPE_BOTTOM = 0,
     TYPE_TOP,
     TYPE_LIVE_CONTROL,
     TYPE_DEAD_CONTROL,
@@ -1780,6 +1780,59 @@ struct InternPool
 };
 typedef struct InternPool InternPool;
 
+typedef u64 BitsetElement;
+decl_vb(BitsetElement);
+declare_slice(BitsetElement);
+struct Bitset
+{
+    VirtualBuffer(BitsetElement) arr;
+    u32 length;
+};
+typedef struct Bitset Bitset;
+const u64 element_bitsize = sizeof(u64) * 8;
+
+fn u8 bitset_get(Bitset* bitset, u64 index)
+{
+    auto element_index = index / element_bitsize;
+    if (element_index < bitset->arr.length)
+    {
+        auto bit_index = index % element_bitsize;
+        auto result = (bitset->arr.pointer[element_index] & (1 << bit_index)) != 0;
+        return result;
+    }
+
+    return 0;
+}
+
+fn void bitset_ensure_length(Bitset* bitset, u64 max)
+{
+    auto length = (max / (sizeof(u64) * 8)) + (max % (sizeof(u64) * 8) != 0);
+    auto old_length = bitset->arr.length;
+    if (old_length < length)
+    {
+        auto new_element_count = length - old_length;
+        unused(vb_add(&bitset->arr, new_element_count));
+    }
+}
+
+fn void bitset_set_assert_unset(Bitset* bitset, u64 index)
+{
+    bitset_ensure_length(bitset, index + 1);
+    auto element_index = index / element_bitsize;
+    auto bit_index = index % element_bitsize;
+    assert((bitset->arr.pointer[element_index] & (1 << bit_index)) == 0);
+    bitset->arr.pointer[element_index] |= 1 << bit_index;
+}
+
+struct WorkList
+{
+    VirtualBuffer(NodeIndex) nodes;
+    Bitset visited;
+    Bitset bitset;
+    u32 mid_assert:1;
+};
+typedef struct WorkList WorkList;
+
 struct Thread
 {
     Arena* arena;
@@ -1815,6 +1868,7 @@ struct Thread
         u64 total;
         u64 nop;
     } iteration;
+    WorkList worklist;
 };
 typedef struct Thread Thread;
 
@@ -2611,8 +2665,14 @@ fn NodeIndex idealize_stop(Thread* thread, NodeIndex node_index)
     }
 }
 
+fn TypeIndex compute_type_start(Thread* thread, NodeIndex node_index)
+{
+    auto* node = thread_node_get(thread, node_index);
+    return node->start.arguments;
+}
+
 global const TypeVirtualTable type_functions[TYPE_COUNT] = {
-    [TYPE_BOT] = { .get_hash = &type_get_hash_default },
+    [TYPE_BOTTOM] = { .get_hash = &type_get_hash_default },
     [TYPE_TOP] = { .get_hash = &type_get_hash_default },
     [TYPE_LIVE_CONTROL] = { .get_hash = &type_get_hash_default },
     [TYPE_DEAD_CONTROL] = { .get_hash = &type_get_hash_default },
@@ -2621,6 +2681,10 @@ global const TypeVirtualTable type_functions[TYPE_COUNT] = {
 };
 
 global const NodeVirtualTable node_functions[NODE_COUNT] = {
+    [NODE_START] = {
+        .compute_type = &compute_type_start,
+        .idealize = &idealize_null,
+    },
     [NODE_STOP] = {
         .compute_type = &compute_type_bottom,
         .idealize = &idealize_stop,
@@ -2958,7 +3022,8 @@ fn TypeIndex type_meet(Thread* thread, TypeIndex a, TypeIndex b)
         }
         else if (type_is_simple(a_type))
         {
-            trap();
+            left = a;
+            right = b;
         }
         else if (type_is_simple(b_type))
         {
@@ -2985,23 +3050,47 @@ fn TypeIndex type_meet(Thread* thread, TypeIndex a, TypeIndex b)
                         auto integer_top = thread->types.integer.top;
                         if (index_equal(left, integer_bot))
                         {
-                            result = a; 
+                            result = left; 
                         }
                         else if (index_equal(right, integer_bot))
                         {
-                            result = b; 
+                            result = right; 
                         }
                         else if (index_equal(right, integer_top))
                         {
-                            result = a; 
+                            result = left; 
                         }
                         else if (index_equal(left, integer_top))
                         {
-                            result = b; 
+                            result = right; 
                         }
                         else
                         {
                             result = integer_bot;
+                        }
+                    } break;
+                case TYPE_BOTTOM:
+                    {
+                        assert(type_is_simple(left_type));
+                        if ((left_type->id == TYPE_BOTTOM) | (right_type->id == TYPE_TOP))
+                        {
+                            result = left;
+                        }
+                        else if ((left_type->id == TYPE_TOP) | (right_type->id == TYPE_BOTTOM))
+                        {
+                            result = right;
+                        }
+                        else if (!type_is_simple(right_type))
+                        {
+                            result = thread->types.bottom;
+                        }
+                        else if (left_type->id == TYPE_LIVE_CONTROL)
+                        {
+                            result = thread->types.live_control;
+                        }
+                        else
+                        {
+                            result = thread->types.dead_control;
                         }
                     } break;
                 default:
@@ -3618,6 +3707,98 @@ fn void analyze_file(Thread* thread, File* file)
     }
 }
 
+typedef NodeIndex NodeCallback(Thread* thread, NodeIndex node_index);
+
+fn NodeIndex node_walk_internal(Thread* thread, NodeIndex node_index, NodeCallback* callback)
+{
+    if (bitset_get(&thread->worklist.visited, geti(node_index)))
+    {
+        return invalidi(Node);
+    }
+    else
+    {
+        bitset_set_assert_unset(&thread->worklist.visited, geti(node_index));
+        auto callback_result = callback(thread, node_index);
+        if (validi(callback_result))
+        {
+            return callback_result;
+        }
+
+        auto* node = thread_node_get(thread, node_index);
+        auto inputs = node_get_inputs(thread, node);
+        auto outputs = node_get_outputs(thread, node);
+
+        for (u64 i = 0; i < inputs.length; i += 1)
+        {
+            auto n = inputs.pointer[i];
+            if (validi(n))
+            {
+                auto n_result = node_walk_internal(thread, n, callback);
+                if (validi(n_result))
+                {
+                    return n_result;
+                }
+            }
+        }
+
+        for (u64 i = 0; i < outputs.length; i += 1)
+        {
+            auto n = outputs.pointer[i];
+            if (validi(n))
+            {
+                auto n_result = node_walk_internal(thread, n, callback);
+                if (validi(n_result))
+                {
+                    return n_result;
+                }
+            }
+        }
+
+        return invalidi(Node);
+    }
+}
+
+fn NodeIndex node_walk(Thread* thread, NodeIndex node_index, NodeCallback* callback)
+{
+    assert(thread->worklist.visited.length == 0);
+    NodeIndex result = node_walk_internal(thread, node_index, callback);
+    thread->worklist.visited.length = 0;
+    return result;
+}
+
+fn NodeIndex progress_on_list_callback(Thread* thread, NodeIndex node_index)
+{
+    if (bitset_get(&thread->worklist.bitset, geti(node_index)))
+    {
+        trap();
+    }
+    else
+    {
+        NodeIndex new_node = peephole_optimize(thread, node_index);
+        return new_node;
+    }
+}
+
+fn u8 progress_on_list(Thread* thread, NodeIndex stop_node)
+{
+    thread->worklist.mid_assert = 1;
+
+    NodeIndex changed = node_walk(thread, stop_node, &progress_on_list_callback);
+
+    thread->worklist.mid_assert = 0;
+
+    return !validi(changed);
+}
+
+fn void iterate_peepholes(Thread* thread, NodeIndex stop_node_index)
+{
+    assert(progress_on_list(thread, stop_node_index));
+    if (thread->worklist.nodes.length > 0)
+    {
+        trap();
+    }
+}
+
 fn void thread_init(Thread* thread)
 {
     *thread = (Thread) {
@@ -3627,7 +3808,7 @@ fn void thread_init(Thread* thread)
     memset(&top, 0, sizeof(Type));
     top.id = TYPE_TOP;
     memset(&bot, 0, sizeof(Type));
-    bot.id = TYPE_BOT;
+    bot.id = TYPE_BOTTOM;
     memset(&live_control, 0, sizeof(Type));
     live_control.id = TYPE_LIVE_CONTROL;
     memset(&dead_control, 0, sizeof(Type));
@@ -3864,7 +4045,8 @@ fn void thread_clear(Thread* thread)
 //
 //     system("clang main.o -o main.exe");
 
-
+#define DO_UNIT_TESTS 1
+#if DO_UNIT_TESTS
 fn void unit_tests()
 {
     for (u64 power = 1, log2_i = 0; log2_i < 64; power <<= 1, log2_i += 1)
@@ -3872,6 +4054,7 @@ fn void unit_tests()
         assert(log2_alignment(power) == log2_i);
     }
 }
+#endif
 
 #if LINK_LIBC
 int main()
@@ -3879,9 +4062,9 @@ int main()
 extern "C" void entry_point()
 #endif
 {
-    {
+#if DO_UNIT_TESTS
         unit_tests();
-    }
+#endif
     Arena* global_arena = arena_init_default(KB(64));
     Thread* thread = arena_allocate(global_arena, Thread, 1);
     thread_init(thread);
@@ -3893,6 +4076,14 @@ extern "C" void entry_point()
             .source = file_read(thread->arena, test_files[i]),
         };
         analyze_file(thread, &file);
+
+        for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
+        {
+            Function* function = &thread->buffer.functions.pointer[function_i];
+            NodeIndex stop_node_index = function->stop;
+            iterate_peepholes(thread, stop_node_index);
+        }
+
         thread_clear(thread);
     }
 }
