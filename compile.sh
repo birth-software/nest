@@ -9,15 +9,16 @@ function compile()
 
     mkdir -p $build_dir
 
-    compile_command="clang++ -o $build_dir/$exe_name $debug_info $optimizations -std=gnu++20 -Wall -Wextra -Wpedantic -Wno-nested-anon-types -pedantic -fno-exceptions -fno-stack-protector -ferror-limit=1 -MJ $build_dir/compile_commands.json"
+    compile_command="clang -o $build_dir/$exe_name $debug_info $optimizations -std=gnu2x -Wall -Wextra -Wpedantic -Wno-nested-anon-types -Wno-keyword-macro -Wno-gnu-auto-type -Wno-auto-decl-extensions -pedantic -fno-exceptions -fno-stack-protector -ferror-limit=1 -MJ $build_dir/compile_commands.json"
 
     case "$OSTYPE" in
         darwin*)  compile_command="$compile_command -DDEMAND_LIBC=1";;
-        linux*)   compile_command="$compile_command -ffreestanding -nostdlib -static bootstrap/entry.S -DDEMAND_LIBC=0" ;;
+        # linux*)   compile_command="$compile_command -ffreestanding -nostdlib -static bootstrap/entry.S -DDEMAND_LIBC=0" ;;
+        linux*)   compile_command="$compile_command -DDEMAND_LIBC=1" ;;
         *)        echo "Unknown operating system $OSTYPE: no specific flags were added" ;;
     esac
 
-    compile_command="$compile_command bootstrap/main.cpp"
+    compile_command="$compile_command bootstrap/main.c"
     echo -e "\x1b[36m$compile_command\x1b[0m"
     eval "time $compile_command"
 }
