@@ -1,4 +1,4 @@
-fn[cc(.c)] main [export] () s32
+fn main () s32
 {
     return 0;
 }
