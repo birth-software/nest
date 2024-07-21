@@ -1308,6 +1308,9 @@ fn String file_read(Arena* arena, String path)
     assert(read_result >= 0);
     assert((u64)read_result == file_size);
 
+    auto close_result = syscall_close(file_descriptor);
+    assert(close_result == 0);
+
     return result;
 }
 
@@ -1655,6 +1658,14 @@ typedef struct NodeIndex NodeIndex;
 declare_slice(NodeIndex);
 decl_vb(NodeIndex);
 
+struct NodeCFG
+{
+    s32 immediate_dominator_tree_depth;
+    s32 loop_depth;
+    s32 anti_dependency;
+};
+typedef struct NodeCFG NodeCFG;
+
 struct NodeConstant
 {
     TypeIndex type;
@@ -1663,9 +1674,16 @@ typedef struct NodeConstant NodeConstant;
 
 struct NodeStart
 {
+    NodeCFG cfg;
     TypeIndex arguments;
 };
 typedef struct NodeStart NodeStart;
+
+struct NodeStop
+{
+    NodeCFG cfg;
+};
+typedef struct NodeStop NodeStop;
 
 struct ScopePair
 {
@@ -1688,14 +1706,6 @@ struct NodeScope
 };
 typedef struct NodeScope NodeScope;
 
-struct NodeCFG
-{
-    s32 immediate_dominator_tree_depth;
-    s32 loop_depth;
-    s32 anti_dependency;
-};
-typedef struct NodeCFG NodeCFG;
-
 struct NodeProjection
 {
     String label;
@@ -1709,6 +1719,18 @@ struct NodeControlProjection
     NodeCFG cfg;
 };
 typedef struct NodeControlProjection NodeControlProjection;
+
+struct NodeReturn
+{
+    NodeCFG cfg;
+};
+typedef struct NodeReturn NodeReturn;
+
+struct NodeDeadControl
+{
+    NodeCFG cfg;
+};
+typedef struct NodeDeadControl NodeDeadControl;
 
 struct Node
 {
@@ -1729,8 +1751,11 @@ struct Node
     {
         NodeConstant constant;
         NodeStart start;
+        NodeStop stop;
         NodeScope scope;
         NodeControlProjection control_projection;
+        NodeReturn return_node;
+        NodeDeadControl dead_control;
     };
 };
 typedef struct Node Node;
@@ -1824,6 +1849,13 @@ fn void bitset_set_assert_unset(Bitset* bitset, u64 index)
     bitset->arr.pointer[element_index] |= 1 << bit_index;
 }
 
+fn void bitset_clear(Bitset* bitset)
+{
+    memset(bitset->arr.pointer, 0, bitset->arr.capacity);
+    bitset->arr.length = 0;
+    bitset->length = 0;
+}
+
 struct WorkList
 {
     VirtualBuffer(NodeIndex) nodes;
@@ -1871,6 +1903,13 @@ struct Thread
     WorkList worklist;
 };
 typedef struct Thread Thread;
+
+fn void thread_worklist_clear(Thread* thread)
+{
+    bitset_clear(&thread->worklist.visited);
+    bitset_clear(&thread->worklist.bitset);
+    thread->worklist.nodes.length = 0;
+}
 
 fn Type* thread_type_get(Thread* thread, TypeIndex type_index)
 {
@@ -1993,11 +2032,15 @@ fn NodeIndex node_add_output(Thread* thread, NodeIndex node_index, NodeIndex out
     return node_index;
 }
 
-fn void node_unlock(Thread* thread, Node* node)
+fn NodeIndex intern_pool_remove_node(Thread* thread, NodeIndex node_index);
+fn void node_unlock(Thread* thread, NodeIndex node_index)
 {
+    auto* node = thread_node_get(thread, node_index);
     if (node->hash)
     {
-        trap();
+        auto old_node_index = intern_pool_remove_node(thread, node_index);
+        assert(index_equal(old_node_index, node_index));
+        node->hash = 0;
     }
 }
 
@@ -2066,7 +2109,7 @@ fn NodeIndex node_set_input(Thread* thread, NodeIndex node_index, u16 index, Nod
 {
     auto* node = thread_node_get(thread, node_index);
     assert(index < node->input_count);
-    node_unlock(thread, node);
+    node_unlock(thread, node_index);
     auto old_input = node_input_get(thread, node, index);
 
     if (!index_equal(old_input, new_input))
@@ -2099,8 +2142,8 @@ fn NodeIndex builder_set_control(Thread* thread, FunctionBuilder* builder, NodeI
 
 fn NodeIndex node_add_input(Thread* thread, NodeIndex node_index, NodeIndex input_index)
 {
+    node_unlock(thread, node_index);
     Node* this_node = thread_node_get(thread, node_index);
-    node_unlock(thread, this_node);
     node_add_one(thread, &this_node->input_offset, &this_node->input_capacity, &this_node->input_count, input_index);
     if (validi(input_index))
     {
@@ -2169,8 +2212,8 @@ fn void scope_push(Thread* thread, FunctionBuilder* builder)
 
 fn void node_pop_inputs(Thread* thread, NodeIndex node_index, u16 input_count)
 {
+    node_unlock(thread, node_index);
     auto* node = thread_node_get(thread, node_index);
-    node_unlock(thread, node);
     auto inputs = node_get_inputs(thread, node);
     for (u16 i = 0; i < input_count; i += 1)
     {
@@ -2725,7 +2768,7 @@ fn Hash hash_type(Thread* thread, Type* type)
 
 fn NodeIndex intern_pool_put_node_at_assume_not_existent_assume_capacity(Thread* thread, NodeIndex node, u32 index)
 {
-    thread->interned.nodes.pointer[index] = geti(node);
+    thread->interned.nodes.pointer[index] = *(u32*)&node;
     thread->interned.nodes.length += 1;
 
     return node;
@@ -2766,7 +2809,7 @@ fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex 
         auto index = it_index & (existing_capacity - 1);
         u32 key = thread->interned.nodes.pointer[index];
 
-        if ((key == 0) | (key == geti(node_index)))
+        if (key == 0)
         {
             result = index;
             break;
@@ -2774,10 +2817,18 @@ fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex 
         else
         {
             NodeIndex existing_node_index = *(NodeIndex*)&key;
-            auto* existing_node = &thread->buffer.nodes.pointer[geti(existing_node_index)];
-            if (existing_node->id == node->id)
+            if (index_equal(existing_node_index, node_index))
             {
-                trap();
+                result = index;
+                break;
+            }
+            else
+            {
+                auto* existing_node = &thread->buffer.nodes.pointer[geti(existing_node_index)];
+                if (existing_node->id == node->id)
+                {
+                    trap();
+                }
             }
         }
 
@@ -2815,7 +2866,7 @@ fn NodeGetOrPut intern_pool_get_or_put_node(Thread* thread, NodeIndex node_index
     if (slot != -1)
     {
         u32 index = slot;
-        u8 existing = thread->interned.nodes.pointer[index];
+        u8 existing = thread->interned.nodes.pointer[index] != 0;
         auto result = intern_pool_put_node_at_assume_not_existent_assume_capacity(thread, node_index, index);
         return (NodeGetOrPut) {
             .index = result,
@@ -2842,6 +2893,40 @@ fn NodeGetOrPut intern_pool_get_or_put_node(Thread* thread, NodeIndex node_index
         }
     }
 }
+
+fn NodeIndex intern_pool_remove_node(Thread* thread, NodeIndex node_index)
+{
+    auto existing_capacity = thread->interned.nodes.capacity;
+    auto* node = thread_node_get(thread, node_index);
+    auto hash = hash_node(node);
+    auto original_index = hash & (existing_capacity - 1);
+    auto slot = intern_pool_find_node_slot(thread, original_index, node_index);
+    if (slot != -1)
+    {
+        auto index = (u32)slot;
+        auto* slot_pointer = &thread->interned.nodes.pointer[index];
+        auto old_node_index = *(NodeIndex*)slot_pointer;
+        *slot_pointer = 0;
+
+        while (1)
+        {
+            index = (index + 1) & (existing_capacity - 1);
+            if (thread->interned.nodes.pointer[index] == 0)
+            {
+                break;
+            }
+            trap();
+        }
+
+        return old_node_index;
+    }
+    else
+    {
+        trap();
+    }
+}
+
+
 global String test_files[] = {
     strlit("tests/first/main.nat"),
 };
@@ -3762,7 +3847,7 @@ fn NodeIndex node_walk(Thread* thread, NodeIndex node_index, NodeCallback* callb
 {
     assert(thread->worklist.visited.length == 0);
     NodeIndex result = node_walk_internal(thread, node_index, callback);
-    thread->worklist.visited.length = 0;
+    bitset_clear(&thread->worklist.visited);
     return result;
 }
 
@@ -3796,6 +3881,190 @@ fn void iterate_peepholes(Thread* thread, NodeIndex stop_node_index)
     if (thread->worklist.nodes.length > 0)
     {
         trap();
+    }
+
+    thread_worklist_clear(thread);
+}
+
+fn u8 node_is_cfg(Node* node)
+{
+    switch (node->id)
+    {
+        case NODE_START:
+        case NODE_DEAD_CONTROL:
+        case NODE_CONTROL_PROJECTION:
+        case NODE_RETURN:
+        case NODE_STOP:
+            return 1;
+        case NODE_CONSTANT:
+            return 0;
+        default:
+            trap();
+    }
+}
+
+fn void rpo_cfg(Thread* thread, NodeIndex node_index)
+{
+    auto* node = thread_node_get(thread, node_index);
+    if (node_is_cfg(node) && !bitset_get(&thread->worklist.visited, geti(node_index)))
+    {
+        bitset_set_assert_unset(&thread->worklist.visited, geti(node_index));
+        auto outputs = node_get_outputs(thread, node);
+        for (u64 i = 0; i < outputs.length; i += 1)
+        {
+            auto output = outputs.pointer[i];
+            if (validi(output))
+            {
+                rpo_cfg(thread, output);
+            }
+        }
+
+        *vb_add(&thread->worklist.nodes, 1) = node_index;
+    }
+}
+
+fn s32 node_loop_depth(Thread* thread, Node* node)
+{
+    assert(node_is_cfg(node));
+    s32 loop_depth;
+    switch (node->id)
+    {
+        case NODE_START:
+            {
+                loop_depth = node->start.cfg.loop_depth;
+                if (!loop_depth)
+                {
+                    loop_depth = node->start.cfg.loop_depth = 1;
+                }
+            } break;
+        case NODE_STOP:
+            {
+                loop_depth = node->stop.cfg.loop_depth;
+                if (!loop_depth)
+                {
+                    loop_depth = node->stop.cfg.loop_depth = 1;
+                }
+            } break;
+        case NODE_RETURN:
+            {
+                loop_depth = node->return_node.cfg.loop_depth;
+                if (!loop_depth)
+                {
+                    auto input_index = node_input_get(thread, node, 0);
+                    auto input = thread_node_get(thread, input_index);
+                    node->return_node.cfg.loop_depth = loop_depth = node_loop_depth(thread, input);
+                }
+            } break;
+        case NODE_CONTROL_PROJECTION:
+            {
+                loop_depth = node->control_projection.cfg.loop_depth;
+                if (!loop_depth)
+                {
+                    auto input_index = node_input_get(thread, node, 0);
+                    auto input = thread_node_get(thread, input_index);
+                    node->control_projection.cfg.loop_depth = loop_depth = node_loop_depth(thread, input);
+                }
+            } break;
+        case NODE_DEAD_CONTROL:
+            {
+                loop_depth = node->dead_control.cfg.loop_depth;
+                if (!loop_depth)
+                {
+                    auto input_index = node_input_get(thread, node, 0);
+                    auto input = thread_node_get(thread, input_index);
+                    node->dead_control.cfg.loop_depth = loop_depth = node_loop_depth(thread, input);
+                }
+            } break;
+        default:
+            trap();
+    }
+
+    return loop_depth;
+}
+
+fn u8 node_is_region(Node* node)
+{
+    return (node->id == NODE_REGION) | (node->id == NODE_REGION_LOOP);
+}
+
+fn u8 node_is_pinned(Node* node)
+{
+    switch (node->id)
+    {
+        case NODE_START:
+            return 1;
+        case NODE_CONSTANT:
+            return 0;
+        default:
+            trap();
+    }
+}
+
+fn void schedule_early(Thread* thread, NodeIndex node_index, NodeIndex start_node)
+{
+    if (validi(node_index) && !bitset_get(&thread->worklist.visited, geti(node_index)))
+    {
+        bitset_set_assert_unset(&thread->worklist.visited, geti(node_index));
+        auto* node = thread_node_get(thread, node_index);
+        auto inputs = node_get_inputs(thread, node);
+        for (u64 i = 0; i < inputs.length; i += 1)
+        {
+            auto input = inputs.pointer[i];
+            if (validi(input))
+            {
+                auto* input_node = thread_node_get(thread, input);
+                if (!node_is_pinned(input_node))
+                {
+                    trap();
+                }
+            }
+        }
+
+        if (!node_is_pinned(node))
+        {
+            auto early = start_node;
+            for (u64 i = 1; i < inputs.length; i += 1)
+            {
+                auto input_index = inputs.pointer[i];
+                auto input_node = thread_node_get(thread, input_index);
+                auto control_input_index = node_input_get(thread, input_node, 0);
+                auto* control_input_node = thread_node_get(thread, control_input_index);
+                assert(node_is_cfg(control_input_node));
+                trap();
+            }
+            node_set_input(thread, node_index, 0, early);
+        }
+    }
+}
+
+fn void gcm_build_cfg(Thread* thread, NodeIndex start_node_index, NodeIndex stop_node_index)
+{
+    // Fix loops
+    {
+        // TODO:
+    }
+
+    // Schedule early
+    rpo_cfg(thread, start_node_index);
+
+    u32 i = thread->worklist.nodes.length;
+    while (i > 0)
+    {
+        i -= 1;
+        auto node_index = thread->worklist.nodes.pointer[i];
+        auto* node = thread_node_get(thread, node_index);
+        node_loop_depth(thread, node);
+        auto inputs = node_get_inputs(thread, node);
+        for (u64 i = 0; i < inputs.length; i += 1)
+        {
+            auto input = inputs.pointer[i];
+            schedule_early(thread, input, start_node_index);
+        }
+
+        if (node_is_region(node))
+        {
+            trap();
+        }
     }
 }
 
@@ -4080,8 +4349,10 @@ extern "C" void entry_point()
         for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
         {
             Function* function = &thread->buffer.functions.pointer[function_i];
+            NodeIndex start_node_index = function->start;
             NodeIndex stop_node_index = function->stop;
             iterate_peepholes(thread, stop_node_index);
+            gcm_build_cfg(thread, start_node_index, stop_node_index);
         }
 
         thread_clear(thread);
