@@ -1629,6 +1629,7 @@ typedef enum NodeId : u8
     NODE_REGION,
     NODE_REGION_LOOP,
     NODE_IF,
+    NODE_PHI,
 
     NODE_INTEGER_ADD,
     NODE_INTEGER_SUBSTRACT,
@@ -4037,6 +4038,85 @@ fn void schedule_early(Thread* thread, NodeIndex node_index, NodeIndex start_nod
     }
 }
 
+fn u8 node_cfg_block_head(Node* node)
+{
+    assert(node_is_cfg(node));
+    switch (node->id)
+    {
+        case NODE_START:
+            return 1;
+        default:
+            trap();
+    }
+}
+
+fn u8 is_forwards_edge(Thread* thread, NodeIndex output_index, NodeIndex input_index)
+{
+    u8 result = validi(output_index) & validi(input_index);
+    if (result)
+    {
+        auto* output = thread_node_get(thread, output_index);
+        auto* input = thread_node_get(thread, input_index);
+        result = output->input_count > 2;
+        if (result)
+        {
+            auto input_index2 = node_input_get(thread, output, 2);
+
+            result = index_equal(input_index2, input_index);
+            
+            if (result)
+            {
+                trap();
+            }
+        }
+    }
+
+    return result;
+}
+
+fn void schedule_late(Thread* thread, NodeIndex node_index, Slice(NodeIndex) nodes, Slice(NodeIndex) late)
+{
+    if (!validi(late.pointer[geti(node_index)]))
+    {
+        auto* node = thread_node_get(thread, node_index);
+
+        if (node_is_cfg(node))
+        {
+            late.pointer[geti(node_index)] = node_cfg_block_head(node) ? node_index : node_input_get(thread, node, 0);
+        }
+
+        if (node->id == NODE_PHI)
+        {
+            trap();
+        }
+
+        auto outputs = node_get_outputs(thread, node);
+
+        for (u32 i = 0; i < outputs.length; i += 1)
+        {
+            NodeIndex output = outputs.pointer[i];
+            if (is_forwards_edge(thread, output, node_index))
+            {
+                trap();
+            }
+        }
+
+        for (u32 i = 0; i < outputs.length; i += 1)
+        {
+            NodeIndex output = outputs.pointer[i];
+            if (is_forwards_edge(thread, output, node_index))
+            {
+                trap();
+            }
+        }
+
+        if (!node_is_pinned(node))
+        {
+            trap();
+        }
+    }
+}
+
 fn void gcm_build_cfg(Thread* thread, NodeIndex start_node_index, NodeIndex stop_node_index)
 {
     // Fix loops
@@ -4064,6 +4144,32 @@ fn void gcm_build_cfg(Thread* thread, NodeIndex start_node_index, NodeIndex stop
         if (node_is_region(node))
         {
             trap();
+        }
+    }
+
+    // Schedule late
+
+    auto max_node_count = thread->buffer.nodes.length;
+    auto* alloc = arena_allocate(thread->arena, NodeIndex, max_node_count * 2);
+    auto late = (Slice(NodeIndex)) {
+        .pointer = alloc,
+        .length = max_node_count,
+    };
+    auto nodes = (Slice(NodeIndex)) {
+        .pointer = alloc + max_node_count,
+        .length = max_node_count,
+    };
+
+    schedule_late(thread, start_node_index, nodes, late);
+
+    for (u32 i = 0; i < late.length; i += 1)
+    {
+        auto node_index = nodes.pointer[i];
+        if (validi(node_index))
+        {
+            trap();
+            auto late_node_index = late.pointer[i];
+            node_set_input(thread, node_index, 0, late_node_index);
         }
     }
 }
