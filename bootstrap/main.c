@@ -148,7 +148,7 @@ fn int memcmp(const void* left, const void* right, u64 n)
 #define pointer_to_bytes(p) Slice<u8>{ .pointer = (u8*)(p), .length = sizeof(*p) }
 #define struct_to_bytes(s) pointer_to_bytes(&(s))
 
-#define case_to_name(prefix, e) case prefix::e: return strlit(#e)
+#define case_to_name(prefix, e) case prefix ## e: return strlit(#e)
 
 #define Slice(T) Slice_ ## T
 #define SliceP(T) SliceP_ ## T
@@ -868,6 +868,75 @@ fn u64 align_forward(u64 value, u64 alignment)
     return result;
 }
 
+fn u32 format_hexadecimal(String buffer, u64 hexadecimal)
+{
+    u64 value = hexadecimal;
+    if (value)
+    {
+        u8 reverse_buffer[16];
+        u8 reverse_index = 0;
+
+        while (value)
+        {
+            u8 digit_value = value % 16;
+            u8 ascii_ch = digit_value >= 10 ? (digit_value + 'a' - 10) : (digit_value + '0');
+            value /= 16;
+            reverse_buffer[reverse_index] = ascii_ch;
+            reverse_index += 1;
+        }
+
+        u32 index = 0;
+
+        while (reverse_index > 0)
+        {
+            reverse_index -= 1;
+            buffer.pointer[index] = reverse_buffer[reverse_index];
+            index += 1;
+        }
+
+        return index;
+    }
+    else
+    {
+        buffer.pointer[0] = '0';
+        return 1;
+    }
+}
+
+fn u32 format_decimal(String buffer, u64 decimal)
+{
+    u64 value = decimal;
+    if (value)
+    {
+        u8 reverse_buffer[64];
+        u8 reverse_index = 0;
+
+        while (value)
+        {
+            u8 digit_value = (value % 10);
+            u8 ascii_ch = digit_value + '0';
+            value /= 10;
+            reverse_buffer[reverse_index] = ascii_ch;
+            reverse_index += 1;
+        }
+
+        u32 index = 0;
+        while (reverse_index > 0)
+        {
+            reverse_index -= 1;
+            buffer.pointer[index] = reverse_buffer[reverse_index];
+            index += 1;
+        }
+
+        return index;
+    }
+    else
+    {
+        buffer.pointer[0] = '0';
+        return 1;
+    }
+}
+
 #define SILENT (0)
 
 may_be_unused fn void print(const char* format, ...)
@@ -980,68 +1049,29 @@ may_be_unused fn void print(const char* format, ...)
                                         trap();
                                 }
 
-                                u64 value = original_value;
-                                if (value)
+                                auto buffer_slice = s_get_slice(u8, buffer, buffer_i, buffer.length);
+
+                                switch (format)
                                 {
-                                    switch (format)
-                                    {
-                                        case INTEGER_FORMAT_HEXADECIMAL:
-                                            {
-                                                u8 reverse_buffer[16];
-                                                u8 reverse_index = 0;
-
-                                                while (value)
-                                                {
-                                                    u8 digit_value = value % 16;
-                                                    u8 ascii_ch = digit_value >= 10 ? (digit_value + 'a' - 10) : (digit_value + '0');
-                                                    value /= 16;
-                                                    reverse_buffer[reverse_index] = ascii_ch;
-                                                    reverse_index += 1;
-                                                }
-
-                                                while (reverse_index > 0)
-                                                {
-                                                    reverse_index -= 1;
-                                                    s_get(buffer, buffer_i) = reverse_buffer[reverse_index];
-                                                    buffer_i += 1;
-                                                }
-                                            } break;
-                                        case INTEGER_FORMAT_DECIMAL:
-                                            {
-                                                // TODO: maybe print in one go?
-
-                                                u8 reverse_buffer[64];
-                                                u8 reverse_index = 0;
-
-                                                while (value)
-                                                {
-                                                    u8 digit_value = (value % 10);
-                                                    u8 ascii_ch = digit_value + '0';
-                                                    value /= 10;
-                                                    reverse_buffer[reverse_index] = ascii_ch;
-                                                    reverse_index += 1;
-                                                }
-
-                                                while (reverse_index > 0)
-                                                {
-                                                    reverse_index -= 1;
-                                                    s_get(buffer, buffer_i) = reverse_buffer[reverse_index];
-                                                    buffer_i += 1;
-                                                }
-                                            } break;
-                                        case INTEGER_FORMAT_OCTAL:
-                                        case INTEGER_FORMAT_BINARY:
-                                            trap();
-                                    }
-                                }
-                                else
-                                {
-                                    s_get(buffer, buffer_i) = '0';
-                                    buffer_i += 1;
+                                    case INTEGER_FORMAT_HEXADECIMAL:
+                                        {
+                                            auto written_characters = format_hexadecimal(buffer_slice, original_value);
+                                            buffer_i += written_characters;
+                                        } break;
+                                    case INTEGER_FORMAT_DECIMAL:
+                                        {
+                                            auto written_characters = format_decimal(buffer_slice, original_value);
+                                            buffer_i += written_characters;
+                                        } break;
+                                    case INTEGER_FORMAT_OCTAL:
+                                    case INTEGER_FORMAT_BINARY:
+                                        trap();
                                 }
                             } break;
                         default:
-                            trap();
+                            buffer.pointer[buffer_i] = '{';
+                            buffer_i += 1;
+                            continue;
                     }
 
                     if (*it != brace_close)
@@ -1775,8 +1805,10 @@ decl_vb(ArrayReference);
 
 struct Function
 {
+    String name;
     NodeIndex start;
     NodeIndex stop;
+    TypeIndex return_type;
 };
 typedef struct Function Function;
 decl_vb(Function);
@@ -3621,11 +3653,12 @@ fn void analyze_file(Thread* thread, File* file)
 
                 skip_space(parser, src);
 
-                String function_name = parse_identifier(parser, src);
 
                 Function* function = vb_add(&thread->buffer.functions, 1);
                 memset(function, 0, sizeof(Function));
                 builder->function = function;
+
+                function->name = parse_identifier(parser, src);
 
                 skip_space(parser, src);
                 
@@ -3687,7 +3720,7 @@ fn void analyze_file(Thread* thread, File* file)
                         });
                 dead_control = peephole(thread, dead_control);
 
-                node_keep(thread, dead_control);
+                dead_control = node_keep(thread, dead_control);
 
                 // Create the function scope node
                 {
@@ -3718,7 +3751,7 @@ fn void analyze_file(Thread* thread, File* file)
                     scope_define(thread, builder, control_name, thread->types.live_control, control_node_index);
                 }
 
-                TypeIndex return_type = analyze_type(thread, parser, src);
+                function->return_type = analyze_type(thread, parser, src);
 
                 skip_space(parser, src);
                 expect_character(parser, src, block_start);
@@ -3740,7 +3773,7 @@ fn void analyze_file(Thread* thread, File* file)
                         if (s_equal(statement_start_identifier, (strlit("return"))))
                         {
                             skip_space(parser, src);
-                            NodeIndex return_value = analyze_expression(thread, parser, function, src, return_type);
+                            NodeIndex return_value = analyze_expression(thread, parser, function, src, function->return_type);
                             skip_space(parser, src);
                             expect_character(parser, src, ';');
 
@@ -4174,6 +4207,266 @@ fn void gcm_build_cfg(Thread* thread, NodeIndex start_node_index, NodeIndex stop
     }
 }
 
+fn String node_id_to_string(Node* node)
+{
+    switch (node->id)
+    {
+        case_to_name(NODE_, START);
+        case_to_name(NODE_, STOP);
+        case_to_name(NODE_, CONTROL_PROJECTION);
+        case_to_name(NODE_, DEAD_CONTROL);
+        case_to_name(NODE_, SCOPE);
+        case_to_name(NODE_, PROJECTION);
+        case_to_name(NODE_, RETURN);
+        case_to_name(NODE_, REGION);
+        case_to_name(NODE_, REGION_LOOP);
+        case_to_name(NODE_, IF);
+        case_to_name(NODE_, PHI);
+        case_to_name(NODE_, INTEGER_ADD);
+        case_to_name(NODE_, INTEGER_SUBSTRACT);
+        case_to_name(NODE_, INTEGER_MULTIPLY);
+        case_to_name(NODE_, INTEGER_UNSIGNED_DIVIDE);
+        case_to_name(NODE_, INTEGER_SIGNED_DIVIDE);
+        case_to_name(NODE_, INTEGER_UNSIGNED_REMAINDER);
+        case_to_name(NODE_, INTEGER_SIGNED_REMAINDER);
+        case_to_name(NODE_, INTEGER_UNSIGNED_SHIFT_LEFT);
+        case_to_name(NODE_, INTEGER_SIGNED_SHIFT_LEFT);
+        case_to_name(NODE_, INTEGER_UNSIGNED_SHIFT_RIGHT);
+        case_to_name(NODE_, INTEGER_SIGNED_SHIFT_RIGHT);
+        case_to_name(NODE_, INTEGER_AND);
+        case_to_name(NODE_, INTEGER_OR);
+        case_to_name(NODE_, INTEGER_XOR);
+        case_to_name(NODE_, CONSTANT);
+        case_to_name(NODE_, COUNT);
+    }
+}
+
+fn String type_id_to_string(Type* type)
+{
+    switch (type->id)
+    {
+        case_to_name(TYPE_, BOTTOM);
+        case_to_name(TYPE_, TOP);
+        case_to_name(TYPE_, LIVE_CONTROL);
+        case_to_name(TYPE_, DEAD_CONTROL);
+        case_to_name(TYPE_, INTEGER);
+        case_to_name(TYPE_, TUPLE);
+        case_to_name(TYPE_, COUNT);
+    }
+}
+
+fn void print_function(Thread* thread, Function* function)
+{
+    print("fn {s}\n====\n", function->name);
+    VirtualBuffer(NodeIndex) nodes = {};
+    *vb_add(&nodes, 1) = function->stop;
+    auto start = function->start;
+
+    while (1)
+    {
+        auto node_index = nodes.pointer[nodes.length - 1];
+        auto* node = thread_node_get(thread, node_index);
+
+        if (node->input_count)
+        {
+            for (u32 i = 1; i < node->input_count; i += 1)
+            {
+                *vb_add(&nodes, 1) = node_input_get(thread, node, 1);
+            }
+            *vb_add(&nodes, 1) = node_input_get(thread, node, 0);
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    u32 i = nodes.length;
+    while (i > 0)
+    {
+        i -= 1;
+
+        auto node_index = nodes.pointer[i];
+        auto* node = thread_node_get(thread, node_index);
+        auto* type = thread_type_get(thread, node->type);
+        print("%{u32} - {s} - {s} ", geti(node_index), type_id_to_string(type), node_id_to_string(node));
+        auto inputs = node_get_inputs(thread, node);
+        auto outputs = node_get_outputs(thread, node);
+        
+        print("(INPUTS: { ");
+        for (u32 i = 0; i < inputs.length; i += 1)
+        {
+            auto input_index = inputs.pointer[i];
+            print("%{u32} ", geti(input_index));
+        }
+        print("} OUTPUTS: { ");
+        for (u32 i = 0; i < outputs.length; i += 1)
+        {
+            auto output_index = outputs.pointer[i];
+            print("%{u32} ", geti(output_index));
+        }
+        print_string(strlit("})\n"));
+    }
+
+
+    print("====\n", function->name);
+}
+
+fn void c_lower_append_string(VirtualBuffer(u8)* buffer, String string)
+{
+    memcpy(vb_add(buffer, string.length), string.pointer, string.length);
+}
+
+fn void c_lower_append_ch(VirtualBuffer(u8)* buffer, u8 ch)
+{
+    *vb_add(buffer, 1) = ch;
+}
+
+fn void c_lower_append_ch_repeated(VirtualBuffer(u8)* buffer, u8 ch, u32 times)
+{
+    u8* pointer = vb_add(buffer, times);
+    memset(pointer, ch, times);
+}
+
+fn void c_lower_append_space(VirtualBuffer(u8)* buffer)
+{
+    c_lower_append_ch(buffer, ' ');
+}
+
+fn void c_lower_append_space_margin(VirtualBuffer(u8)* buffer, u32 times)
+{
+    c_lower_append_ch_repeated(buffer, ' ', times * 4);
+}
+
+fn void c_lower_type(VirtualBuffer(u8)* buffer, Thread* thread, TypeIndex type_index)
+{
+    Type* type = thread_type_get(thread, type_index);
+    switch (type->id)
+    {
+        case TYPE_INTEGER:
+            {
+                u8 ch[] = { 'u', 's' };
+                auto integer = &type->integer;
+                u8 signedness_ch = ch[type->integer.is_signed];
+                c_lower_append_ch(buffer, signedness_ch);
+                u8 upper_digit = integer->bit_count / 10;
+                u8 lower_digit = integer->bit_count % 10;
+                if (upper_digit)
+                {
+                    c_lower_append_ch(buffer, upper_digit + '0');
+                }
+                c_lower_append_ch(buffer, lower_digit + '0');
+            } break;
+        default:
+            trap();
+    }
+}
+
+fn void c_lower_node(VirtualBuffer(u8)* buffer, Thread* thread, NodeIndex node_index)
+{
+    auto* node = thread_node_get(thread, node_index);
+    auto* type = thread_type_get(thread, node->type);
+    switch (node->id)
+    {
+        case NODE_CONSTANT:
+            {
+                switch (type->id)
+                {
+                    case TYPE_INTEGER:
+                        {
+                            assert(type->integer.bit_count == 0);
+                            assert(type->integer.is_constant);
+                            assert(!type->integer.is_signed);
+                            vb_generic_ensure_capacity(buffer, 1, 64);
+                            auto current_length = buffer->length;
+                            auto buffer_slice = (String){ .pointer = buffer->pointer + current_length, .length = buffer->capacity - current_length, };
+                            auto written_characters = format_hexadecimal(buffer_slice, type->integer.constant);
+                            buffer->length = current_length + written_characters;
+                        } break;
+                        trap();
+                    default:
+                        trap();
+                }
+            } break;
+        default:
+            trap();
+    }
+}
+
+fn String c_lower(Thread* thread)
+{
+    VirtualBuffer(u8) buffer = {};
+    auto program_epilogue = strlit("#include <stdint.h>"
+            "typedef uint8_t u8;\n"
+            "typedef uint16_t u16;\n"
+            "typedef uint32_t u32;\n"
+            "typedef uint64_t u64;\n"
+            "typedef int8_t s8;\n"
+            "typedef int16_t s16;\n"
+            "typedef int32_t s32;\n"
+            "typedef int64_t s64;\n"
+            );
+    c_lower_append_string(&buffer, program_epilogue);
+
+    for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
+    {
+        auto* function = &thread->buffer.functions.pointer[function_i];
+        c_lower_type(&buffer, thread, function->return_type);
+        c_lower_append_space(&buffer);
+
+        c_lower_append_string(&buffer, function->name);
+        c_lower_append_ch(&buffer, argument_start);
+        c_lower_append_ch(&buffer, argument_end);
+        c_lower_append_ch(&buffer, '\n');
+        c_lower_append_ch(&buffer, block_start);
+        c_lower_append_ch(&buffer, '\n');
+
+        auto start_node_index = function->start;
+        auto* start_node = thread_node_get(thread, start_node_index);
+        assert(start_node->output_count > 0);
+        auto stop_node_index = function->stop;
+
+        auto proj_node_index = node_output_get(thread, start_node, 1);
+        auto it_node_index = proj_node_index;
+        auto current_statement_margin = 1;
+
+        while (!index_equal(it_node_index, stop_node_index))
+        {
+            auto* it_node = thread_node_get(thread, it_node_index);
+            auto outputs = node_get_outputs(thread, it_node);
+            auto inputs = node_get_inputs(thread, it_node);
+
+            switch (it_node->id)
+            {
+                case NODE_CONTROL_PROJECTION:
+                    break;
+                case NODE_RETURN:
+                    {
+                        c_lower_append_space_margin(&buffer, current_statement_margin);
+                        c_lower_append_string(&buffer, strlit("return "));
+                        assert(inputs.length > 1);
+                        assert(inputs.length == 2);
+                        auto input = inputs.pointer[1];
+                        c_lower_node(&buffer, thread, input);
+                        c_lower_append_ch(&buffer, ';');
+                        c_lower_append_ch(&buffer, '\n');
+                    } break;
+                case NODE_STOP:
+                    break;
+                default:
+                    trap();
+            }
+
+            assert(outputs.length == 1);
+            it_node_index = outputs.pointer[0];
+        }
+
+        c_lower_append_ch(&buffer, block_end);
+    }
+
+    return (String) { .pointer = buffer.pointer, .length = buffer.length };
+}
+
 fn void thread_init(Thread* thread)
 {
     *thread = (Thread) {
@@ -4458,8 +4751,15 @@ extern "C" void entry_point()
             NodeIndex start_node_index = function->start;
             NodeIndex stop_node_index = function->stop;
             iterate_peepholes(thread, stop_node_index);
+            print_string(strlit("Before optimizations\n"));
+            print_function(thread, function);
             gcm_build_cfg(thread, start_node_index, stop_node_index);
+            print_string(strlit("After optimizations\n"));
+            print_function(thread, function);
         }
+
+        auto lowered_source = c_lower(thread);
+        print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
 
         thread_clear(thread);
     }
