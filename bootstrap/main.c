@@ -15,6 +15,7 @@
 #if LINK_LIBC
 #include <errno.h>
 #include <string.h>
+#include <stdlib.h>
 #endif
 
 typedef uint8_t  u8;
@@ -169,6 +170,64 @@ typedef struct StructName StructName
 
 declare_slice(u8);
 typedef Slice(u8) String;
+// Array of strings
+declare_slice(String);
+
+fn s32 string_first_ch(String string, u8 ch)
+{
+    s32 result = -1;
+    for (u64 i = 0; i < string.length; i += 1)
+    {
+        if (string.pointer[i] == ch)
+        {
+            result = i;
+            break;
+        }
+    }
+
+    return result;
+}
+
+fn s32 string_last_ch(String string, u8 ch)
+{
+    s32 result = -1;
+    u64 i = string.length;
+    while (i > 0)
+    {
+        i -= 1;
+        if (string.pointer[i] == ch)
+        {
+            result = i;
+            break;
+        }
+    }
+
+    return result;
+}
+
+fn String string_dir(String string)
+{
+    String result = {};
+    auto index = string_last_ch(string, '/');
+    if (index != -1)
+    {
+        result = s_get_slice(u8, string, 0, index);
+    }
+
+    return result;
+}
+
+fn String string_base(String string)
+{
+    String result = {};
+    auto index = string_last_ch(string, '/');
+    if (index != -1)
+    {
+        result = s_get_slice(u8, string, index + 1, string.length - 2);
+    }
+
+    return result;
+}
 
 fn u64 parse_decimal(String string)
 {
@@ -1143,6 +1202,29 @@ fn void* arena_allocate_bytes(Arena* arena, u64 size, u64 alignment)
     return result;
 }
 
+fn String arena_join_string(Arena* arena, Slice(String) pieces)
+{
+    u64 size = 0;
+    for (u64 i = 0; i < pieces.length; i += 1)
+    {
+        String piece = pieces.pointer[i];
+        size += piece.length;
+    }
+
+    u8* pointer = arena_allocate_bytes(arena, size + 1, 1);
+    auto* it = pointer;
+    for (u64 i = 0; i < pieces.length; i += 1)
+    {
+        String piece = pieces.pointer[i];
+        memcpy(it, piece.pointer, piece.length);
+        it += piece.length;
+    }
+    assert(it - pointer == size);
+    *it = 0;
+
+    return (String) { .pointer = pointer, .length = size };
+}
+
 #define arena_allocate(arena, T, count) arena_allocate_bytes(arena, sizeof(T) * count, alignof(T))
 #define arena_allocate_slice(arena, T, count) (Slice(T)){ .pointer = arena_allocate(arena, T, count), .length = count }
 
@@ -1314,6 +1396,19 @@ fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 val
         }
     }
     trap();
+}
+
+fn int file_write(String file_path, String file_data)
+{
+    int file_descriptor = syscall_open((char*)file_path.pointer, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    assert(file_descriptor != -1);
+
+    auto bytes = syscall_write(file_descriptor, file_data.pointer, file_data.length);
+    assert(bytes == file_data.length);
+
+    int close_result = syscall_close(file_descriptor);
+    assert(close_result == 0);
+    return 0;
 }
 
 fn String file_read(Arena* arena, String path)
@@ -4396,7 +4491,7 @@ fn void c_lower_node(VirtualBuffer(u8)* buffer, Thread* thread, NodeIndex node_i
 fn String c_lower(Thread* thread)
 {
     VirtualBuffer(u8) buffer = {};
-    auto program_epilogue = strlit("#include <stdint.h>"
+    auto program_epilogue = strlit("#include <stdint.h>\n"
             "typedef uint8_t u8;\n"
             "typedef uint16_t u16;\n"
             "typedef uint32_t u32;\n"
@@ -4512,207 +4607,6 @@ fn void thread_clear(Thread* thread)
     arena_reset(thread->arena);
 }
 
-//     Arena* arena = Arena::init_default(64*1024);
-//
-//     auto main_c_path = strlit("main.c");
-//     {
-//         auto main_c_content = strlit("int main()\n{\n    return 0;\n}");
-//         int fd = syscall_open("main.c", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-//         assert(fd != -1);
-//         auto result = syscall_write(fd, main_c_content.pointer, main_c_content.length);
-//         assert(result >= 0);
-//         assert((u64)result == main_c_content.length);
-//         syscall_close(fd);
-//     }
-//     system("clang -c main.c -o main.o -Oz -fno-exceptions -fno-asynchronous-unwind-tables -fno-addrsig -fno-stack-protector -fno-ident");
-//     system("objcopy --remove-section .note.GNU-stack main.o main2.o");
-//     String main_o;
-//     {
-//
-//         int fd = syscall_open("main2.o", 0, 0);
-//         assert(fd != -1);
-//         auto file_size = file_get_size(fd);
-//
-//         auto file = arena->allocate_slice<u8>(file_size);
-//         auto read_bytes = syscall_read(fd, file.pointer, file.length);
-//         assert(read_bytes == file_size);
-//         main_o = file;
-//         syscall_close(fd);
-//         auto r1 = syscall_unlink("main.o");
-//         assert(!r1);
-//         auto r2 = syscall_unlink("main2.o");
-//         assert(!r2);
-//         auto r3 = syscall_unlink("main.c");
-//         assert(!r3);
-//     }
-//
-//     PinnedArray<u8> file = {};
-//     auto elf_header = ELF::Header
-//     {
-//         .type = ELF::Type::relocatable,
-//         .machine = ELF::Machine::x86_64,
-//         .version = 1,
-//         .entry_point = 0,
-//         .program_header_offset = 0,
-//         .section_header_offset = 192,
-//         .flags = 0,
-//         .program_header_size = 0,
-//         .program_header_count = 0,
-//         .section_header_size = sizeof(ELF::SectionHeader),
-//         .section_header_count = 5,
-//         .section_header_string_table_index = 4,
-//     };
-//     auto* original_elf_header = (ELF::Header*)&main_o[0];
-//     file.append(struct_to_bytes(elf_header));
-//     // .text
-//     
-//     // Code: 
-//     // main:
-//     //      xor eax, eax
-//     //      ret
-//     file.append_one(0x31);
-//     file.append_one(0xc0);
-//     file.append_one(0xc3);
-//     for (int i = 0; i < 5; i += 1)
-//     {
-//         file.append_one(0);
-//     }
-//
-//     // .symtab
-//
-//     ELF::Symbol null_symbol = {};
-//     file.append(struct_to_bytes(null_symbol));
-//
-//     ELF::Symbol symbol1 = {
-//         .name_offset = 1,
-//         .type = ELF::Symbol::Type::FILE,
-//         .binding = ELF::Symbol::Binding::LOCAL,
-//         .section_index = (u16)ELF::SectionIndex::ABSOLUTE,
-//         .value = 0,
-//         .size = 0,
-//     };
-//     file.append(struct_to_bytes(symbol1));
-//
-//     ELF::Symbol symbol2 = {
-//         .name_offset = 8,
-//         .type = ELF::Symbol::Type::FUNCTION,
-//         .binding = ELF::Symbol::Binding::GLOBAL,
-//         .section_index = 1,
-//         .value = 0,
-//         .size = 3,
-//     };
-//     file.append(struct_to_bytes(symbol2));
-//
-//     // .strtab
-//     // Null string
-//     file.append_one(0);
-//
-//     file.append(strlit("main.c"));
-//     file.append_one(0);
-//
-//     file.append(strlit("main"));
-//     file.append_one(0);
-//
-//     // .shstrtab
-//     // Null string
-//     file.append_one(0);
-//
-//     file.append(strlit(".symtab"));
-//     file.append_one(0);
-//
-//     file.append(strlit(".strtab"));
-//     file.append_one(0);
-//
-//     file.append(strlit(".shstrtab"));
-//     file.append_one(0);
-//
-//     file.append(strlit(".text"));
-//     file.append_one(0);
-//
-//     // Align
-//     file.append_one(0);
-//     file.append_one(0);
-//
-//     assert(file.length == 0xc0);
-//
-//     // Section headers
-//     ELF::SectionHeader null_section = {};
-//     file.append(struct_to_bytes(null_section));
-//
-//     ELF::SectionHeader text_section = {
-//         .name_offset = 27,
-//         .type = ELF::SectionHeader::Type::program,
-//         .flags = {
-//             .alloc = 1,
-//             .executable = 1,
-//         },
-//         .address = 0,
-//         .offset = 64,
-//         .size = 3,
-//         .link = 0,
-//         .info = 0,
-//         .alignment = 4,
-//         .entry_size = 0,
-//     };
-//     file.append(struct_to_bytes(text_section));
-//
-//     ELF::SectionHeader symtab_section = {
-//         .name_offset = 1,
-//         .type = ELF::SectionHeader::Type::symbol_table,
-//         .flags = {},
-//         .address = 0,
-//         .offset = 72,
-//         .size = 72,
-//         .link = 3,
-//         .info = 2,
-//         .alignment = alignof(ELF::Symbol),
-//         .entry_size = sizeof(ELF::Symbol),
-//     };
-//     file.append(struct_to_bytes(symtab_section));
-//
-//     ELF::SectionHeader strtab_section = {
-//         .name_offset = 9,
-//         .type = ELF::SectionHeader::Type::string_table,
-//         .flags = {},
-//         .address = 0,
-//         .offset = 144,
-//         .size = 13,
-//         .link = 0,
-//         .info = 0,
-//         .alignment = 1,
-//         .entry_size = 0,
-//     };
-//     file.append(struct_to_bytes(strtab_section));
-//
-//     ELF::SectionHeader shstrtab_section = {
-//         .name_offset = 17,
-//         .type = ELF::SectionHeader::Type::string_table,
-//         .flags = {},
-//         .address = 0,
-//         .offset = 157,
-//         .size = 33,
-//         .link = 0,
-//         .info = 0,
-//         .alignment = 1,
-//         .entry_size = 0,
-//     };
-//     file.append(struct_to_bytes(shstrtab_section));
-//
-//     auto mine = file.slice();
-//     auto original = main_o.slice(0, file.length);
-//     assert(mine.equal(original));
-//     assert(file.length == main_o.length);
-//
-//     {
-//         int fd = syscall_open("main.o", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-//         assert(fd != -1);
-//         syscall_write(fd, file.pointer, file.length);
-//
-//         syscall_close(fd);
-//     }
-//
-//     system("clang main.o -o main.exe");
-
 #define DO_UNIT_TESTS 1
 #if DO_UNIT_TESTS
 fn void unit_tests()
@@ -4737,6 +4631,8 @@ extern "C" void entry_point()
     Thread* thread = arena_allocate(global_arena, Thread, 1);
     thread_init(thread);
 
+    mkdir("nest", 0755);
+
     for (u32 i = 0; i < array_length(test_files); i += 1)
     {
         File file = {
@@ -4744,6 +4640,8 @@ extern "C" void entry_point()
             .source = file_read(thread->arena, test_files[i]),
         };
         analyze_file(thread, &file);
+        auto test_dir = string_dir(file.path);
+        auto test_name = string_base(test_dir);
 
         for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
         {
@@ -4760,6 +4658,24 @@ extern "C" void entry_point()
 
         auto lowered_source = c_lower(thread);
         print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
+
+        auto c_source_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
+                        strlit("nest/"),
+                        test_name,
+                        strlit(".c"),
+                    })));
+
+        file_write(c_source_path, lowered_source);
+
+        auto exe_path = s_get_slice(u8, c_source_path, 0, c_source_path.length - 2);
+
+        auto command = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
+                        strlit("clang -g -o "),
+                        exe_path,
+                        strlit(" "),
+                        c_source_path,
+                    })));
+        system((char*)command.pointer);
 
         thread_clear(thread);
     }
