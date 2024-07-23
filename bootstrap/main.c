@@ -229,6 +229,18 @@ fn String string_base(String string)
     return result;
 }
 
+fn String string_no_extension(String string)
+{
+    String result = {};
+    auto index = string_last_ch(string, '.');
+    if (index != -1)
+    {
+        result = s_get_slice(u8, string, 0, index);
+    }
+
+    return result;
+}
+
 fn u64 parse_decimal(String string)
 {
     u64 value = 0;
@@ -4618,65 +4630,86 @@ fn void unit_tests()
 }
 #endif
 
+Slice(String) arguments;
+
 #if LINK_LIBC
-int main()
+int main(int argc, const char* argv[])
 #else
 extern "C" void entry_point()
 #endif
 {
 #if DO_UNIT_TESTS
-        unit_tests();
+    unit_tests();
 #endif
+
+    if (argc < 2)
+    {
+        fail();
+    }
+
     Arena* global_arena = arena_init_default(KB(64));
+    {
+        arguments.pointer = arena_allocate(global_arena, String, argc);
+        arguments.length = argc;
+
+        for (u32 i = 0; i < argc; i += 1)
+        {
+            u64 len = strlen(argv[i]);
+            arguments.pointer[i] = (String) {
+                .pointer = (u8*)argv[i],
+                .length = len,
+            };
+        }
+    }
+
+    String source_file_path = arguments.pointer[1];
+
     Thread* thread = arena_allocate(global_arena, Thread, 1);
     thread_init(thread);
 
     mkdir("nest", 0755);
 
-    for (u32 i = 0; i < array_length(test_files); i += 1)
+    File file = {
+        .path = source_file_path,
+        .source = file_read(thread->arena, source_file_path),
+    };
+    analyze_file(thread, &file);
+    auto test_dir = string_no_extension(file.path);
+    auto test_name = string_base(test_dir);
+
+    for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
     {
-        File file = {
-            .path = test_files[i],
-            .source = file_read(thread->arena, test_files[i]),
-        };
-        analyze_file(thread, &file);
-        auto test_dir = string_dir(file.path);
-        auto test_name = string_base(test_dir);
-
-        for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
-        {
-            Function* function = &thread->buffer.functions.pointer[function_i];
-            NodeIndex start_node_index = function->start;
-            NodeIndex stop_node_index = function->stop;
-            iterate_peepholes(thread, stop_node_index);
-            print_string(strlit("Before optimizations\n"));
-            print_function(thread, function);
-            gcm_build_cfg(thread, start_node_index, stop_node_index);
-            print_string(strlit("After optimizations\n"));
-            print_function(thread, function);
-        }
-
-        auto lowered_source = c_lower(thread);
-        print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
-
-        auto c_source_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
-                        strlit("nest/"),
-                        test_name,
-                        strlit(".c"),
-                    })));
-
-        file_write(c_source_path, lowered_source);
-
-        auto exe_path = s_get_slice(u8, c_source_path, 0, c_source_path.length - 2);
-
-        auto command = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
-                        strlit("clang -g -o "),
-                        exe_path,
-                        strlit(" "),
-                        c_source_path,
-                    })));
-        system((char*)command.pointer);
-
-        thread_clear(thread);
+        Function* function = &thread->buffer.functions.pointer[function_i];
+        NodeIndex start_node_index = function->start;
+        NodeIndex stop_node_index = function->stop;
+        iterate_peepholes(thread, stop_node_index);
+        print_string(strlit("Before optimizations\n"));
+        print_function(thread, function);
+        gcm_build_cfg(thread, start_node_index, stop_node_index);
+        print_string(strlit("After optimizations\n"));
+        print_function(thread, function);
     }
+
+    auto lowered_source = c_lower(thread);
+    print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
+
+    auto c_source_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
+                    strlit("nest/"),
+                    test_name,
+                    strlit(".c"),
+                    })));
+
+    file_write(c_source_path, lowered_source);
+
+    auto exe_path = s_get_slice(u8, c_source_path, 0, c_source_path.length - 2);
+
+    auto command = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
+                    strlit("clang -g -o "),
+                    exe_path,
+                    strlit(" "),
+                    c_source_path,
+                    })));
+    system((char*)command.pointer);
+
+    thread_clear(thread);
 }
