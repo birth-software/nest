@@ -42,7 +42,8 @@ typedef u64 Hash;
 #define forceinline __attribute__((always_inline))
 #define expect(x, b) __builtin_expect(x, b)
 #define breakpoint() __builtin_debugtrap()
-#define trap() __builtin_trap()
+#define fail() trap()
+#define trap() bad_ex(__FILE__, __LINE__)
 #define array_length(arr) sizeof(arr) / sizeof((arr)[0])
 #define KB(n) ((n) * 1024)
 #define MB(n) ((n) * 1024 * 1024)
@@ -58,6 +59,8 @@ typedef u64 Hash;
 #define static_assert(x) _Static_assert((x), "Static assert failed!")
 #define alignof(x) _Alignof(x)
 #define auto __auto_type
+
+#define bad_ex(file, line) do { print("Bad exit at {cstr}:{u32}\n", file, line); __builtin_trap(); } while(0)
 
 may_be_unused fn void print(const char* format, ...);
 
@@ -110,7 +113,7 @@ fn u64 round_up_to_next_power_of_2(u64 n)
 }
 
 #if LINK_LIBC == 0
-extern "C" void* memcpy(void* __restrict dst, void* __restrict src, u64 size)
+void* memcpy(void* __restrict dst, void* __restrict src, u64 size)
 {
     auto* destination = (u8*)dst;
     auto* source = (u8*)src;
@@ -123,7 +126,7 @@ extern "C" void* memcpy(void* __restrict dst, void* __restrict src, u64 size)
     return dst;
 }
 
-extern "C" void* memset(void* dst, u8 n, u64 size)
+void* memset(void* dst, u8 n, u64 size)
 {
     auto* destination = (u8*)dst;
     for (u64 i = 0; i < size; i += 1)
@@ -139,6 +142,16 @@ fn int memcmp(const void* left, const void* right, u64 n)
 	const u8 *l=(const u8*)left, *r=(const u8*)right;
 	for (; n && *l == *r; n--, l++, r++);
 	return n ? *l - *r : 0;
+}
+
+fn u64 strlen (const char* c_string)
+{
+    auto* it = c_string;
+    while (*it)
+    {
+        it += 1;
+    }
+    return it - c_string;
 }
 #endif
 #define slice_from_pointer_range(T, start, end) (Slice(T)) { .pointer = start, .length = (u64)(end - start), }
@@ -406,375 +419,375 @@ may_be_unused fn forceinline long syscall6(long n, long a1, long a2, long a3, lo
 	return ret;
 }
 
-enum class SyscallX86_64 : u64 {
-    read = 0,
-    write = 1,
-    open = 2,
-    close = 3,
-    stat = 4,
-    fstat = 5,
-    lstat = 6,
-    poll = 7,
-    lseek = 8,
-    mmap = 9,
-    mprotect = 10,
-    munmap = 11,
-    brk = 12,
-    rt_sigaction = 13,
-    rt_sigprocmask = 14,
-    rt_sigreturn = 15,
-    ioctl = 16,
-    pread64 = 17,
-    pwrite64 = 18,
-    readv = 19,
-    writev = 20,
-    access = 21,
-    pipe = 22,
-    select = 23,
-    sched_yield = 24,
-    mremap = 25,
-    msync = 26,
-    mincore = 27,
-    madvise = 28,
-    shmget = 29,
-    shmat = 30,
-    shmctl = 31,
-    dup = 32,
-    dup2 = 33,
-    pause = 34,
-    nanosleep = 35,
-    getitimer = 36,
-    alarm = 37,
-    setitimer = 38,
-    getpid = 39,
-    sendfile = 40,
-    socket = 41,
-    connect = 42,
-    accept = 43,
-    sendto = 44,
-    recvfrom = 45,
-    sendmsg = 46,
-    recvmsg = 47,
-    shutdown = 48,
-    bind = 49,
-    listen = 50,
-    getsockname = 51,
-    getpeername = 52,
-    socketpair = 53,
-    setsockopt = 54,
-    getsockopt = 55,
-    clone = 56,
-    fork = 57,
-    vfork = 58,
-    execve = 59,
-    exit = 60,
-    wait4 = 61,
-    kill = 62,
-    uname = 63,
-    semget = 64,
-    semop = 65,
-    semctl = 66,
-    shmdt = 67,
-    msgget = 68,
-    msgsnd = 69,
-    msgrcv = 70,
-    msgctl = 71,
-    fcntl = 72,
-    flock = 73,
-    fsync = 74,
-    fdatasync = 75,
-    truncate = 76,
-    ftruncate = 77,
-    getdents = 78,
-    getcwd = 79,
-    chdir = 80,
-    fchdir = 81,
-    rename = 82,
-    mkdir = 83,
-    rmdir = 84,
-    creat = 85,
-    link = 86,
-    unlink = 87,
-    symlink = 88,
-    readlink = 89,
-    chmod = 90,
-    fchmod = 91,
-    chown = 92,
-    fchown = 93,
-    lchown = 94,
-    umask = 95,
-    gettimeofday = 96,
-    getrlimit = 97,
-    getrusage = 98,
-    sysinfo = 99,
-    times = 100,
-    ptrace = 101,
-    getuid = 102,
-    syslog = 103,
-    getgid = 104,
-    setuid = 105,
-    setgid = 106,
-    geteuid = 107,
-    getegid = 108,
-    setpgid = 109,
-    getppid = 110,
-    getpgrp = 111,
-    setsid = 112,
-    setreuid = 113,
-    setregid = 114,
-    getgroups = 115,
-    setgroups = 116,
-    setresuid = 117,
-    getresuid = 118,
-    setresgid = 119,
-    getresgid = 120,
-    getpgid = 121,
-    setfsuid = 122,
-    setfsgid = 123,
-    getsid = 124,
-    capget = 125,
-    capset = 126,
-    rt_sigpending = 127,
-    rt_sigtimedwait = 128,
-    rt_sigqueueinfo = 129,
-    rt_sigsuspend = 130,
-    sigaltstack = 131,
-    utime = 132,
-    mknod = 133,
-    uselib = 134,
-    personality = 135,
-    ustat = 136,
-    statfs = 137,
-    fstatfs = 138,
-    sysfs = 139,
-    getpriority = 140,
-    setpriority = 141,
-    sched_setparam = 142,
-    sched_getparam = 143,
-    sched_setscheduler = 144,
-    sched_getscheduler = 145,
-    sched_get_priority_max = 146,
-    sched_get_priority_min = 147,
-    sched_rr_get_interval = 148,
-    mlock = 149,
-    munlock = 150,
-    mlockall = 151,
-    munlockall = 152,
-    vhangup = 153,
-    modify_ldt = 154,
-    pivot_root = 155,
-    _sysctl = 156,
-    prctl = 157,
-    arch_prctl = 158,
-    adjtimex = 159,
-    setrlimit = 160,
-    chroot = 161,
-    sync = 162,
-    acct = 163,
-    settimeofday = 164,
-    mount = 165,
-    umount2 = 166,
-    swapon = 167,
-    swapoff = 168,
-    reboot = 169,
-    sethostname = 170,
-    setdomainname = 171,
-    iopl = 172,
-    ioperm = 173,
-    create_module = 174,
-    init_module = 175,
-    delete_module = 176,
-    get_kernel_syms = 177,
-    query_module = 178,
-    quotactl = 179,
-    nfsservctl = 180,
-    getpmsg = 181,
-    putpmsg = 182,
-    afs_syscall = 183,
-    tuxcall = 184,
-    security = 185,
-    gettid = 186,
-    readahead = 187,
-    setxattr = 188,
-    lsetxattr = 189,
-    fsetxattr = 190,
-    getxattr = 191,
-    lgetxattr = 192,
-    fgetxattr = 193,
-    listxattr = 194,
-    llistxattr = 195,
-    flistxattr = 196,
-    removexattr = 197,
-    lremovexattr = 198,
-    fremovexattr = 199,
-    tkill = 200,
-    time = 201,
-    futex = 202,
-    sched_setaffinity = 203,
-    sched_getaffinity = 204,
-    set_thread_area = 205,
-    io_setup = 206,
-    io_destroy = 207,
-    io_getevents = 208,
-    io_submit = 209,
-    io_cancel = 210,
-    get_thread_area = 211,
-    lookup_dcookie = 212,
-    epoll_create = 213,
-    epoll_ctl_old = 214,
-    epoll_wait_old = 215,
-    remap_file_pages = 216,
-    getdents64 = 217,
-    set_tid_address = 218,
-    restart_syscall = 219,
-    semtimedop = 220,
-    fadvise64 = 221,
-    timer_create = 222,
-    timer_settime = 223,
-    timer_gettime = 224,
-    timer_getoverrun = 225,
-    timer_delete = 226,
-    clock_settime = 227,
-    clock_gettime = 228,
-    clock_getres = 229,
-    clock_nanosleep = 230,
-    exit_group = 231,
-    epoll_wait = 232,
-    epoll_ctl = 233,
-    tgkill = 234,
-    utimes = 235,
-    vserver = 236,
-    mbind = 237,
-    set_mempolicy = 238,
-    get_mempolicy = 239,
-    mq_open = 240,
-    mq_unlink = 241,
-    mq_timedsend = 242,
-    mq_timedreceive = 243,
-    mq_notify = 244,
-    mq_getsetattr = 245,
-    kexec_load = 246,
-    waitid = 247,
-    add_key = 248,
-    request_key = 249,
-    keyctl = 250,
-    ioprio_set = 251,
-    ioprio_get = 252,
-    inotify_init = 253,
-    inotify_add_watch = 254,
-    inotify_rm_watch = 255,
-    migrate_pages = 256,
-    openat = 257,
-    mkdirat = 258,
-    mknodat = 259,
-    fchownat = 260,
-    futimesat = 261,
-    fstatat64 = 262,
-    unlinkat = 263,
-    renameat = 264,
-    linkat = 265,
-    symlinkat = 266,
-    readlinkat = 267,
-    fchmodat = 268,
-    faccessat = 269,
-    pselect6 = 270,
-    ppoll = 271,
-    unshare = 272,
-    set_robust_list = 273,
-    get_robust_list = 274,
-    splice = 275,
-    tee = 276,
-    sync_file_range = 277,
-    vmsplice = 278,
-    move_pages = 279,
-    utimensat = 280,
-    epoll_pwait = 281,
-    signalfd = 282,
-    timerfd_create = 283,
-    eventfd = 284,
-    fallocate = 285,
-    timerfd_settime = 286,
-    timerfd_gettime = 287,
-    accept4 = 288,
-    signalfd4 = 289,
-    eventfd2 = 290,
-    epoll_create1 = 291,
-    dup3 = 292,
-    pipe2 = 293,
-    inotify_init1 = 294,
-    preadv = 295,
-    pwritev = 296,
-    rt_tgsigqueueinfo = 297,
-    perf_event_open = 298,
-    recvmmsg = 299,
-    fanotify_init = 300,
-    fanotify_mark = 301,
-    prlimit64 = 302,
-    name_to_handle_at = 303,
-    open_by_handle_at = 304,
-    clock_adjtime = 305,
-    syncfs = 306,
-    sendmmsg = 307,
-    setns = 308,
-    getcpu = 309,
-    process_vm_readv = 310,
-    process_vm_writev = 311,
-    kcmp = 312,
-    finit_module = 313,
-    sched_setattr = 314,
-    sched_getattr = 315,
-    renameat2 = 316,
-    seccomp = 317,
-    getrandom = 318,
-    memfd_create = 319,
-    kexec_file_load = 320,
-    bpf = 321,
-    execveat = 322,
-    userfaultfd = 323,
-    membarrier = 324,
-    mlock2 = 325,
-    copy_file_range = 326,
-    preadv2 = 327,
-    pwritev2 = 328,
-    pkey_mprotect = 329,
-    pkey_alloc = 330,
-    pkey_free = 331,
-    statx = 332,
-    io_pgetevents = 333,
-    rseq = 334,
-    pidfd_send_signal = 424,
-    io_uring_setup = 425,
-    io_uring_enter = 426,
-    io_uring_register = 427,
-    open_tree = 428,
-    move_mount = 429,
-    fsopen = 430,
-    fsconfig = 431,
-    fsmount = 432,
-    fspick = 433,
-    pidfd_open = 434,
-    clone3 = 435,
-    close_range = 436,
-    openat2 = 437,
-    pidfd_getfd = 438,
-    faccessat2 = 439,
-    process_madvise = 440,
-    epoll_pwait2 = 441,
-    mount_setattr = 442,
-    quotactl_fd = 443,
-    landlock_create_ruleset = 444,
-    landlock_add_rule = 445,
-    landlock_restrict_self = 446,
-    memfd_secret = 447,
-    process_mrelease = 448,
-    futex_waitv = 449,
-    set_mempolicy_home_node = 450,
-    cachestat = 451,
-    fchmodat2 = 452,
-    map_shadow_stack = 453,
-    futex_wake = 454,
-    futex_wait = 455,
-    futex_requeue = 456,
+enum SyscallX86_64 : u64 {
+    syscall_x86_64_read = 0,
+    syscall_x86_64_write = 1,
+    syscall_x86_64_open = 2,
+    syscall_x86_64_close = 3,
+    syscall_x86_64_stat = 4,
+    syscall_x86_64_fstat = 5,
+    syscall_x86_64_lstat = 6,
+    syscall_x86_64_poll = 7,
+    syscall_x86_64_lseek = 8,
+    syscall_x86_64_mmap = 9,
+    syscall_x86_64_mprotect = 10,
+    syscall_x86_64_munmap = 11,
+    syscall_x86_64_brk = 12,
+    syscall_x86_64_rt_sigaction = 13,
+    syscall_x86_64_rt_sigprocmask = 14,
+    syscall_x86_64_rt_sigreturn = 15,
+    syscall_x86_64_ioctl = 16,
+    syscall_x86_64_pread64 = 17,
+    syscall_x86_64_pwrite64 = 18,
+    syscall_x86_64_readv = 19,
+    syscall_x86_64_writev = 20,
+    syscall_x86_64_access = 21,
+    syscall_x86_64_pipe = 22,
+    syscall_x86_64_select = 23,
+    syscall_x86_64_sched_yield = 24,
+    syscall_x86_64_mremap = 25,
+    syscall_x86_64_msync = 26,
+    syscall_x86_64_mincore = 27,
+    syscall_x86_64_madvise = 28,
+    syscall_x86_64_shmget = 29,
+    syscall_x86_64_shmat = 30,
+    syscall_x86_64_shmctl = 31,
+    syscall_x86_64_dup = 32,
+    syscall_x86_64_dup2 = 33,
+    syscall_x86_64_pause = 34,
+    syscall_x86_64_nanosleep = 35,
+    syscall_x86_64_getitimer = 36,
+    syscall_x86_64_alarm = 37,
+    syscall_x86_64_setitimer = 38,
+    syscall_x86_64_getpid = 39,
+    syscall_x86_64_sendfile = 40,
+    syscall_x86_64_socket = 41,
+    syscall_x86_64_connect = 42,
+    syscall_x86_64_accept = 43,
+    syscall_x86_64_sendto = 44,
+    syscall_x86_64_recvfrom = 45,
+    syscall_x86_64_sendmsg = 46,
+    syscall_x86_64_recvmsg = 47,
+    syscall_x86_64_shutdown = 48,
+    syscall_x86_64_bind = 49,
+    syscall_x86_64_listen = 50,
+    syscall_x86_64_getsockname = 51,
+    syscall_x86_64_getpeername = 52,
+    syscall_x86_64_socketpair = 53,
+    syscall_x86_64_setsockopt = 54,
+    syscall_x86_64_getsockopt = 55,
+    syscall_x86_64_clone = 56,
+    syscall_x86_64_fork = 57,
+    syscall_x86_64_vfork = 58,
+    syscall_x86_64_execve = 59,
+    syscall_x86_64_exit = 60,
+    syscall_x86_64_wait4 = 61,
+    syscall_x86_64_kill = 62,
+    syscall_x86_64_uname = 63,
+    syscall_x86_64_semget = 64,
+    syscall_x86_64_semop = 65,
+    syscall_x86_64_semctl = 66,
+    syscall_x86_64_shmdt = 67,
+    syscall_x86_64_msgget = 68,
+    syscall_x86_64_msgsnd = 69,
+    syscall_x86_64_msgrcv = 70,
+    syscall_x86_64_msgctl = 71,
+    syscall_x86_64_fcntl = 72,
+    syscall_x86_64_flock = 73,
+    syscall_x86_64_fsync = 74,
+    syscall_x86_64_fdatasync = 75,
+    syscall_x86_64_truncate = 76,
+    syscall_x86_64_ftruncate = 77,
+    syscall_x86_64_getdents = 78,
+    syscall_x86_64_getcwd = 79,
+    syscall_x86_64_chdir = 80,
+    syscall_x86_64_fchdir = 81,
+    syscall_x86_64_rename = 82,
+    syscall_x86_64_mkdir = 83,
+    syscall_x86_64_rmdir = 84,
+    syscall_x86_64_creat = 85,
+    syscall_x86_64_link = 86,
+    syscall_x86_64_unlink = 87,
+    syscall_x86_64_symlink = 88,
+    syscall_x86_64_readlink = 89,
+    syscall_x86_64_chmod = 90,
+    syscall_x86_64_fchmod = 91,
+    syscall_x86_64_chown = 92,
+    syscall_x86_64_fchown = 93,
+    syscall_x86_64_lchown = 94,
+    syscall_x86_64_umask = 95,
+    syscall_x86_64_gettimeofday = 96,
+    syscall_x86_64_getrlimit = 97,
+    syscall_x86_64_getrusage = 98,
+    syscall_x86_64_sysinfo = 99,
+    syscall_x86_64_times = 100,
+    syscall_x86_64_ptrace = 101,
+    syscall_x86_64_getuid = 102,
+    syscall_x86_64_syslog = 103,
+    syscall_x86_64_getgid = 104,
+    syscall_x86_64_setuid = 105,
+    syscall_x86_64_setgid = 106,
+    syscall_x86_64_geteuid = 107,
+    syscall_x86_64_getegid = 108,
+    syscall_x86_64_setpgid = 109,
+    syscall_x86_64_getppid = 110,
+    syscall_x86_64_getpgrp = 111,
+    syscall_x86_64_setsid = 112,
+    syscall_x86_64_setreuid = 113,
+    syscall_x86_64_setregid = 114,
+    syscall_x86_64_getgroups = 115,
+    syscall_x86_64_setgroups = 116,
+    syscall_x86_64_setresuid = 117,
+    syscall_x86_64_getresuid = 118,
+    syscall_x86_64_setresgid = 119,
+    syscall_x86_64_getresgid = 120,
+    syscall_x86_64_getpgid = 121,
+    syscall_x86_64_setfsuid = 122,
+    syscall_x86_64_setfsgid = 123,
+    syscall_x86_64_getsid = 124,
+    syscall_x86_64_capget = 125,
+    syscall_x86_64_capset = 126,
+    syscall_x86_64_rt_sigpending = 127,
+    syscall_x86_64_rt_sigtimedwait = 128,
+    syscall_x86_64_rt_sigqueueinfo = 129,
+    syscall_x86_64_rt_sigsuspend = 130,
+    syscall_x86_64_sigaltstack = 131,
+    syscall_x86_64_utime = 132,
+    syscall_x86_64_mknod = 133,
+    syscall_x86_64_uselib = 134,
+    syscall_x86_64_personality = 135,
+    syscall_x86_64_ustat = 136,
+    syscall_x86_64_statfs = 137,
+    syscall_x86_64_fstatfs = 138,
+    syscall_x86_64_sysfs = 139,
+    syscall_x86_64_getpriority = 140,
+    syscall_x86_64_setpriority = 141,
+    syscall_x86_64_sched_setparam = 142,
+    syscall_x86_64_sched_getparam = 143,
+    syscall_x86_64_sched_setscheduler = 144,
+    syscall_x86_64_sched_getscheduler = 145,
+    syscall_x86_64_sched_get_priority_max = 146,
+    syscall_x86_64_sched_get_priority_min = 147,
+    syscall_x86_64_sched_rr_get_interval = 148,
+    syscall_x86_64_mlock = 149,
+    syscall_x86_64_munlock = 150,
+    syscall_x86_64_mlockall = 151,
+    syscall_x86_64_munlockall = 152,
+    syscall_x86_64_vhangup = 153,
+    syscall_x86_64_modify_ldt = 154,
+    syscall_x86_64_pivot_root = 155,
+    syscall_x86_64__sysctl = 156,
+    syscall_x86_64_prctl = 157,
+    syscall_x86_64_arch_prctl = 158,
+    syscall_x86_64_adjtimex = 159,
+    syscall_x86_64_setrlimit = 160,
+    syscall_x86_64_chroot = 161,
+    syscall_x86_64_sync = 162,
+    syscall_x86_64_acct = 163,
+    syscall_x86_64_settimeofday = 164,
+    syscall_x86_64_mount = 165,
+    syscall_x86_64_umount2 = 166,
+    syscall_x86_64_swapon = 167,
+    syscall_x86_64_swapoff = 168,
+    syscall_x86_64_reboot = 169,
+    syscall_x86_64_sethostname = 170,
+    syscall_x86_64_setdomainname = 171,
+    syscall_x86_64_iopl = 172,
+    syscall_x86_64_ioperm = 173,
+    syscall_x86_64_create_module = 174,
+    syscall_x86_64_init_module = 175,
+    syscall_x86_64_delete_module = 176,
+    syscall_x86_64_get_kernel_syms = 177,
+    syscall_x86_64_query_module = 178,
+    syscall_x86_64_quotactl = 179,
+    syscall_x86_64_nfsservctl = 180,
+    syscall_x86_64_getpmsg = 181,
+    syscall_x86_64_putpmsg = 182,
+    syscall_x86_64_afs_syscall = 183,
+    syscall_x86_64_tuxcall = 184,
+    syscall_x86_64_security = 185,
+    syscall_x86_64_gettid = 186,
+    syscall_x86_64_readahead = 187,
+    syscall_x86_64_setxattr = 188,
+    syscall_x86_64_lsetxattr = 189,
+    syscall_x86_64_fsetxattr = 190,
+    syscall_x86_64_getxattr = 191,
+    syscall_x86_64_lgetxattr = 192,
+    syscall_x86_64_fgetxattr = 193,
+    syscall_x86_64_listxattr = 194,
+    syscall_x86_64_llistxattr = 195,
+    syscall_x86_64_flistxattr = 196,
+    syscall_x86_64_removexattr = 197,
+    syscall_x86_64_lremovexattr = 198,
+    syscall_x86_64_fremovexattr = 199,
+    syscall_x86_64_tkill = 200,
+    syscall_x86_64_time = 201,
+    syscall_x86_64_futex = 202,
+    syscall_x86_64_sched_setaffinity = 203,
+    syscall_x86_64_sched_getaffinity = 204,
+    syscall_x86_64_set_thread_area = 205,
+    syscall_x86_64_io_setup = 206,
+    syscall_x86_64_io_destroy = 207,
+    syscall_x86_64_io_getevents = 208,
+    syscall_x86_64_io_submit = 209,
+    syscall_x86_64_io_cancel = 210,
+    syscall_x86_64_get_thread_area = 211,
+    syscall_x86_64_lookup_dcookie = 212,
+    syscall_x86_64_epoll_create = 213,
+    syscall_x86_64_epoll_ctl_old = 214,
+    syscall_x86_64_epoll_wait_old = 215,
+    syscall_x86_64_remap_file_pages = 216,
+    syscall_x86_64_getdents64 = 217,
+    syscall_x86_64_set_tid_address = 218,
+    syscall_x86_64_restart_syscall = 219,
+    syscall_x86_64_semtimedop = 220,
+    syscall_x86_64_fadvise64 = 221,
+    syscall_x86_64_timer_create = 222,
+    syscall_x86_64_timer_settime = 223,
+    syscall_x86_64_timer_gettime = 224,
+    syscall_x86_64_timer_getoverrun = 225,
+    syscall_x86_64_timer_delete = 226,
+    syscall_x86_64_clock_settime = 227,
+    syscall_x86_64_clock_gettime = 228,
+    syscall_x86_64_clock_getres = 229,
+    syscall_x86_64_clock_nanosleep = 230,
+    syscall_x86_64_exit_group = 231,
+    syscall_x86_64_epoll_wait = 232,
+    syscall_x86_64_epoll_ctl = 233,
+    syscall_x86_64_tgkill = 234,
+    syscall_x86_64_utimes = 235,
+    syscall_x86_64_vserver = 236,
+    syscall_x86_64_mbind = 237,
+    syscall_x86_64_set_mempolicy = 238,
+    syscall_x86_64_get_mempolicy = 239,
+    syscall_x86_64_mq_open = 240,
+    syscall_x86_64_mq_unlink = 241,
+    syscall_x86_64_mq_timedsend = 242,
+    syscall_x86_64_mq_timedreceive = 243,
+    syscall_x86_64_mq_notify = 244,
+    syscall_x86_64_mq_getsetattr = 245,
+    syscall_x86_64_kexec_load = 246,
+    syscall_x86_64_waitid = 247,
+    syscall_x86_64_add_key = 248,
+    syscall_x86_64_request_key = 249,
+    syscall_x86_64_keyctl = 250,
+    syscall_x86_64_ioprio_set = 251,
+    syscall_x86_64_ioprio_get = 252,
+    syscall_x86_64_inotify_init = 253,
+    syscall_x86_64_inotify_add_watch = 254,
+    syscall_x86_64_inotify_rm_watch = 255,
+    syscall_x86_64_migrate_pages = 256,
+    syscall_x86_64_openat = 257,
+    syscall_x86_64_mkdirat = 258,
+    syscall_x86_64_mknodat = 259,
+    syscall_x86_64_fchownat = 260,
+    syscall_x86_64_futimesat = 261,
+    syscall_x86_64_fstatat64 = 262,
+    syscall_x86_64_unlinkat = 263,
+    syscall_x86_64_renameat = 264,
+    syscall_x86_64_linkat = 265,
+    syscall_x86_64_symlinkat = 266,
+    syscall_x86_64_readlinkat = 267,
+    syscall_x86_64_fchmodat = 268,
+    syscall_x86_64_faccessat = 269,
+    syscall_x86_64_pselect6 = 270,
+    syscall_x86_64_ppoll = 271,
+    syscall_x86_64_unshare = 272,
+    syscall_x86_64_set_robust_list = 273,
+    syscall_x86_64_get_robust_list = 274,
+    syscall_x86_64_splice = 275,
+    syscall_x86_64_tee = 276,
+    syscall_x86_64_sync_file_range = 277,
+    syscall_x86_64_vmsplice = 278,
+    syscall_x86_64_move_pages = 279,
+    syscall_x86_64_utimensat = 280,
+    syscall_x86_64_epoll_pwait = 281,
+    syscall_x86_64_signalfd = 282,
+    syscall_x86_64_timerfd_create = 283,
+    syscall_x86_64_eventfd = 284,
+    syscall_x86_64_fallocate = 285,
+    syscall_x86_64_timerfd_settime = 286,
+    syscall_x86_64_timerfd_gettime = 287,
+    syscall_x86_64_accept4 = 288,
+    syscall_x86_64_signalfd4 = 289,
+    syscall_x86_64_eventfd2 = 290,
+    syscall_x86_64_epoll_create1 = 291,
+    syscall_x86_64_dup3 = 292,
+    syscall_x86_64_pipe2 = 293,
+    syscall_x86_64_inotify_init1 = 294,
+    syscall_x86_64_preadv = 295,
+    syscall_x86_64_pwritev = 296,
+    syscall_x86_64_rt_tgsigqueueinfo = 297,
+    syscall_x86_64_perf_event_open = 298,
+    syscall_x86_64_recvmmsg = 299,
+    syscall_x86_64_fanotify_init = 300,
+    syscall_x86_64_fanotify_mark = 301,
+    syscall_x86_64_prlimit64 = 302,
+    syscall_x86_64_name_to_handle_at = 303,
+    syscall_x86_64_open_by_handle_at = 304,
+    syscall_x86_64_clock_adjtime = 305,
+    syscall_x86_64_syncfs = 306,
+    syscall_x86_64_sendmmsg = 307,
+    syscall_x86_64_setns = 308,
+    syscall_x86_64_getcpu = 309,
+    syscall_x86_64_process_vm_readv = 310,
+    syscall_x86_64_process_vm_writev = 311,
+    syscall_x86_64_kcmp = 312,
+    syscall_x86_64_finit_module = 313,
+    syscall_x86_64_sched_setattr = 314,
+    syscall_x86_64_sched_getattr = 315,
+    syscall_x86_64_renameat2 = 316,
+    syscall_x86_64_seccomp = 317,
+    syscall_x86_64_getrandom = 318,
+    syscall_x86_64_memfd_create = 319,
+    syscall_x86_64_kexec_file_load = 320,
+    syscall_x86_64_bpf = 321,
+    syscall_x86_64_execveat = 322,
+    syscall_x86_64_userfaultfd = 323,
+    syscall_x86_64_membarrier = 324,
+    syscall_x86_64_mlock2 = 325,
+    syscall_x86_64_copy_file_range = 326,
+    syscall_x86_64_preadv2 = 327,
+    syscall_x86_64_pwritev2 = 328,
+    syscall_x86_64_pkey_mprotect = 329,
+    syscall_x86_64_pkey_alloc = 330,
+    syscall_x86_64_pkey_free = 331,
+    syscall_x86_64_statx = 332,
+    syscall_x86_64_io_pgetevents = 333,
+    syscall_x86_64_rseq = 334,
+    syscall_x86_64_pidfd_send_signal = 424,
+    syscall_x86_64_io_uring_setup = 425,
+    syscall_x86_64_io_uring_enter = 426,
+    syscall_x86_64_io_uring_register = 427,
+    syscall_x86_64_open_tree = 428,
+    syscall_x86_64_move_mount = 429,
+    syscall_x86_64_fsopen = 430,
+    syscall_x86_64_fsconfig = 431,
+    syscall_x86_64_fsmount = 432,
+    syscall_x86_64_fspick = 433,
+    syscall_x86_64_pidfd_open = 434,
+    syscall_x86_64_clone3 = 435,
+    syscall_x86_64_close_range = 436,
+    syscall_x86_64_openat2 = 437,
+    syscall_x86_64_pidfd_getfd = 438,
+    syscall_x86_64_faccessat2 = 439,
+    syscall_x86_64_process_madvise = 440,
+    syscall_x86_64_epoll_pwait2 = 441,
+    syscall_x86_64_mount_setattr = 442,
+    syscall_x86_64_quotactl_fd = 443,
+    syscall_x86_64_landlock_create_ruleset = 444,
+    syscall_x86_64_landlock_add_rule = 445,
+    syscall_x86_64_landlock_restrict_self = 446,
+    syscall_x86_64_memfd_secret = 447,
+    syscall_x86_64_process_mrelease = 448,
+    syscall_x86_64_futex_waitv = 449,
+    syscall_x86_64_set_mempolicy_home_node = 450,
+    syscall_x86_64_cachestat = 451,
+    syscall_x86_64_fchmodat2 = 452,
+    syscall_x86_64_map_shadow_stack = 453,
+    syscall_x86_64_futex_wake = 454,
+    syscall_x86_64_futex_wait = 455,
+    syscall_x86_64_futex_requeue = 456,
 };
 #endif
 #endif
@@ -785,7 +798,7 @@ fn void* syscall_mmap(void* address, size_t length, int protection_flags, int ma
     return mmap(address, length, protection_flags, map_flags, fd, offset);
 #else 
 #ifdef __linux__
-    return (void*) syscall6(static_cast<long>(SyscallX86_64::mmap), (unsigned long)address, length, protection_flags, map_flags, fd, offset);
+    return (void*) syscall6(syscall_x86_64_mmap, (unsigned long)address, length, protection_flags, map_flags, fd, offset);
 #else
 #error "Unsupported operating system for static linking" 
 #endif
@@ -798,7 +811,7 @@ fn int syscall_mprotect(void *address, size_t length, int protection_flags)
     return mprotect(address, length, protection_flags);
 #else 
 #ifdef __linux__
-    return syscall3(static_cast<long>(SyscallX86_64::mprotect), (unsigned long)address, length, protection_flags);
+    return syscall3(syscall_x86_64_mprotect, (unsigned long)address, length, protection_flags);
 #else
     return mprotect(address, length, protection_flags);
 #endif
@@ -811,7 +824,7 @@ fn int syscall_open(const char *file_path, int flags, int mode)
     return open(file_path, flags, mode);
 #else
 #ifdef __linux__
-    return syscall3(static_cast<long>(SyscallX86_64::open), (unsigned long)file_path, flags, mode);
+    return syscall3(syscall_x86_64_open, (unsigned long)file_path, flags, mode);
 #else
     return open(file_path, flags, mode);
 #endif
@@ -824,7 +837,7 @@ fn int syscall_close(int fd)
     return close(fd);
 #else
 #ifdef __linux__
-    return syscall1(static_cast<long>(SyscallX86_64::close), fd);
+    return syscall1(syscall_x86_64_close, fd);
 #else
     return close(fd);
 #endif
@@ -837,7 +850,7 @@ fn int syscall_fstat(int fd, struct stat *buffer)
     return fstat(fd, buffer);
 #else
 #ifdef __linux__
-    return syscall2(static_cast<long>(SyscallX86_64::fstat), fd, (unsigned long)buffer);
+    return syscall2(syscall_x86_64_fstat, fd, (unsigned long)buffer);
 #else
     return fstat(fd, buffer);
 #endif
@@ -859,7 +872,7 @@ fn ssize_t syscall_read(int fd, void* buffer, size_t bytes)
     return read(fd, buffer, bytes);
 #else
 #ifdef __linux__
-    return syscall3(static_cast<long>(SyscallX86_64::read), fd, (unsigned long)buffer, bytes);
+    return syscall3(syscall_x86_64_read, fd, (unsigned long)buffer, bytes);
 #else
     return read(fd, buffer, bytes);
 #endif
@@ -872,10 +885,19 @@ may_be_unused fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
     return write(fd, buffer, bytes);
 #else
 #ifdef __linux__
-    return syscall3(static_cast<long>(SyscallX86_64::write), fd, (unsigned long)buffer, bytes);
+    return syscall3(syscall_x86_64_write, fd, (unsigned long)buffer, bytes);
 #else
     return write(fd, buffer, bytes);
 #endif
+#endif
+}
+
+may_be_unused fn int syscall_mkdir(const char* path, u32 mode)
+{
+#if LINK_LIBC
+    return mkdir(path, mode);
+#else
+    return syscall2(syscall_x86_64_mkdir, (unsigned long)path, mode);
 #endif
 }
 
@@ -884,7 +906,7 @@ may_be_unused fn int syscall_rmdir(const char* path)
 #if LINK_LIBC
     return rmdir(path);
 #else
-    return syscall1(static_cast<long>(SyscallX86_64::rmdir), (unsigned long)path);
+    return syscall1(syscall_x86_64_rmdir, (unsigned long)path);
 #endif
 }
 
@@ -893,7 +915,16 @@ may_be_unused fn int syscall_unlink(const char* path)
 #if LINK_LIBC
     return unlink(path);
 #else
-    return syscall1(static_cast<long>(SyscallX86_64::unlink), (unsigned long)path);
+    return syscall1(syscall_x86_64_unlink, (unsigned long)path);
+#endif
+}
+
+may_be_unused fn int syscall_execve(const char* path, char *const argv[], char *const envp[])
+{
+#if LINK_LIBC
+    return execve(path, argv, envp);
+#else
+    return syscall3(syscall_x86_64_execve, (unsigned long)path, (unsigned long)argv, (unsigned long)envp);
 #endif
 }
 
@@ -909,12 +940,6 @@ may_be_unused fn int syscall_unlink(const char* path)
     _exit(status);
 #endif
 #endif
-}
-
-[[noreturn]] [[gnu::cold]] fn void fail()
-{
-    trap();
-    syscall_exit(1);
 }
 
 fn void* reserve(u64 size)
@@ -1042,6 +1067,32 @@ may_be_unused fn void print(const char* format, ...)
                 {
                     switch (next_ch)
                     {
+                        case 'c':
+                            {
+                                int done = 0;
+                                it += 1;
+                                if (*it == 's')
+                                {
+                                    it += 1;
+                                    if (*it == 't')
+                                    {
+                                        it += 1;
+                                        if (*it == 'r')
+                                        {
+                                            it += 1;
+                                            done = 1;
+                                            auto* cstring = va_arg(args, const char*);
+                                            while (*cstring)
+                                            {
+                                                buffer.pointer[buffer_i] = *cstring;
+                                                buffer_i += 1;
+                                                cstring += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                                assert(done);
+                            } break;
                         case 's':
                             {
                                 it += 1;
@@ -4633,11 +4684,13 @@ fn void unit_tests()
 Slice(String) arguments;
 
 #if LINK_LIBC
-int main(int argc, const char* argv[])
-#else
-extern "C" void entry_point()
-#endif
+int main(int argc, const char* argv[], char* envp[])
 {
+#else
+void entry_point(int argc, const char* argv[])
+{
+    char** envp = &argv[argc + 1];
+#endif
 #if DO_UNIT_TESTS
     unit_tests();
 #endif
@@ -4667,7 +4720,7 @@ extern "C" void entry_point()
     Thread* thread = arena_allocate(global_arena, Thread, 1);
     thread_init(thread);
 
-    mkdir("nest", 0755);
+    syscall_mkdir("nest", 0755);
 
     File file = {
         .path = source_file_path,
@@ -4701,15 +4754,39 @@ extern "C" void entry_point()
 
     file_write(c_source_path, lowered_source);
 
-    auto exe_path = s_get_slice(u8, c_source_path, 0, c_source_path.length - 2);
+    auto exe_path_view = s_get_slice(u8, c_source_path, 0, c_source_path.length - 2);
+    auto exe_path = (char*)arena_allocate_bytes(thread->arena, exe_path_view.length + 1, 1);
+    memcpy((char*)exe_path, exe_path_view.pointer, exe_path_view.length);
+    exe_path[exe_path_view.length] = 0;
 
-    auto command = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
-                    strlit("clang -g -o "),
-                    exe_path,
-                    strlit(" "),
-                    c_source_path,
-                    })));
-    system((char*)command.pointer);
+    auto command = (char*[]) {
+        "clang", "-g",
+        "-o", exe_path,
+        (char*)c_source_path.pointer,
+        0,
+    };
+
+    int res = syscall_execve("/usr/bin/clang", command, envp);
+    assert(0);
 
     thread_clear(thread);
+#if LINK_LIBC == 0
+    syscall_exit(0);
+#endif
 }
+
+#if LINK_LIBC == 0
+[[gnu::naked]] [[noreturn]] void _start()
+{
+    asm(
+            "\nxor %ebp, %ebp"
+            "\npopq %rdi"
+            "\nmov %rsp, %rsi"
+            "\nand $~0xf, %rsp"
+            "\npushq %rsp"
+            "\npushq $0"
+            "\ncallq entry_point"
+            "\nud2\n"
+       );
+}
+#endif

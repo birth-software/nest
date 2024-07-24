@@ -6,10 +6,11 @@ build_dir="build"
 exe_name="nest"
 exe_path=$build_dir/$exe_name
 debug_flags="-g"
-optimization_flags=""
+no_optimization_flags=""
+optimization_flags="-O3 -march=native"
 test_names="first"
 
-compile $build_dir $exe_name $debug_flags $optimization_flags;
+compile $build_dir $exe_name $debug_flags $no_optimization_flags;
 
 printf "\n======================\n"
 printf "TESTS"
