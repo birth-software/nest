@@ -18,12 +18,12 @@ jobs:
       - name: Build and test
         run: |
           ./run_tests.sh 1
-  # macos_build_and_test:
-  #   runs-on: macos-latest
-  #   timeout-minutes: 15
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #     - name: Build and test
-  #       run: |
-  #         ./run_tests.sh
+  macos_build_and_test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          ./run_tests.sh 1

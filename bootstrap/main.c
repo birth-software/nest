@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -159,7 +160,7 @@ fn u64 strlen (const char* c_string)
 #define strlit(s) (String){ .pointer = (u8*)s, .length = sizeof(s) - 1, }
 #define ch_to_str(ch) (String){ .pointer = &ch, .length = 1 }
 #define array_to_slice(arr) { .pointer = (arr), .length = array_length(arr) }
-#define pointer_to_bytes(p) Slice<u8>{ .pointer = (u8*)(p), .length = sizeof(*p) }
+#define pointer_to_bytes(p) (String) { .pointer = (u8*)(p), .length = sizeof(*p) }
 #define struct_to_bytes(s) pointer_to_bytes(&(s))
 
 #define case_to_name(prefix, e) case prefix ## e: return strlit(#e)
@@ -2512,6 +2513,31 @@ fn u8 type_equal(Thread* thread, Type* a, Type* b)
 
     return result;
 }
+fn Hash hash_type(Thread* thread, Type* type);
+
+fn Hash node_get_hash_default(Thread* thread, Node* node)
+{
+    return fnv_offset;
+}
+
+fn Hash node_get_hash_projection(Thread* thread, Node* node)
+{
+    trap();
+}
+
+fn Hash node_get_hash_control_projection(Thread* thread, Node* node)
+{
+    auto projection_index = node->control_projection.projection.index;
+    auto proj_index_bytes = struct_to_bytes(projection_index);
+    return hash_bytes(proj_index_bytes);
+}
+
+fn Hash node_get_hash_constant(Thread* thread, Node* node)
+{
+    auto* type = thread_type_get(thread, node->type);
+    auto type_hash = hash_type(thread, type);
+    return type_hash;
+}
 
 typedef NodeIndex NodeIdealize(Thread* thread, NodeIndex node_index);
 typedef TypeIndex NodeComputeType(Thread* thread, NodeIndex node_index);
@@ -2571,11 +2597,6 @@ fn Hash type_get_hash_tuple(Thread* thread, Type* type)
     }
 
     return hash;
-}
-
-fn Hash node_get_hash_constant(Thread* thread, Node* node)
-{
-    trap();
 }
 
 fn u8 is_projection(Node* n)
@@ -2921,22 +2942,27 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
     [NODE_START] = {
         .compute_type = &compute_type_start,
         .idealize = &idealize_null,
+        .get_hash = &node_get_hash_default,
     },
     [NODE_STOP] = {
         .compute_type = &compute_type_bottom,
         .idealize = &idealize_stop,
+        .get_hash = &node_get_hash_default,
     },
     [NODE_CONTROL_PROJECTION] = {
         .compute_type = &compute_type_projection,
         .idealize = &idealize_control_projection,
+        .get_hash = &node_get_hash_control_projection,
     },
     [NODE_DEAD_CONTROL] = {
         .compute_type = &compute_type_dead_control,
         .idealize = &idealize_null,
+        .get_hash = &node_get_hash_default,
     },
     [NODE_RETURN] = {
         .compute_type = &compute_type_return,
         .idealize = &idealize_return,
+        .get_hash = &node_get_hash_default,
     },
     [NODE_CONSTANT] = {
         .compute_type = &compute_type_constant,
@@ -2954,7 +2980,7 @@ fn Hash hash_type(Thread* thread, Type* type)
         hash = type_functions[type->id].get_hash(thread, type);
     }
 
-    assert(hash);
+    assert(hash != 0);
     type->hash = hash;
 
     return hash;
@@ -3032,19 +3058,32 @@ fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex 
     return result;
 }
 
-fn Hash hash_node(Node* node)
+fn Hash hash_node(Thread* thread, Node* node)
 {
     auto hash = node->hash;
     if (!hash)
     {
-        hash = fnv_offset;
-        for (auto* it = (u8*)node; it < (u8*)(node + 1); it += 1)
+        hash = node_functions[node->id].get_hash(thread, node);
+
+        hash = hash_byte(hash, node->id);
+
+        auto inputs = node_get_inputs(thread, node);
+        for (u32 i = 0; i < inputs.length; i += 1)
         {
-            hash = hash_byte(hash, *it);
+            auto input_index = inputs.pointer[i];
+            if (validi(input_index))
+            {
+                for (u8* it = (u8*)&input_index; it < (u8*)(&input_index + 1); it += 1)
+                {
+                    hash = hash_byte(hash, *it);
+                }
+            }
         }
 
         node->hash = hash;
     }
+
+    assert(hash);
 
     return hash;
 }
@@ -3053,7 +3092,7 @@ fn NodeGetOrPut intern_pool_get_or_put_node(Thread* thread, NodeIndex node_index
 {
     auto existing_capacity = thread->interned.nodes.capacity;
     auto* node = &thread->buffer.nodes.pointer[geti(node_index)];
-    auto hash = hash_node(node);
+    auto hash = hash_node(thread, node);
     auto original_index = hash & (existing_capacity - 1);
     
     auto slot = intern_pool_find_node_slot(thread, original_index, node_index);
@@ -3092,23 +3131,47 @@ fn NodeIndex intern_pool_remove_node(Thread* thread, NodeIndex node_index)
 {
     auto existing_capacity = thread->interned.nodes.capacity;
     auto* node = thread_node_get(thread, node_index);
-    auto hash = hash_node(node);
+    auto hash = hash_node(thread, node);
+    
     auto original_index = hash & (existing_capacity - 1);
     auto slot = intern_pool_find_node_slot(thread, original_index, node_index);
     if (slot != -1)
     {
-        auto index = (u32)slot;
-        auto* slot_pointer = &thread->interned.nodes.pointer[index];
+        auto slot_index = (u32)slot;
+        auto* slot_pointer = &thread->interned.nodes.pointer[slot_index];
         auto old_node_index = *(NodeIndex*)slot_pointer;
         *slot_pointer = 0;
+
+        auto index = slot_index;
 
         while (1)
         {
             index = (index + 1) & (existing_capacity - 1);
-            if (thread->interned.nodes.pointer[index] == 0)
+            auto existing = thread->interned.nodes.pointer[index];
+            if (existing == 0)
             {
                 break;
             }
+            auto existing_node_index = *(NodeIndex*)&existing;
+            auto* existing_node = thread_node_get(thread, existing_node_index);
+            auto existing_node_hash = hash_node(thread, existing_node);
+            auto existing_index = existing_node_hash & (existing_capacity - 1);
+
+            if (slot_index <= existing_index)
+            {
+                if ((slot_index < existing_index) & (existing_index <= index))
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                if ((slot_index <= index) | (slot_index < existing_index))
+                {
+                    continue;
+                }
+            }
+
             trap();
         }
 
@@ -4630,9 +4693,9 @@ fn String c_lower(Thread* thread)
 
 fn void thread_init(Thread* thread)
 {
-    *thread = (Thread) {
-        .arena = arena_init_default(KB(64)),
-    };
+    memset(thread, 0, sizeof(Thread));
+    thread->arena = arena_init_default(KB(64));
+
     Type top, bot, live_control, dead_control;
     memset(&top, 0, sizeof(Type));
     top.id = TYPE_TOP;
