@@ -857,7 +857,7 @@ fn int syscall_fstat(int fd, struct stat *buffer)
 #endif
 }
 
-fn u64 file_get_size(int fd)
+may_be_unused fn u64 file_get_size(int fd)
 {
     struct stat stat_buffer;
     int stat_result = syscall_fstat(fd, &stat_buffer);
@@ -1282,13 +1282,13 @@ fn String arena_join_string(Arena* arena, Slice(String) pieces)
         memcpy(it, piece.pointer, piece.length);
         it += piece.length;
     }
-    assert(it - pointer == size);
+    assert((u64)(it - pointer) == size);
     *it = 0;
 
     return (String) { .pointer = pointer, .length = size };
 }
 
-#define arena_allocate(arena, T, count) arena_allocate_bytes(arena, sizeof(T) * count, alignof(T))
+#define arena_allocate(arena, T, count) (T*)(arena_allocate_bytes(arena, sizeof(T) * count, alignof(T)))
 #define arena_allocate_slice(arena, T, count) (Slice(T)){ .pointer = arena_allocate(arena, T, count), .length = count }
 
 fn void arena_reset(Arena* arena)
@@ -1323,16 +1323,18 @@ fn s32 string_map_find_slot(StringMap* map, u32 original_index, String key, u32 
     for (u32 i = 0; i < existing_capacity; i += 1)
     {
         auto index = it_index & (existing_capacity - 1);
-        u32 key = map->pointer[index];
+        u32 existing_key = map->pointer[index];
 
         // Not set
-        if (key == 0)
+        if (existing_key == 0)
         {
             result = index;
             break;
         }
         else
         {
+            unused(value);
+            unused(key);
             trap();
         }
 
@@ -1467,7 +1469,8 @@ fn int file_write(String file_path, String file_data)
     assert(file_descriptor != -1);
 
     auto bytes = syscall_write(file_descriptor, file_data.pointer, file_data.length);
-    assert(bytes == file_data.length);
+    assert(bytes >= 0);
+    assert((u64)bytes == file_data.length);
 
     int close_result = syscall_close(file_descriptor);
     assert(close_result == 0);
@@ -1487,7 +1490,7 @@ fn String file_read(Arena* arena, String path)
     u64 file_size = stat_buffer.st_size;
 
     result = (String){
-        .pointer = (u8*)arena_allocate_bytes(arena, file_size, 64),
+        .pointer = arena_allocate_bytes(arena, file_size, 64),
         .length = file_size,
     };
 
@@ -1721,12 +1724,12 @@ fn u8* vb_generic_add_assume_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 
     return vb->pointer + (index * item_size);
 }
 
-fn u8* vb_generic_append_assume_capacity(VirtualBuffer(u8)* vb, void* item_pointer, u32 item_size, u32 item_count)
-{
-    u8* new_memory = vb_generic_add_assume_capacity(vb, item_size, item_count);
-    memcpy(new_memory, item_pointer, item_size * item_count);
-    return new_memory;
-}
+// fn u8* vb_generic_append_assume_capacity(VirtualBuffer(u8)* vb, void* item_pointer, u32 item_size, u32 item_count)
+// {
+//     u8* new_memory = vb_generic_add_assume_capacity(vb, item_size, item_count);
+//     memcpy(new_memory, item_pointer, item_size * item_count);
+//     return new_memory;
+// }
 
 fn u8* vb_generic_add(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
 {
@@ -1735,11 +1738,11 @@ fn u8* vb_generic_add(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
 }
 
 
-fn u8* vb_generic_append(VirtualBuffer(u8)* vb, void* item_pointer, u32 item_size, u32 item_count)
-{
-    vb_generic_ensure_capacity(vb, item_size, item_count);
-    return vb_generic_append_assume_capacity(vb, item_pointer, item_size, item_count);
-}
+// fn u8* vb_generic_append(VirtualBuffer(u8)* vb, void* item_pointer, u32 item_size, u32 item_count)
+// {
+//     vb_generic_ensure_capacity(vb, item_size, item_count);
+//     return vb_generic_append_assume_capacity(vb, item_pointer, item_size, item_count);
+// }
 
 #define vb_add(a, count) (typeof((a)->pointer)) vb_generic_add((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
 #define vb_append_one(a, item) (typeof((a)->pointer)) vb_generic_append((VirtualBuffer(u8)*)(a), &(item), sizeof(*((a)->pointer)), 1)
@@ -4705,7 +4708,7 @@ void entry_point(int argc, const char* argv[])
         arguments.pointer = arena_allocate(global_arena, String, argc);
         arguments.length = argc;
 
-        for (u32 i = 0; i < argc; i += 1)
+        for (int i = 0; i < argc; i += 1)
         {
             u64 len = strlen(argv[i]);
             arguments.pointer[i] = (String) {
@@ -4736,15 +4739,15 @@ void entry_point(int argc, const char* argv[])
         NodeIndex start_node_index = function->start;
         NodeIndex stop_node_index = function->stop;
         iterate_peepholes(thread, stop_node_index);
-        print_string(strlit("Before optimizations\n"));
-        print_function(thread, function);
+        // print_string(strlit("Before optimizations\n"));
+        // print_function(thread, function);
         gcm_build_cfg(thread, start_node_index, stop_node_index);
-        print_string(strlit("After optimizations\n"));
-        print_function(thread, function);
+        // print_string(strlit("After optimizations\n"));
+        // print_function(thread, function);
     }
 
     auto lowered_source = c_lower(thread);
-    print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
+    // print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
 
     auto c_source_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
                     strlit("nest/"),
