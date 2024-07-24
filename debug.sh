@@ -17,6 +17,6 @@ compile $build_dir $exe_name $debug_flags $optimization_flags
 
 case "$OSTYPE" in
     darwin*)  lldb -- $exe_path $bootstrap_args;; 
-    linux*)   gf2 -ex r --args $exe_path $bootstrap_args;;
+    linux*)   gf2 -ex b entry_point -ex r --args $exe_path $bootstrap_args;;
     *)        echo "unknown: $OSTYPE" ;;
 esac
