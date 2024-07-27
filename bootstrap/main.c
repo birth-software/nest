@@ -73,14 +73,14 @@ may_be_unused fn void print(const char* format, ...);
 #endif
 
 
-const global u8 brace_open = '{';
-const global u8 brace_close = '}';
+const may_be_unused global u8 brace_open = '{';
+const may_be_unused global u8 brace_close = '}';
 
-const global u8 parenthesis_open = '(';
-const global u8 parenthesis_close = ')';
+const may_be_unused global u8 parenthesis_open = '(';
+const may_be_unused global u8 parenthesis_close = ')';
 
-const global u8 bracket_open = '[';
-const global u8 bracket_close = ']';
+const may_be_unused global u8 bracket_open = '[';
+const may_be_unused global u8 bracket_close = ']';
 
 fn u8 log2_alignment(u64 alignment)
 {
@@ -94,12 +94,12 @@ fn u8 log2_alignment(u64 alignment)
 
 // Lehmer's generator
 // https://lemire.me/blog/2019/03/19/the-fastest-conventional-random-number-generator-that-can-pass-big-crush/
-__uint128_t rn_state;
-fn u64 generate_random_number()
-{
-    rn_state *= 0xda942042e4dd58b5;
-    return rn_state >> 64;
-}
+// __uint128_t rn_state;
+// fn u64 generate_random_number()
+// {
+//     rn_state *= 0xda942042e4dd58b5;
+//     return rn_state >> 64;
+// }
 
 fn u64 round_up_to_next_power_of_2(u64 n)
 {
@@ -188,20 +188,20 @@ typedef Slice(u8) String;
 // Array of strings
 declare_slice(String);
 
-fn s32 string_first_ch(String string, u8 ch)
-{
-    s32 result = -1;
-    for (u64 i = 0; i < string.length; i += 1)
-    {
-        if (string.pointer[i] == ch)
-        {
-            result = i;
-            break;
-        }
-    }
-
-    return result;
-}
+// fn s32 string_first_ch(String string, u8 ch)
+// {
+//     s32 result = -1;
+//     for (u64 i = 0; i < string.length; i += 1)
+//     {
+//         if (string.pointer[i] == ch)
+//         {
+//             result = i;
+//             break;
+//         }
+//     }
+//
+//     return result;
+// }
 
 fn s32 string_last_ch(String string, u8 ch)
 {
@@ -220,17 +220,17 @@ fn s32 string_last_ch(String string, u8 ch)
     return result;
 }
 
-fn String string_dir(String string)
-{
-    String result = {};
-    auto index = string_last_ch(string, '/');
-    if (index != -1)
-    {
-        result = s_get_slice(u8, string, 0, index);
-    }
-
-    return result;
-}
+// fn String string_dir(String string)
+// {
+//     String result = {};
+//     auto index = string_last_ch(string, '/');
+//     if (index != -1)
+//     {
+//         result = s_get_slice(u8, string, 0, index);
+//     }
+//
+//     return result;
+// }
 
 fn String string_base(String string)
 {
@@ -318,10 +318,10 @@ fn u64 is_decimal_digit(u8 ch)
     return (ch >= '0') & (ch <= '9');
 }
 
-fn u64 is_hex_digit(u8 ch)
-{
-    return (is_decimal_digit(ch) | ((ch == 'a' | ch == 'A') | (ch == 'b' | ch == 'B'))) | (((ch == 'c' | ch == 'C') | (ch == 'd' | ch == 'D')) | ((ch == 'e' | ch == 'E') | (ch == 'f' | ch == 'F')));
-}
+// fn u64 is_hex_digit(u8 ch)
+// {
+//     return (is_decimal_digit(ch) | ((ch == 'a' | ch == 'A') | (ch == 'b' | ch == 'B'))) | (((ch == 'c' | ch == 'C') | (ch == 'd' | ch == 'D')) | ((ch == 'e' | ch == 'E') | (ch == 'f' | ch == 'F')));
+// }
 
 
 fn u64 is_identifier_start(u8 ch)
@@ -1214,7 +1214,7 @@ may_be_unused fn void print(const char* format, ...)
 }
 
 global u64 minimum_granularity = page_size;
-global u64 middle_granularity = MB(2);
+// global u64 middle_granularity = MB(2);
 global u64 default_size = GB(4);
 
 struct Arena
@@ -1316,31 +1316,49 @@ struct StringMap
 };
 typedef struct StringMap StringMap;
 
-fn s32 string_map_find_slot(StringMap* map, u32 original_index, String key, u32 value)
+fn StringMapValue* string_map_values(StringMap* map)
 {
-    auto it_index = original_index;
-    auto existing_capacity = map->capacity;
+    assert(map->pointer);
+    return (StringMapValue*)(map->pointer + map->capacity);
+}
+
+fn s32 string_map_find_slot(StringMap* map, u32 original_index, String key, u32 wanted_value)
+{
     s32 result = -1;
 
-    for (u32 i = 0; i < existing_capacity; i += 1)
+    if (map->pointer)
     {
-        auto index = it_index & (existing_capacity - 1);
-        u32 existing_key = map->pointer[index];
+        auto it_index = original_index;
+        auto existing_capacity = map->capacity;
+        auto* values = string_map_values(map);
 
-        // Not set
-        if (existing_key == 0)
+        for (u32 i = 0; i < existing_capacity; i += 1)
         {
-            result = index;
-            break;
-        }
-        else
-        {
-            unused(value);
-            unused(key);
-            trap();
-        }
+            auto index = it_index & (existing_capacity - 1);
+            u32 existing_key = map->pointer[index];
 
-        it_index += 1;
+            // Not set
+            if (existing_key == 0)
+            {
+                result = index;
+                break;
+            }
+            else 
+            {
+                auto pair = &values[index];
+                if (s_equal(pair->string, key))
+                {
+                    result = index;
+                    break;
+                }
+                else
+                {
+                    trap();
+                }
+            }
+
+            it_index += 1;
+        }
     }
 
     return result;
@@ -1353,11 +1371,6 @@ struct StringMapPut
 };
 typedef struct StringMapPut StringMapPut;
 
-fn StringMapValue* string_map_values(StringMap* map)
-{
-    assert(map->pointer);
-    return (StringMapValue*)(map->pointer + map->capacity);
-}
 
 fn void string_map_ensure_capacity(StringMap* map, Arena* arena, u32 additional)
 {
@@ -1389,6 +1402,8 @@ fn void string_map_ensure_capacity(StringMap* map, Arena* arena, u32 additional)
             auto key = old_keys[i];
             if (key)
             {
+                unused(values);
+                unused(old_values);
                 trap();
             }
         }
@@ -1432,6 +1447,27 @@ fn StringMapPut string_map_put_assume_not_existent(StringMap* map, Arena* arena,
 {
     string_map_ensure_capacity(map, arena, 1);
     return string_map_put_assume_not_existent_assume_capacity(map, hash, key, value);
+}
+
+fn StringMapPut string_map_get(StringMap* map, String key)
+{
+    u32 value = 0;
+    Hash long_hash = hash_bytes(key);
+    auto hash = (u32)long_hash;
+    assert(hash);
+    auto index = hash & (map->capacity - 1);
+    auto slot = string_map_find_slot(map, index, key, 0);
+    u8 existing = slot != -1;
+    if (existing)
+    {
+        auto* value_pair = &string_map_values(map)[slot];
+        value = value_pair->value;
+    }
+
+    return (StringMapPut) {
+        .value = value,
+        .existing = existing,
+    };
 }
 
 fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 value)
@@ -2030,7 +2066,7 @@ fn u8 bitset_get(Bitset* bitset, u64 index)
 
 fn void bitset_ensure_length(Bitset* bitset, u64 max)
 {
-    auto length = (max / (sizeof(u64) * 8)) + (max % (sizeof(u64) * 8) != 0);
+    auto length = (max / element_bitsize) + (max % element_bitsize != 0);
     auto old_length = bitset->arr.length;
     if (old_length < length)
     {
@@ -2093,13 +2129,13 @@ struct Thread
             TypeIndex zero;
         } integer;
     } types;
+    WorkList worklist;
+    s64 main_function;
     struct
     {
         u64 total;
         u64 nop;
     } iteration;
-    WorkList worklist;
-    s64 main_function;
 };
 typedef struct Thread Thread;
 
@@ -2331,6 +2367,7 @@ fn void move_dependencies_to_worklist(Thread* thread, Node* node)
     assert(node->dependency_count == 0);
     for (u32 i = 0; i < node->dependency_count; i += 1)
     {
+        unused(thread);
         trap();
     }
 }
@@ -2459,6 +2496,25 @@ fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
     return node_index;
 }
 
+fn void node_pop_inputs(Thread* thread, NodeIndex node_index, u16 input_count)
+{
+    node_unlock(thread, node_index);
+    auto* node = thread_node_get(thread, node_index);
+    auto inputs = node_get_inputs(thread, node);
+    for (u16 i = 0; i < input_count; i += 1)
+    {
+        auto old_input = inputs.pointer[node->input_count - 1];
+        node->input_count -= 1;
+        if (validi(old_input))
+        {
+            if (node_remove_output(thread, old_input, node_index))
+            {
+                trap();
+            }
+        }
+    }
+}
+
 fn void scope_push(Thread* thread, FunctionBuilder* builder)
 {
     auto* scope = thread_node_get(thread, builder->scope);
@@ -2477,25 +2533,6 @@ fn void scope_push(Thread* thread, FunctionBuilder* builder)
 
     memset(&scope->scope.stack.pointer[current_length], 0, sizeof(ScopePair));
     scope->scope.stack.length = current_length + 1;
-}
-
-fn void node_pop_inputs(Thread* thread, NodeIndex node_index, u16 input_count)
-{
-    node_unlock(thread, node_index);
-    auto* node = thread_node_get(thread, node_index);
-    auto inputs = node_get_inputs(thread, node);
-    for (u16 i = 0; i < input_count; i += 1)
-    {
-        auto old_input = inputs.pointer[node->input_count - 1];
-        node->input_count -= 1;
-        if (validi(old_input))
-        {
-            if (node_remove_output(thread, old_input, node_index))
-            {
-                trap();
-            }
-        }
-    }
 }
 
 fn void scope_pop(Thread* thread, FunctionBuilder* builder)
@@ -2537,7 +2574,51 @@ fn NodeIndex scope_define(Thread* thread, FunctionBuilder* builder, String name,
     return result;
 }
 
-fn u8 type_equal(Thread* thread, Type* a, Type* b)
+fn NodeIndex scope_update_extended(Thread* thread, FunctionBuilder* builder, String name, NodeIndex node_index, s32 nesting_level)
+{
+    NodeIndex result = invalidi(Node);
+
+    if (nesting_level >= 0)
+    {
+        auto* scope_node = thread_node_get(thread, builder->scope);
+        auto* string_map = &scope_node->scope.stack.pointer[nesting_level].values;
+        auto lookup_result = string_map_get(string_map, name);
+        if (lookup_result.existing)
+        {
+            auto index = lookup_result.value;
+            auto old_index = node_input_get(thread, scope_node, index);
+            auto* old_node = thread_node_get(thread, old_index);
+
+            if (old_node->id == NODE_SCOPE)
+            {
+                trap();
+            }
+
+            if (validi(node_index))
+            {
+                trap();
+            }
+            else
+            {
+                return old_index;
+            }
+        }
+        else
+        {
+            trap();
+        }
+    }
+
+    return result;
+}
+
+fn NodeIndex scope_lookup(Thread* thread, FunctionBuilder* builder, String name)
+{
+    auto* scope_node = thread_node_get(thread, builder->scope);
+    return scope_update_extended(thread, builder, name, invalidi(Node), scope_node->scope.stack.length - 1);
+}
+
+fn u8 type_equal(Type* a, Type* b)
 {
     u8 result = 0;
     if (a == b)
@@ -2582,20 +2663,28 @@ fn u8 type_equal(Thread* thread, Type* a, Type* b)
 
     return result;
 }
+
 fn Hash hash_type(Thread* thread, Type* type);
 
 fn Hash node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index)
 {
+    unused(thread);
+    unused(node);
+    unused(node_index);
     return fnv_offset;
 }
 
-fn Hash node_get_hash_projection(Thread* thread, Node* node)
-{
-    trap();
-}
+// fn Hash node_get_hash_projection(Thread* thread, Node* node)
+// {
+//     unused(thread);
+//     unused(node);
+//     trap();
+// }
 
 fn Hash node_get_hash_control_projection(Thread* thread, Node* node, NodeIndex node_index)
 {
+    unused(thread);
+    unused(node_index);
     auto projection_index = node->control_projection.projection.index;
     auto proj_index_bytes = struct_to_bytes(projection_index);
     return hash_bytes(proj_index_bytes);
@@ -2603,7 +2692,8 @@ fn Hash node_get_hash_control_projection(Thread* thread, Node* node, NodeIndex n
 
 fn Hash node_get_hash_constant(Thread* thread, Node* node, NodeIndex node_index)
 {
-    auto type_index = node->type;
+    unused(node_index);
+    // auto type_index = node->type;
     auto* type = thread_type_get(thread, node->type);
     auto type_hash = hash_type(thread, type);
     // print("Hashing node #{u32} (constant) (type: #{u32}) (hash: {u64:x})\n", node_index.index, type_index.index, type_hash);
@@ -2687,6 +2777,8 @@ fn Hash hash_type(Thread* thread, Type* type);
 
 fn NodeIndex idealize_null(Thread* thread, NodeIndex node_index)
 {
+    unused(thread);
+    unused(node_index);
     return invalidi(Node);
 }
 
@@ -2699,18 +2791,18 @@ fn TypeIndex compute_type_constant(Thread* thread, NodeIndex node_index)
 
 fn Hash type_get_hash_default(Thread* thread, Type* type)
 {
+    unused(thread);
     assert(!type->hash);
     Hash hash = fnv_offset;
 
-
-    u32 i = 0;
+    // u32 i = 0;
     for (auto* it = (u8*)type; it < (u8*)(type + 1); it += 1)
     {
         hash = hash_byte(hash, *it);
         if (type->id == TYPE_INTEGER)
         {
             // print("Byte [{u32}] = 0x{u32:x}\n", i, (u32)*it);
-            i += 1;
+            // i += 1;
         }
     }
 
@@ -2733,21 +2825,21 @@ fn Hash type_get_hash_tuple(Thread* thread, Type* type)
     return hash;
 }
 
-fn u8 is_projection(Node* n)
+fn u8 node_is_projection(Node* n)
 {
     return (n->id == NODE_CONTROL_PROJECTION) | (n->id == NODE_PROJECTION);
 }
 
 fn NodeIndex projection_get_control(Thread* thread, Node* node)
 {
-    assert(is_projection(node));
+    assert(node_is_projection(node));
     auto node_index = node_input_get(thread, node, 0);
     return node_index;
 }
 
-fn s32 projection_get_index(Thread* thread, Node* node)
+fn s32 projection_get_index(Node* node)
 {
-    assert(is_projection(node));
+    assert(node_is_projection(node));
 
     switch (node->id)
     {
@@ -2761,14 +2853,14 @@ fn s32 projection_get_index(Thread* thread, Node* node)
 fn TypeIndex compute_type_projection(Thread* thread, NodeIndex node_index)
 {
     auto* node = thread_node_get(thread, node_index);
-    assert(is_projection(node));
+    assert(node_is_projection(node));
     auto control_node_index = projection_get_control(thread, node);
     auto* control_node = thread_node_get(thread, control_node_index);
     auto* control_type = thread_type_get(thread, control_node->type);
 
     if (control_type->id == TYPE_TUPLE)
     {
-        auto index = projection_get_index(thread, node);
+        auto index = projection_get_index(node);
         auto type_index = control_type->tuple.types.pointer[index];
         return type_index;
     }
@@ -2908,7 +3000,7 @@ fn s32 intern_pool_find_type_slot(Thread* thread, u32 original_index, Type* type
         {
             TypeIndex existing_type_index = *(TypeIndex*)&key;
             Type* existing_type = thread_type_get(thread, existing_type_index);
-            if (type_equal(thread, existing_type, type))
+            if (type_equal(existing_type, type))
             {
                 result = index;
                 break;
@@ -3199,19 +3291,19 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
     },
 };
 
-fn String type_id_to_string(Type* type)
-{
-    switch (type->id)
-    {
-        case_to_name(TYPE_, BOTTOM);
-        case_to_name(TYPE_, TOP);
-        case_to_name(TYPE_, LIVE_CONTROL);
-        case_to_name(TYPE_, DEAD_CONTROL);
-        case_to_name(TYPE_, INTEGER);
-        case_to_name(TYPE_, TUPLE);
-        case_to_name(TYPE_, COUNT);
-    }
-}
+// fn String type_id_to_string(Type* type)
+// {
+//     switch (type->id)
+//     {
+//         case_to_name(TYPE_, BOTTOM);
+//         case_to_name(TYPE_, TOP);
+//         case_to_name(TYPE_, LIVE_CONTROL);
+//         case_to_name(TYPE_, DEAD_CONTROL);
+//         case_to_name(TYPE_, INTEGER);
+//         case_to_name(TYPE_, TUPLE);
+//         case_to_name(TYPE_, COUNT);
+//     }
+// }
 
 fn Hash hash_type(Thread* thread, Type* type)
 {
@@ -3323,7 +3415,7 @@ fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex 
     auto it_index = original_index;
     auto existing_capacity = thread->interned.nodes.capacity;
     s32 result = -1;
-    auto* node = thread_node_get(thread, node_index);
+    // auto* node = thread_node_get(thread, node_index);
 
     for (u32 i = 0; i < existing_capacity; i += 1)
     {
@@ -3489,11 +3581,6 @@ fn NodeIndex intern_pool_remove_node(Thread* thread, NodeIndex node_index)
     }
 }
 
-
-global String test_files[] = {
-    strlit("tests/first/main.nat"),
-};
-
 struct Parser
 {
     u64 i;
@@ -3631,6 +3718,8 @@ typedef struct Parser Parser;
 
 fn void thread_add_job(Thread* thread, NodeIndex node_index)
 {
+    unused(thread);
+    unused(node_index);
     trap();
 }
 
@@ -3859,6 +3948,7 @@ fn TypeIndex type_join(Thread* thread, TypeIndex a, TypeIndex b)
     }
     else
     {
+        unused(thread);
         trap();
     }
 
@@ -4099,14 +4189,26 @@ fn TypeIndex analyze_type(Thread* thread, Parser* parser, String src)
     trap();
 }
 
-fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function, String src);
-fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, Function* function, String src);
-
-fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
     u8 starting_ch = src.pointer[parser->i];
     u64 is_digit = is_decimal_digit(starting_ch);
-    if (is_digit)
+    u64 is_identifier = is_identifier_start(starting_ch);
+
+    if (is_identifier)
+    {
+        String identifier = parse_identifier(parser, src);
+        auto node_index = scope_lookup(thread, builder, identifier);
+        if (validi(node_index))
+        {
+            return node_index;
+        }
+        else
+        {
+            fail();
+        }
+    }
+    else if (is_digit)
     {
         typedef enum IntegerPrefix {
             INTEGER_PREFIX_HEXADECIMAL,
@@ -4172,7 +4274,7 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
                 trap();
         }
 
-        auto node_index = constant_int_create(thread, function, value);
+        auto node_index = constant_int_create(thread, builder->function, value);
         return node_index;
     }
     else
@@ -4181,7 +4283,7 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
     }
 }
 
-fn NodeIndex analyze_unary(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_unary(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
     // TODO: postfix
     typedef enum PrefixOperator
@@ -4208,21 +4310,21 @@ fn NodeIndex analyze_unary(Thread* thread, Parser* parser, Function* function, S
             todo();
         default:
             {
-                node_index = analyze_primary_expression(thread, parser, function, src);
+                node_index = analyze_primary_expression(thread, parser, builder, src);
                 prefix_operator = PREFIX_OPERATOR_NONE;
             } break;
     }
 
-    typedef enum SuffixOperator
-    {
-        SUFFIX_OPERATOR_NONE = 0,
-        SUFFIX_OPERATOR_CALL,
-        SUFFIX_OPERATOR_ARRAY,
-        SUFFIX_OPERATOR_FIELD,
-        SUFFIX_OPERATOR_POINTER_DEREFERENCE,
-    } SuffixOperator;
-
-    SuffixOperator suffix_operator;
+    // typedef enum SuffixOperator
+    // {
+    //     SUFFIX_OPERATOR_NONE = 0,
+    //     SUFFIX_OPERATOR_CALL,
+    //     SUFFIX_OPERATOR_ARRAY,
+    //     SUFFIX_OPERATOR_FIELD,
+    //     SUFFIX_OPERATOR_POINTER_DEREFERENCE,
+    // } SuffixOperator;
+    //
+    // SuffixOperator suffix_operator;
 
     skip_space(parser, src);
 
@@ -4246,9 +4348,9 @@ fn NodeIndex analyze_unary(Thread* thread, Parser* parser, Function* function, S
     return node_index;
 }
 
-fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
-    auto left = analyze_unary(thread, parser, function, src);
+    auto left = analyze_unary(thread, parser, builder, src);
 
     while (1)
     {
@@ -4291,7 +4393,7 @@ fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, Function* fu
 
         // print("Before right: LEFT is #{u32}\n", left.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
-        auto right = analyze_multiplication(thread, parser, function, src);
+        auto right = analyze_multiplication(thread, parser, builder, src);
         // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
@@ -4300,7 +4402,7 @@ fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, Function* fu
         // print("Addition new node #{u32}\n", new_node_index.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
-        left = peephole(thread, function, new_node_index);
+        left = peephole(thread, builder->function, new_node_index);
     }
 
     print("Analyze addition returned node #{u32}\n", left.index);
@@ -4308,9 +4410,9 @@ fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, Function* fu
     return left;
 }
 
-fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_addition(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
-    auto left = analyze_multiplication(thread, parser, function, src);
+    auto left = analyze_multiplication(thread, parser, builder, src);
 
     while (1)
     {
@@ -4350,7 +4452,7 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function
 
         // print("Before right: LEFT is #{u32}\n", left.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
-        auto right = analyze_multiplication(thread, parser, function, src);
+        auto right = analyze_multiplication(thread, parser, builder, src);
         // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
@@ -4359,7 +4461,7 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function
         // print("Addition new node #{u32}\n", new_node_index.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
-        left = peephole(thread, function, new_node_index);
+        left = peephole(thread, builder->function, new_node_index);
     }
 
     print("Analyze addition returned node #{u32}\n", left.index);
@@ -4367,9 +4469,9 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function
     return left;
 }
 
-fn NodeIndex analyze_shift(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_shift(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
-    auto left = analyze_addition(thread, parser, function, src);
+    auto left = analyze_addition(thread, parser, builder, src);
 
     while (1)
     {
@@ -4404,7 +4506,7 @@ fn NodeIndex analyze_shift(Thread* thread, Parser* parser, Function* function, S
 
         // print("Before right: LEFT is #{u32}\n", left.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
-        auto right = analyze_addition(thread, parser, function, src);
+        auto right = analyze_addition(thread, parser, builder, src);
         // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
@@ -4413,15 +4515,15 @@ fn NodeIndex analyze_shift(Thread* thread, Parser* parser, Function* function, S
         // print("Addition new node #{u32}\n", new_node_index.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
-        left = peephole(thread, function, new_node_index);
+        left = peephole(thread, builder->function, new_node_index);
     }
 
     return left;
 }
 
-fn NodeIndex analyze_bitwise_binary(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_bitwise_binary(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
-    auto left = analyze_shift(thread, parser, function, src);
+    auto left = analyze_shift(thread, parser, builder, src);
 
     while (1)
     {
@@ -4465,7 +4567,7 @@ fn NodeIndex analyze_bitwise_binary(Thread* thread, Parser* parser, Function* fu
 
         // print("Before right: LEFT is #{u32}\n", left.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
-        auto right = analyze_shift(thread, parser, function, src);
+        auto right = analyze_shift(thread, parser, builder, src);
         // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
@@ -4474,15 +4576,15 @@ fn NodeIndex analyze_bitwise_binary(Thread* thread, Parser* parser, Function* fu
         // print("Addition new node #{u32}\n", new_node_index.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
-        left = peephole(thread, function, new_node_index);
+        left = peephole(thread, builder->function, new_node_index);
     }
 
     return left;
 }
 
-fn NodeIndex analyze_comparison(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_comparison(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
-    auto left = analyze_bitwise_binary(thread, parser, function, src);
+    auto left = analyze_bitwise_binary(thread, parser, builder, src);
 
     while (1)
     {
@@ -4525,7 +4627,7 @@ fn NodeIndex analyze_comparison(Thread* thread, Parser* parser, Function* functi
 
         // print("Before right: LEFT is #{u32}\n", left.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
-        auto right = analyze_bitwise_binary(thread, parser, function, src);
+        auto right = analyze_bitwise_binary(thread, parser, builder, src);
         // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
@@ -4534,15 +4636,17 @@ fn NodeIndex analyze_comparison(Thread* thread, Parser* parser, Function* functi
         // print("Addition new node #{u32}\n", new_node_index.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
-        left = peephole(thread, function, new_node_index);
+        left = peephole(thread, builder->function, new_node_index);
     }
 
     return left;
 }
 
-fn NodeIndex analyze_expression(Thread* thread, Parser* parser, Function* function, String src, TypeIndex result_type)
+fn NodeIndex analyze_expression(Thread* thread, Parser* parser, FunctionBuilder* builder, String src, TypeIndex result_type)
 {
-    NodeIndex result = analyze_comparison(thread, parser, function, src);
+    NodeIndex result = analyze_comparison(thread, parser, builder, src);
+    // TODO: typecheck
+    unused(result_type);
     return result;
 }
 
@@ -4563,15 +4667,15 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
             break;
         }
 
-        u64 statement_start_index = parser->i;
         u8 statement_start_ch = src.pointer[parser->i];
+
         if (is_identifier_start(statement_start_ch))
         {
             String statement_start_identifier = parse_identifier(parser, src); 
             if (s_equal(statement_start_identifier, (strlit("return"))))
             {
                 skip_space(parser, src);
-                NodeIndex return_value = analyze_expression(thread, parser, function, src, function->return_type);
+                NodeIndex return_value = analyze_expression(thread, parser, builder, src, function->return_type);
                 skip_space(parser, src);
                 expect_character(parser, src, ';');
 
@@ -4601,9 +4705,59 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
                 trap();
             }
         }
+        else if (is_decimal_digit(statement_start_ch))
+        {
+            todo();
+        }
         else
         {
-            trap();
+            switch (statement_start_ch)
+            {
+                case '>':
+                    {
+                        parser->i += 1;
+                        skip_space(parser, src);
+
+                        String local_name = parse_identifier(parser, src); 
+
+                        skip_space(parser, src);
+
+                        TypeIndex type = invalidi(Type);
+
+                        u8 has_type_declaration = src.pointer[parser->i] == ':';
+                        if (has_type_declaration)
+                        {
+                            parser->i += 1;
+
+                            skip_space(parser, src);
+
+                            type = analyze_type(thread, parser, src);
+
+                            skip_space(parser, src);
+                        }
+
+                        expect_character(parser, src, '=');
+
+                        skip_space(parser, src);
+
+                        auto initial_value_node_index = analyze_expression(thread, parser, builder, src, type);
+                        skip_space(parser, src);
+                        expect_character(parser, src, ';');
+
+                        auto* initial_value_node = thread_node_get(thread, initial_value_node_index);
+                        
+                        // TODO: typecheck
+
+                        auto result = scope_define(thread, builder, local_name, initial_value_node->type, initial_value_node_index);
+                        if (!validi(result))
+                        {
+                            fail();
+                        }
+                    } break;
+                default:
+                    todo();
+                    break;
+            }
         }
     }
 
@@ -4843,11 +4997,11 @@ fn NodeIndex progress_on_list_callback(Thread* thread, Function* function, NodeI
     }
 }
 
-fn u8 progress_on_list(Thread* thread, Function* function, NodeIndex stop_node)
+fn u8 progress_on_list(Thread* thread, Function* function, NodeIndex stop_node_index)
 {
     thread->worklist.mid_assert = 1;
 
-    NodeIndex changed = node_walk(thread, function, stop_node, &progress_on_list_callback);
+    NodeIndex changed = node_walk(thread, function, stop_node_index, &progress_on_list_callback);
 
     thread->worklist.mid_assert = 0;
 
@@ -4923,6 +5077,7 @@ fn s32 node_loop_depth(Thread* thread, Node* node)
 {
     assert(node_is_cfg(node));
     s32 loop_depth;
+
     switch (node->id)
     {
         case NODE_START:
@@ -5051,7 +5206,6 @@ fn u8 is_forwards_edge(Thread* thread, NodeIndex output_index, NodeIndex input_i
     if (result)
     {
         auto* output = thread_node_get(thread, output_index);
-        auto* input = thread_node_get(thread, input_index);
         result = output->input_count > 2;
         if (result)
         {
@@ -5107,6 +5261,7 @@ fn void schedule_late(Thread* thread, NodeIndex node_index, Slice(NodeIndex) nod
 
         if (!node_is_pinned(node))
         {
+            unused(nodes);
             trap();
         }
     }
@@ -5114,6 +5269,7 @@ fn void schedule_late(Thread* thread, NodeIndex node_index, Slice(NodeIndex) nod
 
 fn void gcm_build_cfg(Thread* thread, NodeIndex start_node_index, NodeIndex stop_node_index)
 {
+    unused(stop_node_index);
     // Fix loops
     {
         // TODO:
@@ -5169,62 +5325,61 @@ fn void gcm_build_cfg(Thread* thread, NodeIndex start_node_index, NodeIndex stop
     }
 }
 
-fn void print_function(Thread* thread, Function* function)
-{
-    print("fn {s}\n====\n", function->name);
-    VirtualBuffer(NodeIndex) nodes = {};
-    *vb_add(&nodes, 1) = function->stop;
-    auto start = function->start;
-
-    while (1)
-    {
-        auto node_index = nodes.pointer[nodes.length - 1];
-        auto* node = thread_node_get(thread, node_index);
-
-        if (node->input_count)
-        {
-            for (u32 i = 1; i < node->input_count; i += 1)
-            {
-                *vb_add(&nodes, 1) = node_input_get(thread, node, 1);
-            }
-            *vb_add(&nodes, 1) = node_input_get(thread, node, 0);
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    u32 i = nodes.length;
-    while (i > 0)
-    {
-        i -= 1;
-
-        auto node_index = nodes.pointer[i];
-        auto* node = thread_node_get(thread, node_index);
-        auto* type = thread_type_get(thread, node->type);
-        print("%{u32} - {s} - {s} ", geti(node_index), type_id_to_string(type), node_id_to_string(node));
-        auto inputs = node_get_inputs(thread, node);
-        auto outputs = node_get_outputs(thread, node);
-        
-        print("(INPUTS: { ");
-        for (u32 i = 0; i < inputs.length; i += 1)
-        {
-            auto input_index = inputs.pointer[i];
-            print("%{u32} ", geti(input_index));
-        }
-        print("} OUTPUTS: { ");
-        for (u32 i = 0; i < outputs.length; i += 1)
-        {
-            auto output_index = outputs.pointer[i];
-            print("%{u32} ", geti(output_index));
-        }
-        print_string(strlit("})\n"));
-    }
-
-
-    print("====\n", function->name);
-}
+// fn void print_function(Thread* thread, Function* function)
+// {
+//     print("fn {s}\n====\n", function->name);
+//     VirtualBuffer(NodeIndex) nodes = {};
+//     *vb_add(&nodes, 1) = function->stop;
+//
+//     while (1)
+//     {
+//         auto node_index = nodes.pointer[nodes.length - 1];
+//         auto* node = thread_node_get(thread, node_index);
+//
+//         if (node->input_count)
+//         {
+//             for (u32 i = 1; i < node->input_count; i += 1)
+//             {
+//                 *vb_add(&nodes, 1) = node_input_get(thread, node, 1);
+//             }
+//             *vb_add(&nodes, 1) = node_input_get(thread, node, 0);
+//         }
+//         else
+//         {
+//             break;
+//         }
+//     }
+//
+//     u32 i = nodes.length;
+//     while (i > 0)
+//     {
+//         i -= 1;
+//
+//         auto node_index = nodes.pointer[i];
+//         auto* node = thread_node_get(thread, node_index);
+//         auto* type = thread_type_get(thread, node->type);
+//         print("%{u32} - {s} - {s} ", geti(node_index), type_id_to_string(type), node_id_to_string(node));
+//         auto inputs = node_get_inputs(thread, node);
+//         auto outputs = node_get_outputs(thread, node);
+//         
+//         print("(INPUTS: { ");
+//         for (u32 i = 0; i < inputs.length; i += 1)
+//         {
+//             auto input_index = inputs.pointer[i];
+//             print("%{u32} ", geti(input_index));
+//         }
+//         print("} OUTPUTS: { ");
+//         for (u32 i = 0; i < outputs.length; i += 1)
+//         {
+//             auto output_index = outputs.pointer[i];
+//             print("%{u32} ", geti(output_index));
+//         }
+//         print_string(strlit("})\n"));
+//     }
+//
+//
+//     print("====\n", function->name);
+// }
 
 fn void c_lower_append_string(VirtualBuffer(u8)* buffer, String string)
 {
@@ -5469,7 +5624,6 @@ fn s32 interpreter_run(Interpreter* interpreter, Thread* thread)
 
     auto proj_node_index = node_output_get(thread, start_node, 1);
     auto it_node_index = proj_node_index;
-    auto current_statement_margin = 1;
 
     s32 result = -1;
 
@@ -5613,6 +5767,7 @@ void entry_point(int argc, const char* argv[])
     case EXECUTION_ENGINE_C:
         {
             int res = syscall_execve("/usr/bin/cc", command, envp);
+            unused(res);
             assert(0);
         } break;
     case EXECUTION_ENGINE_INTERPRETER:
