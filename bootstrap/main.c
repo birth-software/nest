@@ -3115,6 +3115,15 @@ fn TypeIndex compute_type_integer_binary(Thread* thread, NodeIndex node_index)
             case NODE_INTEGER_SUBSTRACT:
                 result = left_value - right_value;
                 break;
+            case NODE_INTEGER_AND:
+                result = left_value & right_value;
+                break;
+            case NODE_INTEGER_OR:
+                result = left_value | right_value;
+                break;
+            case NODE_INTEGER_XOR:
+                result = left_value ^ right_value;
+                break;
             default:
                 trap();
         }
@@ -3169,6 +3178,15 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
         .compute_type = &compute_type_integer_binary,
     },
     [NODE_INTEGER_SUBSTRACT] = {
+        .compute_type = &compute_type_integer_binary,
+    },
+    [NODE_INTEGER_AND] = {
+        .compute_type = &compute_type_integer_binary,
+    },
+    [NODE_INTEGER_OR] = {
+        .compute_type = &compute_type_integer_binary,
+    },
+    [NODE_INTEGER_XOR] = {
         .compute_type = &compute_type_integer_binary,
     },
 
@@ -4165,22 +4183,69 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
 fn NodeIndex analyze_unary(Thread* thread, Parser* parser, Function* function, String src)
 {
     // TODO: postfix
+    typedef enum PrefixOperator
+    {
+        PREFIX_OPERATOR_NONE = 0,
+        PREFIX_OPERATOR_NEGATION,
+        PREFIX_OPERATOR_LOGICAL_NOT,
+        PREFIX_OPERATOR_BITWISE_NOT,
+        PREFIX_OPERATOR_ADDRESS_OF,
+    } PrefixOperator;
+
+    PrefixOperator prefix_operator;
+    NodeIndex node_index;
+
     switch (src.pointer[parser->i])
     {
         case '-':
-            trap();
+            todo();
         case '!':
-            trap();
+            todo();
+        case '~':
+            todo();
+        case '&':
+            todo();
         default:
             {
-                auto expression = analyze_primary_expression(thread, parser, function, src);
-                return expression;
-            }
+                node_index = analyze_primary_expression(thread, parser, function, src);
+                prefix_operator = PREFIX_OPERATOR_NONE;
+            } break;
     }
-    trap();
+
+    typedef enum SuffixOperator
+    {
+        SUFFIX_OPERATOR_NONE = 0,
+        SUFFIX_OPERATOR_CALL,
+        SUFFIX_OPERATOR_ARRAY,
+        SUFFIX_OPERATOR_FIELD,
+        SUFFIX_OPERATOR_POINTER_DEREFERENCE,
+    } SuffixOperator;
+
+    SuffixOperator suffix_operator;
+
+    skip_space(parser, src);
+
+    switch (src.pointer[parser->i])
+    {
+        case argument_start:
+            todo();
+        case array_start:
+            todo();
+        case '.':
+            todo();
+        default:
+            break;
+    }
+
+    if (prefix_operator != PREFIX_OPERATOR_NONE)
+    {
+        todo();
+    }
+
+    return node_index;
 }
 
-fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, Function* function, String src)
 {
     auto left = analyze_unary(thread, parser, function, src);
 
@@ -4193,12 +4258,14 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function
 
         switch (src.pointer[parser->i])
         {
-            case '+':
+            case '*':
                 node_id = NODE_INTEGER_ADD;
                 break;
-            case '-':
+            case '/':
                 node_id = NODE_INTEGER_SUBSTRACT;
                 break;
+            case '%':
+                todo();
             default:
                 node_id = NODE_COUNT;
                 break;
@@ -4221,16 +4288,16 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function
             })),
         });
 
-        print("Before right: LEFT is #{u32}\n", left.index);
-        print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+        // print("Before right: LEFT is #{u32}\n", left.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
         auto right = analyze_multiplication(thread, parser, function, src);
-        print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
-        print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+        // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
         node_set_input(thread, new_node_index, 2, right);
 
-        print("Addition new node #{u32}\n", new_node_index.index);
-        print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+        // print("Addition new node #{u32}\n", new_node_index.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
 
         left = peephole(thread, function, new_node_index);
     }
@@ -4240,15 +4307,241 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function
     return left;
 }
 
-fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, Function* function, String src)
+fn NodeIndex analyze_addition(Thread* thread, Parser* parser, Function* function, String src)
 {
-    // TODO:
-    return analyze_addition(thread, parser, function, src);
+    auto left = analyze_multiplication(thread, parser, function, src);
+
+    while (1)
+    {
+        skip_space(parser, src);
+
+        NodeId node_id;
+
+        switch (src.pointer[parser->i])
+        {
+            case '+':
+                node_id = NODE_INTEGER_ADD;
+                break;
+            case '-':
+                node_id = NODE_INTEGER_SUBSTRACT;
+                break;
+            default:
+                node_id = NODE_COUNT;
+                break;
+        }
+
+        if (node_id == NODE_COUNT) 
+        {
+            break;
+        }
+
+        parser->i += 1;
+        skip_space(parser, src);
+
+        auto new_node_index = thread_node_add(thread, (NodeCreate) {
+            .id = node_id,
+            .inputs = array_to_slice(((NodeIndex[]) {
+                invalidi(Node),
+                left,
+                invalidi(Node),
+            })),
+        });
+
+        // print("Before right: LEFT is #{u32}\n", left.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+        auto right = analyze_multiplication(thread, parser, function, src);
+        // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        node_set_input(thread, new_node_index, 2, right);
+
+        // print("Addition new node #{u32}\n", new_node_index.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        left = peephole(thread, function, new_node_index);
+    }
+
+    print("Analyze addition returned node #{u32}\n", left.index);
+
+    return left;
+}
+
+fn NodeIndex analyze_shift(Thread* thread, Parser* parser, Function* function, String src)
+{
+    auto left = analyze_addition(thread, parser, function, src);
+
+    while (1)
+    {
+        skip_space(parser, src);
+
+        NodeId node_id;
+
+        if ((src.pointer[parser->i] == '<') & (src.pointer[parser->i + 1] == '<'))
+        {
+            node_id = NODE_INTEGER_SIGNED_SHIFT_LEFT;
+        }
+        else if ((src.pointer[parser->i] == '>') & (src.pointer[parser->i + 1] == '>'))
+        {
+            node_id = NODE_INTEGER_SIGNED_SHIFT_RIGHT;
+        }
+        else
+        {
+            break;
+        }
+
+        parser->i += 2;
+        skip_space(parser, src);
+
+        auto new_node_index = thread_node_add(thread, (NodeCreate) {
+            .id = node_id,
+            .inputs = array_to_slice(((NodeIndex[]) {
+                invalidi(Node),
+                left,
+                invalidi(Node),
+            })),
+        });
+
+        // print("Before right: LEFT is #{u32}\n", left.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+        auto right = analyze_addition(thread, parser, function, src);
+        // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        node_set_input(thread, new_node_index, 2, right);
+
+        // print("Addition new node #{u32}\n", new_node_index.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        left = peephole(thread, function, new_node_index);
+    }
+
+    return left;
+}
+
+fn NodeIndex analyze_bitwise_binary(Thread* thread, Parser* parser, Function* function, String src)
+{
+    auto left = analyze_shift(thread, parser, function, src);
+
+    while (1)
+    {
+        skip_space(parser, src);
+
+        NodeId node_id;
+        auto skip_count = 1;
+
+        switch (src.pointer[parser->i])
+        {
+            case '&':
+                node_id = NODE_INTEGER_AND;
+                break;
+            case '|':
+                node_id = NODE_INTEGER_OR;
+                break;
+            case '^':
+                node_id = NODE_INTEGER_XOR;
+                break;
+            default:
+                node_id = NODE_COUNT;
+                break;
+        }
+
+        if (node_id == NODE_COUNT)
+        {
+            break;
+        }
+
+        parser->i += skip_count;
+        skip_space(parser, src);
+
+        auto new_node_index = thread_node_add(thread, (NodeCreate) {
+            .id = node_id,
+            .inputs = array_to_slice(((NodeIndex[]) {
+                invalidi(Node),
+                left,
+                invalidi(Node),
+            })),
+        });
+
+        // print("Before right: LEFT is #{u32}\n", left.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+        auto right = analyze_shift(thread, parser, function, src);
+        // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        node_set_input(thread, new_node_index, 2, right);
+
+        // print("Addition new node #{u32}\n", new_node_index.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        left = peephole(thread, function, new_node_index);
+    }
+
+    return left;
+}
+
+fn NodeIndex analyze_comparison(Thread* thread, Parser* parser, Function* function, String src)
+{
+    auto left = analyze_bitwise_binary(thread, parser, function, src);
+
+    while (1)
+    {
+        skip_space(parser, src);
+
+        NodeId node_id;
+        auto skip_count = 1;
+
+        switch (src.pointer[parser->i])
+        {
+            case '=':
+                todo();
+            case '!':
+                todo();
+            case '<':
+                todo();
+            case '>':
+                todo();
+            default:
+                node_id = NODE_COUNT;
+                break;
+        }
+
+        if (node_id == NODE_COUNT)
+        {
+            break;
+        }
+
+        parser->i += skip_count;
+        skip_space(parser, src);
+
+        auto new_node_index = thread_node_add(thread, (NodeCreate) {
+            .id = node_id,
+            .inputs = array_to_slice(((NodeIndex[]) {
+                invalidi(Node),
+                left,
+                invalidi(Node),
+            })),
+        });
+
+        // print("Before right: LEFT is #{u32}\n", left.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+        auto right = analyze_bitwise_binary(thread, parser, function, src);
+        // print("Addition: left: #{u32}, right: #{u32}\n", left.index, right.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        node_set_input(thread, new_node_index, 2, right);
+
+        // print("Addition new node #{u32}\n", new_node_index.index);
+        // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
+
+        left = peephole(thread, function, new_node_index);
+    }
+
+    return left;
 }
 
 fn NodeIndex analyze_expression(Thread* thread, Parser* parser, Function* function, String src, TypeIndex result_type)
 {
-    NodeIndex result = analyze_addition(thread, parser, function, src);
+    NodeIndex result = analyze_comparison(thread, parser, function, src);
     return result;
 }
 
