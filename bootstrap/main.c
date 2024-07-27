@@ -2554,10 +2554,9 @@ fn u8 type_equal(Thread* thread, Type* a, Type* b)
                 case TYPE_INTEGER:
                     {
                         result = 
-                            (a->integer.constant == b->integer.constant) &
-                            (a->integer.bit_count == b->integer.bit_count) &
-                            (a->integer.is_signed == b->integer.is_signed) &
-                            (a->integer.is_constant == b->integer.is_constant);
+                            ((a->integer.constant == b->integer.constant) & (a->integer.bit_count == b->integer.bit_count))
+                            &
+                            ((a->integer.is_signed == b->integer.is_signed) & (a->integer.is_constant == b->integer.is_constant));
                     } break;
                 case TYPE_TUPLE:
                     {
@@ -2569,6 +2568,7 @@ fn u8 type_equal(Thread* thread, Type* a, Type* b)
                             {
                                 if (!index_equal(a->tuple.types.pointer[i], b->tuple.types.pointer[i]))
                                 {
+                                    todo();
                                 }
                             }
                         }
