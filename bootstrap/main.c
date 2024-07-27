@@ -1992,6 +1992,7 @@ struct FunctionBuilder
     Function* function;
     File* file;
     NodeIndex scope;
+    NodeIndex dead_control;
 };
 typedef struct FunctionBuilder FunctionBuilder;
 
@@ -4545,6 +4546,72 @@ fn NodeIndex analyze_expression(Thread* thread, Parser* parser, Function* functi
     return result;
 }
 
+fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
+{
+    expect_character(parser, src, block_start);
+
+    scope_push(thread, builder);
+
+    Function* function = builder->function;
+
+    while (1)
+    {
+        skip_space(parser, src);
+
+        if (s_get(src, parser->i) == block_end)
+        {
+            break;
+        }
+
+        u64 statement_start_index = parser->i;
+        u8 statement_start_ch = src.pointer[parser->i];
+        if (is_identifier_start(statement_start_ch))
+        {
+            String statement_start_identifier = parse_identifier(parser, src); 
+            if (s_equal(statement_start_identifier, (strlit("return"))))
+            {
+                skip_space(parser, src);
+                NodeIndex return_value = analyze_expression(thread, parser, function, src, function->return_type);
+                skip_space(parser, src);
+                expect_character(parser, src, ';');
+
+                auto return_node_index = thread_node_add(thread, (NodeCreate) {
+                        .id = NODE_RETURN,
+                        .inputs = array_to_slice(((NodeIndex[]) {
+                                    builder_get_control_node_index(thread, builder),
+                                    return_value,
+                                    })),
+                        });
+
+                if (validi(builder->scope))
+                {
+                    // TODO:
+                    // Look for memory slices
+                    // todo();
+                }
+
+                return_node_index = peephole(thread, function, return_node_index);
+
+                builder_add_return(thread, builder, return_node_index);
+
+                builder_set_control(thread, builder, builder->dead_control);
+            }
+            else
+            {
+                trap();
+            }
+        }
+        else
+        {
+            trap();
+        }
+    }
+
+    expect_character(parser, src, block_end);
+
+    scope_pop(thread, builder);
+}
+
 fn void analyze_file(Thread* thread, File* file)
 {
     Parser p = {};
@@ -4652,7 +4719,7 @@ fn void analyze_file(Thread* thread, File* file)
                         });
                 dead_control = peephole(thread, function, dead_control);
 
-                dead_control = node_keep(thread, dead_control);
+                builder->dead_control = node_keep(thread, dead_control);
 
                 // Create the function scope node
                 {
@@ -4686,62 +4753,8 @@ fn void analyze_file(Thread* thread, File* file)
                 function->return_type = analyze_type(thread, parser, src);
 
                 skip_space(parser, src);
-                expect_character(parser, src, block_start);
 
-                while (1)
-                {
-                    skip_space(parser, src);
-
-                    if (s_get(src, parser->i) == block_end)
-                    {
-                        break;
-                    }
-
-                    u64 statement_start_index = parser->i;
-                    u8 statement_start_ch = src.pointer[parser->i];
-                    if (is_identifier_start(statement_start_ch))
-                    {
-                        String statement_start_identifier = parse_identifier(parser, src); 
-                        if (s_equal(statement_start_identifier, (strlit("return"))))
-                        {
-                            skip_space(parser, src);
-                            NodeIndex return_value = analyze_expression(thread, parser, function, src, function->return_type);
-                            skip_space(parser, src);
-                            expect_character(parser, src, ';');
-
-                            auto return_node_index = thread_node_add(thread, (NodeCreate) {
-                                .id = NODE_RETURN,
-                                .inputs = array_to_slice(((NodeIndex[]) {
-                                    builder_get_control_node_index(thread, builder),
-                                    return_value,
-                                })),
-                            });
-
-                            if (validi(builder->scope))
-                            {
-                                // TODO: make this happen
-                                // trap();
-                            }
-
-                            return_node_index = peephole(thread, function, return_node_index);
-
-                            builder_add_return(thread, builder, return_node_index);
-
-                            builder_set_control(thread, builder, dead_control);
-                        }
-                        else
-                        {
-                            trap();
-                        }
-
-                    }
-                    else
-                    {
-                        trap();
-                    }
-                }
-
-                parser->i += 1;
+                analyze_block(thread, parser, builder, src);
 
                 scope_pop(thread, builder);
                 function->stop = peephole(thread, function, function->stop);
