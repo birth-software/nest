@@ -1322,7 +1322,7 @@ fn StringMapValue* string_map_values(StringMap* map)
     return (StringMapValue*)(map->pointer + map->capacity);
 }
 
-fn s32 string_map_find_slot(StringMap* map, u32 original_index, String key, u32 wanted_value)
+fn s32 string_map_find_slot(StringMap* map, u32 original_index, String key)
 {
     s32 result = -1;
 
@@ -1456,7 +1456,7 @@ fn StringMapPut string_map_get(StringMap* map, String key)
     auto hash = (u32)long_hash;
     assert(hash);
     auto index = hash & (map->capacity - 1);
-    auto slot = string_map_find_slot(map, index, key, 0);
+    auto slot = string_map_find_slot(map, index, key);
     u8 existing = slot != -1;
     if (existing)
     {
@@ -1476,7 +1476,7 @@ fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 val
     auto hash = (u32)long_hash;
     assert(hash);
     auto index = hash & (map->capacity - 1);
-    auto slot = string_map_find_slot(map, index, key, value);
+    auto slot = string_map_find_slot(map, index, key);
     if (slot != -1)
     {
         trap();
@@ -3257,10 +3257,18 @@ fn TypeIndex compute_type_integer_binary(Thread* thread, NodeIndex node_index)
             case NODE_INTEGER_XOR:
                 result = left_value ^ right_value;
                 break;
+            case NODE_INTEGER_SIGNED_SHIFT_LEFT:
+                result = left_value << right_value;
+                break;
+            case NODE_INTEGER_SIGNED_SHIFT_RIGHT:
+                result = left_value >> right_value;
+                break;
             default:
                 trap();
         }
+
         type_integer.constant = result;
+
         auto new_type = thread_get_integer_type(thread, type_integer);
         return new_type;
     }
@@ -3320,6 +3328,12 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
         .compute_type = &compute_type_integer_binary,
     },
     [NODE_INTEGER_XOR] = {
+        .compute_type = &compute_type_integer_binary,
+    },
+    [NODE_INTEGER_SIGNED_SHIFT_LEFT] = {
+        .compute_type = &compute_type_integer_binary,
+    },
+    [NODE_INTEGER_SIGNED_SHIFT_RIGHT] = {
         .compute_type = &compute_type_integer_binary,
     },
 
@@ -4732,7 +4746,7 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
 
             skip_space(parser, src);
 
-            NodeIndex right = analyze_expression(thread, parser, builder, src, invalidi(Type));
+            NodeIndex initial_right = analyze_expression(thread, parser, builder, src, invalidi(Type));
 
             expect_character(parser, src, ';');
 
@@ -4740,6 +4754,14 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
             if (!validi(left))
             {
                 fail();
+            }
+
+            NodeIndex right;
+            switch (assignment_operator)
+            {
+                case ASSIGNMENT_OPERATOR_NONE:
+                    right = initial_right;
+                    break;
             }
 
             scope_update(thread, builder, left_name, right);

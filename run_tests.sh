@@ -16,6 +16,8 @@ test_names=(
     "xor"
     "return_var"
     "return_mod_scope"
+    "shift_left"
+    "shift_right"
 )
 
 if [ "$all" == "1" ]
