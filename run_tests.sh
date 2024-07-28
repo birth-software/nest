@@ -26,7 +26,7 @@ then
         linux*)   linking_modes=("0" "1") ;;
         *)        echo "unknown: $OSTYPE"; exit 1 ;;
     esac
-    execution_engines=("c", "i")
+    execution_engines=("c" "i")
 else
     optimization_modes=("-O0")
     case "$OSTYPE" in
