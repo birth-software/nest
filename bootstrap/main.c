@@ -3248,6 +3248,12 @@ fn TypeIndex compute_type_integer_binary(Thread* thread, NodeIndex node_index)
             case NODE_INTEGER_SUBSTRACT:
                 result = left_value - right_value;
                 break;
+            case NODE_INTEGER_MULTIPLY:
+                result = left_value * right_value;
+                break;
+            case NODE_INTEGER_SIGNED_DIVIDE:
+                result = left_value * right_value;
+                break;
             case NODE_INTEGER_AND:
                 result = left_value & right_value;
                 break;
@@ -3319,6 +3325,12 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
         .compute_type = &compute_type_integer_binary,
     },
     [NODE_INTEGER_SUBSTRACT] = {
+        .compute_type = &compute_type_integer_binary,
+    },
+    [NODE_INTEGER_SIGNED_DIVIDE] = {
+        .compute_type = &compute_type_integer_binary,
+    },
+    [NODE_INTEGER_MULTIPLY] = {
         .compute_type = &compute_type_integer_binary,
     },
     [NODE_INTEGER_AND] = {
@@ -4384,10 +4396,10 @@ fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, FunctionBuil
         switch (src.pointer[parser->i])
         {
             case '*':
-                node_id = NODE_INTEGER_ADD;
+                node_id = NODE_INTEGER_MULTIPLY;
                 break;
             case '/':
-                node_id = NODE_INTEGER_SUBSTRACT;
+                node_id = NODE_INTEGER_SIGNED_DIVIDE;
                 break;
             case '%':
                 todo();

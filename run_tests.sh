@@ -11,6 +11,8 @@ no_optimization_flags=""
 test_names=(
     "first"
     "add_sub"
+    "mul"
+    "div"
     "and"
     "or"
     "xor"
