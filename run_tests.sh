@@ -8,7 +8,15 @@ build_dir="build"
 base_exe_name="nest"
 debug_flags="-g"
 no_optimization_flags=""
-test_names=("first" "add_sub" "and" "or" "xor" "return_var")
+test_names=(
+    "first"
+    "add_sub"
+    "and"
+    "or"
+    "xor"
+    "return_var"
+    "return_mod_scope"
+)
 
 if [ "$all" == "1" ]
 then

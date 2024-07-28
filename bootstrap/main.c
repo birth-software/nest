@@ -2372,6 +2372,82 @@ fn void move_dependencies_to_worklist(Thread* thread, Node* node)
     }
 }
 
+fn String node_id_to_string(Node* node)
+{
+    switch (node->id)
+    {
+        case_to_name(NODE_, START);
+        case_to_name(NODE_, STOP);
+        case_to_name(NODE_, CONTROL_PROJECTION);
+        case_to_name(NODE_, DEAD_CONTROL);
+        case_to_name(NODE_, SCOPE);
+        case_to_name(NODE_, PROJECTION);
+        case_to_name(NODE_, RETURN);
+        case_to_name(NODE_, REGION);
+        case_to_name(NODE_, REGION_LOOP);
+        case_to_name(NODE_, IF);
+        case_to_name(NODE_, PHI);
+        case_to_name(NODE_, INTEGER_ADD);
+        case_to_name(NODE_, INTEGER_SUBSTRACT);
+        case_to_name(NODE_, INTEGER_MULTIPLY);
+        case_to_name(NODE_, INTEGER_UNSIGNED_DIVIDE);
+        case_to_name(NODE_, INTEGER_SIGNED_DIVIDE);
+        case_to_name(NODE_, INTEGER_UNSIGNED_REMAINDER);
+        case_to_name(NODE_, INTEGER_SIGNED_REMAINDER);
+        case_to_name(NODE_, INTEGER_UNSIGNED_SHIFT_LEFT);
+        case_to_name(NODE_, INTEGER_SIGNED_SHIFT_LEFT);
+        case_to_name(NODE_, INTEGER_UNSIGNED_SHIFT_RIGHT);
+        case_to_name(NODE_, INTEGER_SIGNED_SHIFT_RIGHT);
+        case_to_name(NODE_, INTEGER_AND);
+        case_to_name(NODE_, INTEGER_OR);
+        case_to_name(NODE_, INTEGER_XOR);
+        case_to_name(NODE_, CONSTANT);
+        case_to_name(NODE_, COUNT);
+    }
+}
+
+fn u8 node_is_unused(Node* node)
+{
+    return node->output_count == 0;
+}
+
+fn u8 node_is_dead(Node* node)
+{
+    return node_is_unused(node) & ((node->input_count == 0) & (!validi(node->type)));
+}
+
+fn void node_kill(Thread* thread, NodeIndex node_index)
+{
+    node_unlock(thread, node_index);
+    auto* node = thread_node_get(thread, node_index);
+    print("[NODE KILLING] (#{u32}, {s}) START\n", node_index.index, node_id_to_string(node));
+    assert(node_is_unused(node));
+    node->type = invalidi(Type);
+
+    auto inputs = node_get_inputs(thread, node);
+    while (node->input_count > 0)
+    {
+        auto input_index = node->input_count - 1;
+        node->input_count = input_index;
+        auto old_input_index = inputs.pointer[input_index];
+
+        print("[NODE KILLING] (#{u32}, {s}) Removing input #{u32} at slot {u32}\n", node_index.index, node_id_to_string(node), old_input_index.index, input_index);
+        if (validi(old_input_index))
+        {
+            thread_worklist_push(thread, old_input_index);
+            u8 no_more_outputs = node_remove_output(thread, old_input_index, node_index);
+            if (no_more_outputs)
+            {
+                print("[NODE KILLING] (#{u32}, {s}) (NO MORE OUTPUTS - KILLING) Input #{u32}\n", node_index.index, node_id_to_string(node), old_input_index.index);
+                node_kill(thread, old_input_index);
+            }
+        }
+    }
+
+    assert(node_is_dead(node));
+    // print("[NODE KILLING] (#{u32}, {s}) END\n", node_index.index, node_id_to_string(node));
+}
+
 fn NodeIndex node_set_input(Thread* thread, NodeIndex node_index, u16 index, NodeIndex new_input)
 {
     auto* node = thread_node_get(thread, node_index);
@@ -2392,7 +2468,7 @@ fn NodeIndex node_set_input(Thread* thread, NodeIndex node_index, u16 index, Nod
         {
             if (node_remove_output(thread, old_input, node_index))
             {
-                trap();
+                node_kill(thread, old_input);
             }
         }
 
@@ -2432,39 +2508,6 @@ struct NodeCreate
 };
 typedef struct NodeCreate NodeCreate;
 
-fn String node_id_to_string(Node* node)
-{
-    switch (node->id)
-    {
-        case_to_name(NODE_, START);
-        case_to_name(NODE_, STOP);
-        case_to_name(NODE_, CONTROL_PROJECTION);
-        case_to_name(NODE_, DEAD_CONTROL);
-        case_to_name(NODE_, SCOPE);
-        case_to_name(NODE_, PROJECTION);
-        case_to_name(NODE_, RETURN);
-        case_to_name(NODE_, REGION);
-        case_to_name(NODE_, REGION_LOOP);
-        case_to_name(NODE_, IF);
-        case_to_name(NODE_, PHI);
-        case_to_name(NODE_, INTEGER_ADD);
-        case_to_name(NODE_, INTEGER_SUBSTRACT);
-        case_to_name(NODE_, INTEGER_MULTIPLY);
-        case_to_name(NODE_, INTEGER_UNSIGNED_DIVIDE);
-        case_to_name(NODE_, INTEGER_SIGNED_DIVIDE);
-        case_to_name(NODE_, INTEGER_UNSIGNED_REMAINDER);
-        case_to_name(NODE_, INTEGER_SIGNED_REMAINDER);
-        case_to_name(NODE_, INTEGER_UNSIGNED_SHIFT_LEFT);
-        case_to_name(NODE_, INTEGER_SIGNED_SHIFT_LEFT);
-        case_to_name(NODE_, INTEGER_UNSIGNED_SHIFT_RIGHT);
-        case_to_name(NODE_, INTEGER_SIGNED_SHIFT_RIGHT);
-        case_to_name(NODE_, INTEGER_AND);
-        case_to_name(NODE_, INTEGER_OR);
-        case_to_name(NODE_, INTEGER_XOR);
-        case_to_name(NODE_, CONSTANT);
-        case_to_name(NODE_, COUNT);
-    }
-}
 
 fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
 {
@@ -2596,7 +2639,8 @@ fn NodeIndex scope_update_extended(Thread* thread, FunctionBuilder* builder, Str
 
             if (validi(node_index))
             {
-                trap();
+                auto result = node_set_input(thread, builder->scope, index, node_index);
+                return result;
             }
             else
             {
@@ -2605,7 +2649,7 @@ fn NodeIndex scope_update_extended(Thread* thread, FunctionBuilder* builder, Str
         }
         else
         {
-            trap();
+            return scope_update_extended(thread, builder, name, node_index, nesting_level - 1);
         }
     }
 
@@ -2616,6 +2660,13 @@ fn NodeIndex scope_lookup(Thread* thread, FunctionBuilder* builder, String name)
 {
     auto* scope_node = thread_node_get(thread, builder->scope);
     return scope_update_extended(thread, builder, name, invalidi(Node), scope_node->scope.stack.length - 1);
+}
+
+fn NodeIndex scope_update(Thread* thread, FunctionBuilder* builder, String name, NodeIndex value_node_index)
+{
+    auto* scope_node = thread_node_get(thread, builder->scope);
+    auto result = scope_update_extended(thread, builder, name, value_node_index, scope_node->scope.stack.length - 1);
+    return result;
 }
 
 fn u8 type_equal(Type* a, Type* b)
@@ -3166,17 +3217,6 @@ fn u8 type_is_constant(Type* type)
             return 0;
     }
 }
-
-fn u8 node_is_unused(Node* node)
-{
-    return node->output_count == 0;
-}
-
-fn u8 node_is_dead(Node* node)
-{
-    return node_is_unused(node) & ((node->input_count == 0) & (!validi(node->type)));
-}
-
 fn TypeIndex compute_type_integer_binary(Thread* thread, NodeIndex node_index)
 {
     auto* node = thread_node_get(thread, node_index);
@@ -3866,38 +3906,6 @@ fn NodeIndex node_unkeep(Thread* thread, NodeIndex node_index)
 {
     node_remove_output(thread, node_index, invalidi(Node));
     return node_index;
-}
-
-fn void node_kill(Thread* thread, NodeIndex node_index)
-{
-    node_unlock(thread, node_index);
-    auto* node = thread_node_get(thread, node_index);
-    print("[NODE KILLING] (#{u32}, {s}) START\n", node_index.index, node_id_to_string(node));
-    assert(node_is_unused(node));
-    node->type = invalidi(Type);
-
-    auto inputs = node_get_inputs(thread, node);
-    while (node->input_count > 0)
-    {
-        auto input_index = node->input_count - 1;
-        node->input_count = input_index;
-        auto old_input_index = inputs.pointer[input_index];
-
-        print("[NODE KILLING] (#{u32}, {s}) Removing input #{u32} at slot {u32}\n", node_index.index, node_id_to_string(node), old_input_index.index, input_index);
-        if (validi(old_input_index))
-        {
-            thread_worklist_push(thread, old_input_index);
-            u8 no_more_outputs = node_remove_output(thread, old_input_index, node_index);
-            if (no_more_outputs)
-            {
-                print("[NODE KILLING] (#{u32}, {s}) (NO MORE OUTPUTS - KILLING) Input #{u32}\n", node_index.index, node_id_to_string(node), old_input_index.index);
-                node_kill(thread, old_input_index);
-            }
-        }
-    }
-
-    assert(node_is_dead(node));
-    // print("[NODE KILLING] (#{u32}, {s}) END\n", node_index.index, node_id_to_string(node));
 }
 
 fn NodeIndex dead_code_elimination(Thread* thread, NodePair nodes)
@@ -4699,11 +4707,42 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
                 builder_add_return(thread, builder, return_node_index);
 
                 builder_set_control(thread, builder, builder->dead_control);
+                continue;
             }
-            else
+
+            String left_name = statement_start_identifier;
+
+            skip_space(parser, src);
+
+            typedef enum AssignmentOperator
             {
-                trap();
+                ASSIGNMENT_OPERATOR_NONE,
+            } AssignmentOperator;
+
+            AssignmentOperator assignment_operator;
+            switch (src.pointer[parser->i])
+            {
+                case '=':
+                    assignment_operator = ASSIGNMENT_OPERATOR_NONE;
+                    parser->i += 1;
+                    break;
+                default:
+                    trap();
             }
+
+            skip_space(parser, src);
+
+            NodeIndex right = analyze_expression(thread, parser, builder, src, invalidi(Type));
+
+            expect_character(parser, src, ';');
+
+            auto left = scope_lookup(thread, builder, left_name);
+            if (!validi(left))
+            {
+                fail();
+            }
+
+            scope_update(thread, builder, left_name, right);
         }
         else if (is_decimal_digit(statement_start_ch))
         {
@@ -4754,6 +4793,9 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
                             fail();
                         }
                     } break;
+                case block_start:
+                    analyze_block(thread, parser, builder, src);
+                    break;
                 default:
                     todo();
                     break;
