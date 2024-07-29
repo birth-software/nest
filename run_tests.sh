@@ -20,6 +20,7 @@ test_names=(
     "return_mod_scope"
     "shift_left"
     "shift_right"
+    "thousand_simple_functions"
 )
 
 if [ "$all" == "1" ]
