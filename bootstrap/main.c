@@ -180,7 +180,7 @@ typedef struct StructName StructName
 
 #define s_get(s, i) (s).pointer[i]
 #define s_get_pointer(s, i) &((s).pointer[i])
-#define s_get_slice(T, s, start, end) (Slice(T)){ .pointer = s.pointer + start, .length = end - start }
+#define s_get_slice(T, s, start, end) (Slice(T)){ .pointer = ((s).pointer) + (start), .length = (end) - (start) }
 #define s_equal(a, b) ((a).length == (b).length && memcmp((a).pointer, (b).pointer, sizeof(*((a).pointer))) == 0)
 
 declare_slice(u8);
@@ -238,7 +238,7 @@ fn String string_base(String string)
     auto index = string_last_ch(string, '/');
     if (index != -1)
     {
-        result = s_get_slice(u8, string, index + 1, string.length - 2);
+        result = s_get_slice(u8, string, index + 1, string.length);
     }
 
     return result;
@@ -1460,6 +1460,7 @@ fn StringMapPut string_map_get(StringMap* map, String key)
     u8 existing = slot != -1;
     if (existing)
     {
+        existing = map->pointer[slot] != 0;
         auto* value_pair = &string_map_values(map)[slot];
         value = value_pair->value;
     }
@@ -1479,7 +1480,16 @@ fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 val
     auto slot = string_map_find_slot(map, index, key);
     if (slot != -1)
     {
-        trap();
+        auto* values = string_map_values(map);
+        auto* key_pointer = &map->pointer[slot];
+        auto old_key_pointer = *key_pointer;
+        *key_pointer = hash;
+        values[slot].string = key;
+        values[slot].value = value;
+        return (StringMapPut) {
+            .value = value,
+            .existing = old_key_pointer != 0,
+        };
     }
     else
     {
@@ -1498,7 +1508,6 @@ fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 val
             trap();
         }
     }
-    trap();
 }
 
 fn int file_write(String file_path, String file_data)
@@ -1738,7 +1747,7 @@ fn void vb_generic_ensure_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 ite
     {
         if (old_capacity == 0)
         {
-            vb->pointer = reserve(default_size);
+            vb->pointer = reserve(item_size * UINT32_MAX);
         }
 
         u32 old_page_capacity = align_forward(old_capacity * item_size, minimum_granularity);
@@ -1895,6 +1904,7 @@ typedef enum NodeId : u8
     NODE_INTEGER_AND,
     NODE_INTEGER_OR,
     NODE_INTEGER_XOR,
+    NODE_INTEGER_NEGATION,
 
     NODE_CONSTANT,
 
@@ -1998,6 +2008,7 @@ struct Node
         NodeStop stop;
         NodeScope scope;
         NodeControlProjection control_projection;
+        NodeProjection projection;
         NodeReturn return_node;
         NodeDeadControl dead_control;
     };
@@ -2131,6 +2142,14 @@ struct Thread
             TypeIndex top;
             TypeIndex bottom;
             TypeIndex zero;
+            TypeIndex u8;
+            TypeIndex u16;
+            TypeIndex u32;
+            TypeIndex u64;
+            TypeIndex s8;
+            TypeIndex s16;
+            TypeIndex s32;
+            TypeIndex s64;
         } integer;
     } types;
     WorkList worklist;
@@ -2407,6 +2426,8 @@ fn String node_id_to_string(Node* node)
         case_to_name(NODE_, INTEGER_XOR);
         case_to_name(NODE_, CONSTANT);
         case_to_name(NODE_, COUNT);
+        case_to_name(NODE_, INTEGER_NEGATION);
+      break;
     }
 }
 
@@ -2721,38 +2742,85 @@ fn u8 type_equal(Type* a, Type* b)
 
 fn Hash hash_type(Thread* thread, Type* type);
 
-fn Hash node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index)
+fn Hash node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
 {
     unused(thread);
     unused(node);
     unused(node_index);
-    return fnv_offset;
+    return hash;
 }
 
-// fn Hash node_get_hash_projection(Thread* thread, Node* node)
-// {
-//     unused(thread);
-//     unused(node);
-//     trap();
-// }
+fn Hash node_get_hash_projection(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
+{
+    unused(thread);
+    unused(node_index);
+    auto projection_index = node->projection.index;
+    auto proj_index_bytes = struct_to_bytes(projection_index);
+    for (u32 i = 0; i < proj_index_bytes.length; i += 1)
+    {
+        hash = hash_byte(hash, proj_index_bytes.pointer[i]);
+    }
 
-fn Hash node_get_hash_control_projection(Thread* thread, Node* node, NodeIndex node_index)
+    return hash;
+}
+
+fn Hash node_get_hash_control_projection(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
 {
     unused(thread);
     unused(node_index);
     auto projection_index = node->control_projection.projection.index;
     auto proj_index_bytes = struct_to_bytes(projection_index);
-    return hash_bytes(proj_index_bytes);
+    for (u32 i = 0; i < proj_index_bytes.length; i += 1)
+    {
+        hash = hash_byte(hash, proj_index_bytes.pointer[i]);
+    }
+
+    return hash;
 }
 
-fn Hash node_get_hash_constant(Thread* thread, Node* node, NodeIndex node_index)
+fn Hash node_get_hash_constant(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
 {
     unused(node_index);
+    assert(hash == fnv_offset);
     // auto type_index = node->type;
     auto* type = thread_type_get(thread, node->type);
     auto type_hash = hash_type(thread, type);
     // print("Hashing node #{u32} (constant) (type: #{u32}) (hash: {u64:x})\n", node_index.index, type_index.index, type_hash);
     return type_hash;
+}
+
+fn Hash node_get_hash_scope(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
+{
+    unused(thread);
+    unused(node);
+    unused(node_index);
+    return hash;
+}
+
+fn NodeIndex node_idealize_substract(Thread* thread, NodeIndex node_index)
+{
+    auto* node = thread_node_get(thread, node_index);
+    auto inputs = node_get_inputs(thread, node);
+    auto left_node_index = inputs.pointer[1];
+    auto right_node_index = inputs.pointer[2];
+    auto* left = thread_node_get(thread, left_node_index);
+    auto* right = thread_node_get(thread, right_node_index);
+    if (index_equal(left_node_index, right_node_index))
+    {
+        trap();
+    }
+    else if (right->id == NODE_INTEGER_NEGATION)
+    {
+        trap();
+    }
+    else if (left->id == NODE_INTEGER_NEGATION)
+    {
+        trap();
+    }
+    else
+    {
+        return invalidi(Node);
+    }
 }
 
 struct TypeGetOrPut
@@ -2768,7 +2836,7 @@ fn TypeGetOrPut intern_pool_get_or_put_new_type(Thread* thread, Type* type);
 typedef NodeIndex NodeIdealize(Thread* thread, NodeIndex node_index);
 typedef TypeIndex NodeComputeType(Thread* thread, NodeIndex node_index);
 typedef Hash TypeGetHash(Thread* thread, Type* type);
-typedef Hash NodeGetHash(Thread* thread, Node* node, NodeIndex node_index);
+typedef Hash NodeGetHash(Thread* thread, Node* node, NodeIndex node_index, Hash hash);
 
 fn TypeIndex thread_get_integer_type(Thread* thread, TypeInteger type_integer)
 {
@@ -2900,6 +2968,8 @@ fn s32 projection_get_index(Node* node)
     {
         case NODE_CONTROL_PROJECTION:
             return node->control_projection.projection.index;
+        case NODE_PROJECTION:
+            return node->projection.index;
         default:
             trap();
     }
@@ -3055,7 +3125,7 @@ fn u8 node_index_equal(Thread* thread, NodeIndex a, NodeIndex b)
     return result;
 }
 
-fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex node_index)
+[[gnu::hot]] fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex node_index)
 {
     assert(validi(node_index));
     auto it_index = original_index;
@@ -3137,10 +3207,6 @@ fn void intern_pool_ensure_capacity(InternPool* pool, Thread* thread, u32 additi
         u32 new_capacity = MAX(round_up_to_next_power_of_2(destination_length), 32);
         u32* new_array = arena_allocate(thread->arena, u32, new_capacity);
         memset(new_array, 0, sizeof(u32) * new_capacity);
-        if (kind == INTERN_POOL_KIND_NODE)
-        {
-            print("[ENSURE CAPACITY] Current capacity: {u32}. Half capacity: {u32}. New capacity: {u32}\n", current_capacity, half_capacity, new_capacity);
-        }
 
         auto* old_pointer = pool->pointer;
         auto old_capacity = current_capacity;
@@ -3419,6 +3485,138 @@ fn u8 type_is_constant(Type* type)
             return 0;
     }
 }
+
+fn u8 type_is_simple(Type* type)
+{
+    return type->id <= TYPE_DEAD_CONTROL;
+}
+
+fn TypeIndex type_meet(Thread* thread, TypeIndex a, TypeIndex b)
+{
+    TypeIndex result = invalidi(Type);
+    if (index_equal(a, b))
+    {
+        result = a;
+    }
+    else
+    {
+        Type* a_type = thread_type_get(thread, a);
+        Type* b_type = thread_type_get(thread, b);
+        TypeIndex left = invalidi(Type);
+        TypeIndex right = invalidi(Type);
+
+        assert(a_type != b_type);
+        if (a_type->id == b_type->id)
+        {
+            left = a;
+            right = b;
+        }
+        else if (type_is_simple(a_type))
+        {
+            left = a;
+            right = b;
+        }
+        else if (type_is_simple(b_type))
+        {
+            trap();
+        }
+        else
+        {
+            result = thread->types.bottom;
+        }
+
+        assert(!!validi(left) == !!validi(right));
+        assert((validi(left) & validi(right)) | (validi(result)));
+
+        if (validi(left))
+        {
+            assert(!validi(result));
+            auto* left_type = thread_type_get(thread, left);
+            auto* right_type = thread_type_get(thread, right);
+
+            switch (left_type->id)
+            {
+                case TYPE_INTEGER:
+                    {
+                            // auto integer_bot = thread->types.integer.bottom;
+                            // auto integer_top = thread->types.integer.top;
+                            // if (index_equal(left, integer_bot))
+                            // {
+                            //     result = left; 
+                            // }
+                            // else if (index_equal(right, integer_bot))
+                            // {
+                            //     result = right; 
+                            // }
+                            // else if (index_equal(right, integer_top))
+                            // {
+                            //     result = left; 
+                            // }
+                            // else if (index_equal(left, integer_top))
+                            // {
+                            //     result = right; 
+                            // }
+                            // else
+                            // {
+                            //     result = integer_bot;
+                            // }
+                            if (left_type->integer.bit_count == right_type->integer.bit_count)
+                            {
+                                todo();
+                            }
+                            else
+                            {
+                                if ((!left_type->integer.is_constant & !!left_type->integer.bit_count) & (right_type->integer.is_constant & !right_type->integer.bit_count))
+                                {
+                                    result = left;
+                                }
+                                else if ((left_type->integer.is_constant & !left_type->integer.bit_count) & (!right_type->integer.is_constant & !!right_type->integer.bit_count))
+                                {
+                                    trap();
+                                }
+                            }
+                    } break;
+                case TYPE_BOTTOM:
+                    {
+                        assert(type_is_simple(left_type));
+                        if ((left_type->id == TYPE_BOTTOM) | (right_type->id == TYPE_TOP))
+                        {
+                            result = left;
+                        }
+                        else if ((left_type->id == TYPE_TOP) | (right_type->id == TYPE_BOTTOM))
+                        {
+                            result = right;
+                        }
+                        else if (!type_is_simple(right_type))
+                        {
+                            result = thread->types.bottom;
+                        }
+                        else if (left_type->id == TYPE_LIVE_CONTROL)
+                        {
+                            result = thread->types.live_control;
+                        }
+                        else
+                        {
+                            result = thread->types.dead_control;
+                        }
+                    } break;
+                default:
+                    trap();
+            }
+        }
+    }
+
+    assert(validi(result));
+
+    return result;
+}
+
+fn u8 type_is_a(Thread* thread, TypeIndex a, TypeIndex b)
+{
+    auto m = type_meet(thread, a, b);
+    return index_equal(m, b);
+}
+
 fn TypeIndex compute_type_integer_binary(Thread* thread, NodeIndex node_index)
 {
     auto* node = thread_node_get(thread, node_index);
@@ -3482,7 +3680,8 @@ fn TypeIndex compute_type_integer_binary(Thread* thread, NodeIndex node_index)
     }
     else
     {
-        trap();
+        auto result = type_meet(thread, left->type, right->type);
+        return result;
     }
 }
 
@@ -3521,6 +3720,16 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
         .idealize = &idealize_return,
         .get_hash = &node_get_hash_default,
     },
+    [NODE_PROJECTION] = {
+        .compute_type = &compute_type_projection,
+        .idealize = &idealize_null,
+        .get_hash = &node_get_hash_projection,
+    },
+    [NODE_SCOPE] = {
+        .compute_type = &compute_type_bottom,
+        .idealize = &idealize_null,
+        .get_hash = &node_get_hash_scope,
+    },
 
     // Integer operations
     [NODE_INTEGER_ADD] = {
@@ -3528,6 +3737,8 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
     },
     [NODE_INTEGER_SUBSTRACT] = {
         .compute_type = &compute_type_integer_binary,
+        .idealize = &node_idealize_substract,
+        .get_hash = &node_get_hash_default,
     },
     [NODE_INTEGER_SIGNED_DIVIDE] = {
         .compute_type = &compute_type_integer_binary,
@@ -3559,19 +3770,19 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
     },
 };
 
-// fn String type_id_to_string(Type* type)
-// {
-//     switch (type->id)
-//     {
-//         case_to_name(TYPE_, BOTTOM);
-//         case_to_name(TYPE_, TOP);
-//         case_to_name(TYPE_, LIVE_CONTROL);
-//         case_to_name(TYPE_, DEAD_CONTROL);
-//         case_to_name(TYPE_, INTEGER);
-//         case_to_name(TYPE_, TUPLE);
-//         case_to_name(TYPE_, COUNT);
-//     }
-// }
+may_be_unused fn String type_id_to_string(Type* type)
+{
+    switch (type->id)
+    {
+        case_to_name(TYPE_, BOTTOM);
+        case_to_name(TYPE_, TOP);
+        case_to_name(TYPE_, LIVE_CONTROL);
+        case_to_name(TYPE_, DEAD_CONTROL);
+        case_to_name(TYPE_, INTEGER);
+        case_to_name(TYPE_, TUPLE);
+        case_to_name(TYPE_, COUNT);
+    }
+}
 
 fn Hash hash_type(Thread* thread, Type* type)
 {
@@ -3610,11 +3821,11 @@ fn Hash hash_node(Thread* thread, Node* node, NodeIndex node_index)
     auto hash = node->hash;
     if (!hash)
     {
-        hash = node_functions[node->id].get_hash(thread, node, node_index);
+        hash = fnv_offset;
+        hash = node_functions[node->id].get_hash(thread, node, node_index, hash);
         // print("[HASH #{u32}] Received hash from callback: {u64:x}\n", node_index.index, hash);
 
         hash = hash_byte(hash, node->id);
-
 
         auto inputs = node_get_inputs(thread, node);
         for (u32 i = 0; i < inputs.length; i += 1)
@@ -3903,120 +4114,6 @@ fn void thread_add_jobs(Thread* thread, Slice(NodeIndex) nodes)
     }
 }
 
-fn u8 type_is_simple(Type* type)
-{
-    return type->id <= TYPE_DEAD_CONTROL;
-}
-
-fn TypeIndex type_meet(Thread* thread, TypeIndex a, TypeIndex b)
-{
-    TypeIndex result = invalidi(Type);
-    if (index_equal(a, b))
-    {
-        result = a;
-    }
-    else
-    {
-        Type* a_type = thread_type_get(thread, a);
-        Type* b_type = thread_type_get(thread, b);
-        TypeIndex left = invalidi(Type);
-        TypeIndex right = invalidi(Type);
-
-        assert(a_type != b_type);
-        if (a_type->id == b_type->id)
-        {
-            left = a;
-            right = b;
-        }
-        else if (type_is_simple(a_type))
-        {
-            left = a;
-            right = b;
-        }
-        else if (type_is_simple(b_type))
-        {
-            trap();
-        }
-        else
-        {
-            result = thread->types.bottom;
-        }
-
-        assert(!!validi(left) == !!validi(right));
-        assert((validi(left) & validi(right)) | (validi(result)));
-
-        if (validi(left))
-        {
-            assert(!validi(result));
-            auto* left_type = thread_type_get(thread, left);
-            auto* right_type = thread_type_get(thread, left);
-            switch (left_type->id)
-            {
-                case TYPE_INTEGER:
-                    {
-                        auto integer_bot = thread->types.integer.bottom;
-                        auto integer_top = thread->types.integer.top;
-                        if (index_equal(left, integer_bot))
-                        {
-                            result = left; 
-                        }
-                        else if (index_equal(right, integer_bot))
-                        {
-                            result = right; 
-                        }
-                        else if (index_equal(right, integer_top))
-                        {
-                            result = left; 
-                        }
-                        else if (index_equal(left, integer_top))
-                        {
-                            result = right; 
-                        }
-                        else
-                        {
-                            result = integer_bot;
-                        }
-                    } break;
-                case TYPE_BOTTOM:
-                    {
-                        assert(type_is_simple(left_type));
-                        if ((left_type->id == TYPE_BOTTOM) | (right_type->id == TYPE_TOP))
-                        {
-                            result = left;
-                        }
-                        else if ((left_type->id == TYPE_TOP) | (right_type->id == TYPE_BOTTOM))
-                        {
-                            result = right;
-                        }
-                        else if (!type_is_simple(right_type))
-                        {
-                            result = thread->types.bottom;
-                        }
-                        else if (left_type->id == TYPE_LIVE_CONTROL)
-                        {
-                            result = thread->types.live_control;
-                        }
-                        else
-                        {
-                            result = thread->types.dead_control;
-                        }
-                    } break;
-                default:
-                    trap();
-            }
-        }
-    }
-
-    assert(validi(result));
-
-    return result;
-}
-
-fn u8 type_is_a(Thread* thread, TypeIndex a, TypeIndex b)
-{
-    auto m = type_meet(thread, a, b);
-    return index_equal(m, b);
-}
 union NodePair
 {
     struct
@@ -4068,7 +4165,7 @@ fn u8 type_is_high_or_const(Thread* thread, TypeIndex type_index)
         switch (type->id)
         {
             case TYPE_INTEGER:
-                result = type->integer.is_constant | (type->integer.constant == 0);
+                result = type->integer.is_constant | ((type->integer.constant == 0) & (type->integer.bit_count == 0));
                 break;
             default:
                 break;
@@ -4997,49 +5094,69 @@ fn void analyze_file(Thread* thread, File* file)
                 skip_space(parser, src);
                 
                 // Parse arguments
-                u32 argument_count = 0;
                 expect_character(parser, src, argument_start);
-                // TODO: arguments
-                skip_space(parser, src);
+
+                // Create the start node early since it is needed as a dependency for control and arguments
+                function->start = thread_node_add(thread, (NodeCreate) {
+                        .id = NODE_START,
+                        .inputs = {},
+                        });
+                TypeIndex tuple = invalidi(Type);
+                TypeIndex start_argument_type_buffer[256];
+                String argument_names[255];
+                start_argument_type_buffer[0] = thread->types.live_control;
+                u32 argument_i = 1;
+
+                while (1)
+                {
+                    skip_space(parser, src);
+                    if (src.pointer[parser->i] == argument_end)
+                    {
+                        break;
+                    }
+
+                    if (argument_i == 256)
+                    {
+                        // Maximum arguments reached
+                        fail();
+                    }
+
+                    auto argument_name = parse_identifier(parser, src);
+                    argument_names[argument_i - 1] = argument_name;
+
+                    skip_space(parser, src);
+                    expect_character(parser, src, ':');
+                    skip_space(parser, src);
+
+                    auto type_index = analyze_type(thread, parser, src);
+                    start_argument_type_buffer[argument_i] = type_index;
+                    argument_i += 1;
+
+                    skip_space(parser, src);
+
+                    switch (src.pointer[parser->i])
+                    {
+                        case argument_end:
+                            break;
+                        default:
+                            trap();
+                    }
+                }
+
                 expect_character(parser, src, argument_end);
                 skip_space(parser, src);
 
-                {
-                    // Create the start node early since it is needed as a dependency for control and arguments
-                    function->start = thread_node_add(thread, (NodeCreate) {
-                        .id = NODE_START,
-                        .inputs = {},
-                    });
-                    TypeIndex tuple = invalidi(Type);
-                    if (argument_count)
-                    {
-                        Slice(TypeIndex) start_argument_types = arena_allocate_slice(thread->arena, TypeIndex, argument_count + 1);
-                        u32 argument_i = 0;
-                        start_argument_types.pointer[argument_i] = thread->types.live_control;
-                        argument_i += 1;
+                auto start_argument_types = s_get_slice(TypeIndex, (Slice(TypeIndex)) array_to_slice(start_argument_type_buffer), 0, argument_i);
+                tuple = type_make_tuple_allocate(thread, start_argument_types);
 
-                        for (u32 i = 0; i < argument_count; i += 1)
-                        {
-                            trap();
-                        }
-                    }
-                    else
-                    {
-                        auto start_argument_types = (Slice(TypeIndex)) {
-                            .pointer = &thread->types.live_control,
-                                .length = 1,
-                        };
-                        tuple = type_make_tuple(thread, start_argument_types).index;
-                    }
+                auto argument_count = argument_i - 1;
 
-                    {
-                        auto* start_node = thread_node_get(thread, function->start);
-                        assert(validi(tuple));
-                        start_node->type = tuple;
-                        start_node->start.arguments = tuple;
-                        start_node->start.function = function;
-                    }
-                }
+                auto* start_node = thread_node_get(thread, function->start);
+                assert(validi(tuple));
+                start_node->type = tuple;
+                start_node->start.arguments = tuple;
+                start_node->start.function = function;
+
 
                 // Create stop node
                 {
@@ -5084,6 +5201,29 @@ fn void analyze_file(Thread* thread, File* file)
                     };
                     control_node_index = peephole(thread, function, control_node_index);
                     scope_define(thread, builder, control_name, thread->types.live_control, control_node_index);
+                }
+
+                for (u32 i = 0; i < argument_count; i += 1)
+                {
+                    TypeIndex argument_type = start_argument_types.pointer[i + 1];
+                    String argument_name = argument_names[i];
+
+                    auto argument_node_index = thread_node_add(thread, (NodeCreate){
+                        .id = NODE_PROJECTION,
+                        .inputs = {
+                            .pointer = &function->start,
+                            .length = 1,
+                        },
+                    });
+                    auto* argument_node = thread_node_get(thread, argument_node_index);
+                    argument_node->projection = (NodeProjection) {
+                        .index = i + 1,
+                        .label = argument_name,
+                    };
+
+                    argument_node_index = peephole(thread, function, argument_node_index);
+
+                    scope_define(thread, builder, argument_name, argument_type, argument_node_index);
                 }
 
                 function->return_type = analyze_type(thread, parser, src);
@@ -5228,7 +5368,9 @@ fn u8 node_is_cfg(Node* node)
         case NODE_RETURN:
         case NODE_STOP:
             return 1;
+        case NODE_SCOPE:
         case NODE_CONSTANT:
+        case NODE_PROJECTION:
             return 0;
         default:
             trap();
@@ -5324,10 +5466,32 @@ fn u8 node_is_pinned(Node* node)
 {
     switch (node->id)
     {
+        case NODE_PROJECTION:
         case NODE_START:
             return 1;
         case NODE_CONSTANT:
+        case NODE_INTEGER_SUBSTRACT:
             return 0;
+        default:
+            trap();
+    }
+}
+
+fn s32 node_cfg_get_immediate_dominator_tree_depth(Node* node)
+{
+    assert(node_is_cfg(node));
+    switch (node->id)
+    {
+        case NODE_START:
+            return 0;
+        case NODE_DEAD_CONTROL:
+            todo();
+        case NODE_CONTROL_PROJECTION:
+            todo();
+        case NODE_RETURN:
+            todo();
+        case NODE_STOP:
+            todo();
         default:
             trap();
     }
@@ -5338,17 +5502,20 @@ fn void schedule_early(Thread* thread, NodeIndex node_index, NodeIndex start_nod
     if (validi(node_index) && !bitset_get(&thread->worklist.visited, geti(node_index)))
     {
         bitset_set_value(&thread->worklist.visited, geti(node_index), 1);
+
         auto* node = thread_node_get(thread, node_index);
         auto inputs = node_get_inputs(thread, node);
+
         for (u64 i = 0; i < inputs.length; i += 1)
         {
             auto input = inputs.pointer[i];
+
             if (validi(input))
             {
                 auto* input_node = thread_node_get(thread, input);
                 if (!node_is_pinned(input_node))
                 {
-                    trap();
+                    schedule_early(thread, node_index, start_node);
                 }
             }
         }
@@ -5356,15 +5523,23 @@ fn void schedule_early(Thread* thread, NodeIndex node_index, NodeIndex start_nod
         if (!node_is_pinned(node))
         {
             auto early = start_node;
+
             for (u64 i = 1; i < inputs.length; i += 1)
             {
                 auto input_index = inputs.pointer[i];
                 auto input_node = thread_node_get(thread, input_index);
                 auto control_input_index = node_input_get(thread, input_node, 0);
                 auto* control_input_node = thread_node_get(thread, control_input_index);
-                assert(node_is_cfg(control_input_node));
-                trap();
+                auto* early_node = thread_node_get(thread, early);
+                auto input_depth = node_cfg_get_immediate_dominator_tree_depth(control_input_node);
+                auto early_depth = node_cfg_get_immediate_dominator_tree_depth(early_node);
+                if (input_depth > early_depth)
+                {
+                    early = control_input_index;
+                    trap();
+                }
             }
+
             node_set_input(thread, node_index, 0, early);
         }
     }
@@ -5507,89 +5682,98 @@ fn void gcm_build_cfg(Thread* thread, NodeIndex start_node_index, NodeIndex stop
     }
 }
 
-// fn void print_function(Thread* thread, Function* function)
-// {
-//     print("fn {s}\n====\n", function->name);
-//     VirtualBuffer(NodeIndex) nodes = {};
-//     *vb_add(&nodes, 1) = function->stop;
-//
-//     while (1)
-//     {
-//         auto node_index = nodes.pointer[nodes.length - 1];
-//         auto* node = thread_node_get(thread, node_index);
-//
-//         if (node->input_count)
-//         {
-//             for (u32 i = 1; i < node->input_count; i += 1)
-//             {
-//                 *vb_add(&nodes, 1) = node_input_get(thread, node, 1);
-//             }
-//             *vb_add(&nodes, 1) = node_input_get(thread, node, 0);
-//         }
-//         else
-//         {
-//             break;
-//         }
-//     }
-//
-//     u32 i = nodes.length;
-//     while (i > 0)
-//     {
-//         i -= 1;
-//
-//         auto node_index = nodes.pointer[i];
-//         auto* node = thread_node_get(thread, node_index);
-//         auto* type = thread_type_get(thread, node->type);
-//         print("%{u32} - {s} - {s} ", geti(node_index), type_id_to_string(type), node_id_to_string(node));
-//         auto inputs = node_get_inputs(thread, node);
-//         auto outputs = node_get_outputs(thread, node);
-//         
-//         print("(INPUTS: { ");
-//         for (u32 i = 0; i < inputs.length; i += 1)
-//         {
-//             auto input_index = inputs.pointer[i];
-//             print("%{u32} ", geti(input_index));
-//         }
-//         print("} OUTPUTS: { ");
-//         for (u32 i = 0; i < outputs.length; i += 1)
-//         {
-//             auto output_index = outputs.pointer[i];
-//             print("%{u32} ", geti(output_index));
-//         }
-//         print_string(strlit("})\n"));
-//     }
-//
-//
-//     print("====\n", function->name);
-// }
-
-fn void c_lower_append_string(VirtualBuffer(u8)* buffer, String string)
+may_be_unused fn void print_function(Thread* thread, Function* function)
 {
-    memcpy(vb_add(buffer, string.length), string.pointer, string.length);
+    print("fn {s}\n====\n", function->name);
+    VirtualBuffer(NodeIndex) nodes = {};
+    *vb_add(&nodes, 1) = function->stop;
+
+    while (1)
+    {
+        auto node_index = nodes.pointer[nodes.length - 1];
+        auto* node = thread_node_get(thread, node_index);
+
+        if (node->input_count)
+        {
+            for (u32 i = 1; i < node->input_count; i += 1)
+            {
+                *vb_add(&nodes, 1) = node_input_get(thread, node, 1);
+            }
+            *vb_add(&nodes, 1) = node_input_get(thread, node, 0);
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    u32 i = nodes.length;
+    while (i > 0)
+    {
+        i -= 1;
+
+        auto node_index = nodes.pointer[i];
+        auto* node = thread_node_get(thread, node_index);
+        auto* type = thread_type_get(thread, node->type);
+        print("%{u32} - {s} - {s} ", geti(node_index), type_id_to_string(type), node_id_to_string(node));
+        auto inputs = node_get_inputs(thread, node);
+        auto outputs = node_get_outputs(thread, node);
+        
+        print("(INPUTS: { ");
+        for (u32 i = 0; i < inputs.length; i += 1)
+        {
+            auto input_index = inputs.pointer[i];
+            print("%{u32} ", geti(input_index));
+        }
+        print("} OUTPUTS: { ");
+        for (u32 i = 0; i < outputs.length; i += 1)
+        {
+            auto output_index = outputs.pointer[i];
+            print("%{u32} ", geti(output_index));
+        }
+        print_string(strlit("})\n"));
+    }
+
+
+    print("====\n", function->name);
 }
 
-fn void c_lower_append_ch(VirtualBuffer(u8)* buffer, u8 ch)
+struct CBackend
 {
-    *vb_add(buffer, 1) = ch;
+    VirtualBuffer(u8) buffer;
+    Function* function;
+};
+
+typedef struct CBackend CBackend;
+
+fn void c_lower_append_string(CBackend* backend, String string)
+{
+    u8* pointer = vb_add(&backend->buffer, string.length);
+    memcpy(pointer, string.pointer, string.length);
 }
 
-fn void c_lower_append_ch_repeated(VirtualBuffer(u8)* buffer, u8 ch, u32 times)
+fn void c_lower_append_ch(CBackend* backend, u8 ch)
 {
-    u8* pointer = vb_add(buffer, times);
+    *vb_add(&backend->buffer, 1) = ch;
+}
+
+fn void c_lower_append_ch_repeated(CBackend* backend, u8 ch, u32 times)
+{
+    u8* pointer = vb_add(&backend->buffer, times);
     memset(pointer, ch, times);
 }
 
-fn void c_lower_append_space(VirtualBuffer(u8)* buffer)
+fn void c_lower_append_space(CBackend* backend)
 {
-    c_lower_append_ch(buffer, ' ');
+    c_lower_append_ch(backend, ' ');
 }
 
-fn void c_lower_append_space_margin(VirtualBuffer(u8)* buffer, u32 times)
+fn void c_lower_append_space_margin(CBackend* backend, u32 times)
 {
-    c_lower_append_ch_repeated(buffer, ' ', times * 4);
+    c_lower_append_ch_repeated(backend, ' ', times * 4);
 }
 
-fn void c_lower_type(VirtualBuffer(u8)* buffer, Thread* thread, TypeIndex type_index)
+fn void c_lower_type(CBackend* backend, Thread* thread, TypeIndex type_index)
 {
     Type* type = thread_type_get(thread, type_index);
     switch (type->id)
@@ -5599,24 +5783,26 @@ fn void c_lower_type(VirtualBuffer(u8)* buffer, Thread* thread, TypeIndex type_i
                 u8 ch[] = { 'u', 's' };
                 auto integer = &type->integer;
                 u8 signedness_ch = ch[type->integer.is_signed];
-                c_lower_append_ch(buffer, signedness_ch);
+                c_lower_append_ch(backend, signedness_ch);
                 u8 upper_digit = integer->bit_count / 10;
                 u8 lower_digit = integer->bit_count % 10;
                 if (upper_digit)
                 {
-                    c_lower_append_ch(buffer, upper_digit + '0');
+                    c_lower_append_ch(backend, upper_digit + '0');
                 }
-                c_lower_append_ch(buffer, lower_digit + '0');
+                c_lower_append_ch(backend, lower_digit + '0');
             } break;
         default:
             trap();
     }
 }
 
-fn void c_lower_node(VirtualBuffer(u8)* buffer, Thread* thread, NodeIndex node_index)
+fn void c_lower_node(CBackend* backend, Thread* thread, NodeIndex node_index)
 {
     auto* node = thread_node_get(thread, node_index);
     auto* type = thread_type_get(thread, node->type);
+    auto inputs = node_get_inputs(thread, node);
+
     switch (node->id)
     {
         case NODE_CONSTANT:
@@ -5628,15 +5814,56 @@ fn void c_lower_node(VirtualBuffer(u8)* buffer, Thread* thread, NodeIndex node_i
                             assert(type->integer.bit_count == 0);
                             assert(type->integer.is_constant);
                             assert(!type->integer.is_signed);
-                            vb_generic_ensure_capacity(buffer, 1, 64);
-                            auto current_length = buffer->length;
-                            auto buffer_slice = (String){ .pointer = buffer->pointer + current_length, .length = buffer->capacity - current_length, };
+                            vb_generic_ensure_capacity(&backend->buffer, 1, 64);
+                            auto current_length = backend->buffer.length;
+                            auto buffer_slice = (String){ .pointer = backend->buffer.pointer + current_length, .length = backend->buffer.capacity - current_length, };
                             auto written_characters = format_hexadecimal(buffer_slice, type->integer.constant);
-                            buffer->length = current_length + written_characters;
+                            backend->buffer.length = current_length + written_characters;
                         } break;
                         trap();
                     default:
                         trap();
+                }
+            } break;
+        case NODE_INTEGER_SUBSTRACT:
+            {
+                auto left = inputs.pointer[1];
+                auto right = inputs.pointer[2];
+                c_lower_node(backend, thread, left);
+                c_lower_append_string(backend, strlit(" - "));
+                c_lower_node(backend, thread, right);
+            } break;
+        case NODE_PROJECTION:
+            {
+                auto projected_node_index = inputs.pointer[0];
+                auto projection_index = node->projection.index;
+
+                if (index_equal(projected_node_index, backend->function->start))
+                {
+                    if (projection_index == 0)
+                    {
+                        fail();
+                    }
+                    // if (projection_index > interpreter->arguments.length + 1)
+                    // {
+                    //     fail();
+                    // }
+
+                    switch (projection_index)
+                    {
+                        case 1:
+                            c_lower_append_string(backend, strlit("argc"));
+                            break;
+                            // return interpreter->arguments.length;
+                        case 2:
+                            trap();
+                        default:
+                            trap();
+                    }
+                }
+                else
+                {
+                trap();
                 }
             } break;
         default:
@@ -5646,7 +5873,8 @@ fn void c_lower_node(VirtualBuffer(u8)* buffer, Thread* thread, NodeIndex node_i
 
 fn String c_lower(Thread* thread)
 {
-    VirtualBuffer(u8) buffer = {};
+    CBackend backend_stack = {};
+    CBackend* backend = &backend_stack;
     auto program_epilogue = strlit("#include <stdint.h>\n"
             "typedef uint8_t u8;\n"
             "typedef uint16_t u16;\n"
@@ -5657,20 +5885,26 @@ fn String c_lower(Thread* thread)
             "typedef int32_t s32;\n"
             "typedef int64_t s64;\n"
             );
-    c_lower_append_string(&buffer, program_epilogue);
+    c_lower_append_string(backend, program_epilogue);
 
     for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
     {
         auto* function = &thread->buffer.functions.pointer[function_i];
-        c_lower_type(&buffer, thread, function->return_type);
-        c_lower_append_space(&buffer);
+        backend->function = function;
+        c_lower_type(backend, thread, function->return_type);
+        c_lower_append_space(backend);
 
-        c_lower_append_string(&buffer, function->name);
-        c_lower_append_ch(&buffer, argument_start);
-        c_lower_append_ch(&buffer, argument_end);
-        c_lower_append_ch(&buffer, '\n');
-        c_lower_append_ch(&buffer, block_start);
-        c_lower_append_ch(&buffer, '\n');
+        c_lower_append_string(backend, function->name);
+        c_lower_append_ch(backend, argument_start);
+        if (s_equal(function->name, strlit("main")))
+        {
+            c_lower_append_string(backend, strlit("int argc, char* argv[]"));
+        }
+                
+        c_lower_append_ch(backend, argument_end);
+        c_lower_append_ch(backend, '\n');
+        c_lower_append_ch(backend, block_start);
+        c_lower_append_ch(backend, '\n');
 
         auto start_node_index = function->start;
         auto* start_node = thread_node_get(thread, start_node_index);
@@ -5693,14 +5927,14 @@ fn String c_lower(Thread* thread)
                     break;
                 case NODE_RETURN:
                     {
-                        c_lower_append_space_margin(&buffer, current_statement_margin);
-                        c_lower_append_string(&buffer, strlit("return "));
+                        c_lower_append_space_margin(backend, current_statement_margin);
+                        c_lower_append_string(backend, strlit("return "));
                         assert(inputs.length > 1);
                         assert(inputs.length == 2);
                         auto input = inputs.pointer[1];
-                        c_lower_node(&buffer, thread, input);
-                        c_lower_append_ch(&buffer, ';');
-                        c_lower_append_ch(&buffer, '\n');
+                        c_lower_node(backend, thread, input);
+                        c_lower_append_ch(backend, ';');
+                        c_lower_append_ch(backend, '\n');
                     } break;
                 case NODE_STOP:
                     break;
@@ -5712,10 +5946,10 @@ fn String c_lower(Thread* thread)
             it_node_index = outputs.pointer[0];
         }
 
-        c_lower_append_ch(&buffer, block_end);
+        c_lower_append_ch(backend, block_end);
     }
 
-    return (String) { .pointer = buffer.pointer, .length = buffer.length };
+    return (String) { .pointer = backend->buffer.pointer, .length = backend->buffer.length };
 }
 
 fn void thread_init(Thread* thread)
@@ -5757,6 +5991,54 @@ fn void thread_init(Thread* thread)
         .is_signed = 0,
         .bit_count = 0,
     });
+    thread->types.integer.u8 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 0,
+        .bit_count = 8,
+    });
+    thread->types.integer.u16 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 0,
+        .bit_count = 16,
+    });
+    thread->types.integer.u32 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 0,
+        .bit_count = 32,
+    });
+    thread->types.integer.u64 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 0,
+        .bit_count = 64,
+    });
+    thread->types.integer.s8 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 1,
+        .bit_count = 8,
+    });
+    thread->types.integer.s16 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 1,
+        .bit_count = 16,
+    });
+    thread->types.integer.s32 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 1,
+        .bit_count = 32,
+    });
+    thread->types.integer.s64 = thread_get_integer_type(thread, (TypeInteger) {
+        .constant = 0,
+        .is_constant = 0,
+        .is_signed = 1,
+        .bit_count = 64,
+    });
 }
 
 fn void thread_clear(Thread* thread)
@@ -5786,6 +6068,7 @@ typedef enum ExecutionEngine : u8
 struct Interpreter
 {
     Function* function;
+    Slice(String) arguments;
 };
 typedef struct Interpreter Interpreter;
 
@@ -5794,6 +6077,84 @@ fn Interpreter* interpreter_create(Thread* thread)
     auto* interpreter = arena_allocate(thread->arena, Interpreter, 1);
     *interpreter = (Interpreter){};
     return interpreter;
+}
+
+fn s32 emit_node(Interpreter* interpreter, Thread* thread, NodeIndex node_index)
+{
+    auto* node = thread_node_get(thread, node_index);
+    auto outputs = node_get_outputs(thread, node);
+    auto inputs = node_get_inputs(thread, node);
+    s32 result = -1;
+
+    switch (node->id)
+    {
+        case NODE_STOP:
+        case NODE_CONTROL_PROJECTION:
+            break;
+        case NODE_RETURN:
+            {
+                auto return_value = emit_node(interpreter, thread, inputs.pointer[1]);
+                result = return_value;
+            } break;
+        case NODE_CONSTANT:
+            {
+                auto constant_type_index = node->constant.type;
+                auto* constant_type = thread_type_get(thread, constant_type_index);
+                switch (constant_type->id)
+                {
+                    case TYPE_INTEGER:
+                        {
+                            assert(constant_type->integer.is_constant);
+                            result = constant_type->integer.constant;
+                        } break;
+                    default:
+                        trap();
+                }
+            } break;
+        case NODE_INTEGER_SUBSTRACT:
+            {
+                auto left = emit_node(interpreter, thread, inputs.pointer[1]);
+                auto right = emit_node(interpreter, thread, inputs.pointer[2]);
+                result = left - right;
+            } break;
+        case NODE_PROJECTION:
+            {
+                auto projected_node_index = inputs.pointer[0];
+                auto projection_index = node->projection.index;
+
+                if (index_equal(projected_node_index, interpreter->function->start))
+                {
+                    if (projection_index == 0)
+                    {
+                        fail();
+                    }
+                    if (projection_index > interpreter->arguments.length + 1)
+                    {
+                        fail();
+                    }
+
+                    switch (projection_index)
+                    {
+                        case 1:
+                            return interpreter->arguments.length;
+                        case 2:
+                            trap();
+                        default:
+                            trap();
+                    }
+                    trap();
+                }
+                else
+                {
+                trap();
+                }
+
+            } break;
+        default:
+            trap();
+    }
+
+    return result;
 }
 
 fn s32 interpreter_run(Interpreter* interpreter, Thread* thread)
@@ -5813,39 +6174,10 @@ fn s32 interpreter_run(Interpreter* interpreter, Thread* thread)
     {
         auto* it_node = thread_node_get(thread, it_node_index);
         auto outputs = node_get_outputs(thread, it_node);
-        auto inputs = node_get_inputs(thread, it_node);
-
-        switch (it_node->id)
+        auto this_result = emit_node(interpreter, thread, it_node_index);
+        if (this_result != -1)
         {
-            case NODE_CONTROL_PROJECTION:
-                break;
-            case NODE_RETURN:
-                {
-                    auto return_value = thread_node_get(thread, inputs.pointer[1]);
-                    if (return_value->id == NODE_CONSTANT)
-                    {
-                        auto constant_type_index = return_value->constant.type;
-                        auto* constant_type = thread_type_get(thread, constant_type_index);
-                        switch (constant_type->id)
-                        {
-                            case TYPE_INTEGER:
-                                {
-                                    assert(constant_type->integer.is_constant);
-                                    result = constant_type->integer.constant;
-                                } break;
-                            default:
-                                trap();
-                        }
-                    }
-                    else
-                    {
-                        trap();
-                    }
-                } break;
-            case NODE_STOP:
-                break;
-            default:
-                trap();
+            result = this_result;
         }
 
         assert(outputs.length == 1);
@@ -5900,8 +6232,11 @@ void entry_point(int argc, const char* argv[])
         .source = file_read(thread->arena, source_file_path),
     };
     analyze_file(thread, &file);
+    print("File path: {s}\n", source_file_path);
     auto test_dir = string_no_extension(file.path);
+    print("Test dir path: {s}\n", test_dir);
     auto test_name = string_base(test_dir);
+    print("Test name: {s}\n", test_name);
 
     for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
     {
@@ -5921,33 +6256,44 @@ void entry_point(int argc, const char* argv[])
         fail();
     }
 
-    auto lowered_source = c_lower(thread);
-    // print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
-
     auto c_source_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
                     strlit("nest/"),
                     test_name,
                     strlit(".c"),
                     })));
 
-    file_write(c_source_path, lowered_source);
-
     auto exe_path_view = s_get_slice(u8, c_source_path, 0, c_source_path.length - 2);
     auto exe_path = (char*)arena_allocate_bytes(thread->arena, exe_path_view.length + 1, 1);
     memcpy((char*)exe_path, exe_path_view.pointer, exe_path_view.length);
     exe_path[exe_path_view.length] = 0;
 
-    auto command = (char*[]) {
-        "/usr/bin/cc", "-g",
-        "-o", exe_path,
-        (char*)c_source_path.pointer,
-        0,
-    };
-
     switch (execution_engine)
     {
     case EXECUTION_ENGINE_C:
         {
+            auto lowered_source = c_lower(thread);
+            // print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
+
+            file_write(c_source_path, lowered_source);
+
+            char* command[] = {
+                "/usr/bin/cc", "-g",
+                "-o", exe_path,
+                (char*)c_source_path.pointer,
+                0,
+            };
+            print("Argument count: {u32}\n", (u32)array_length(command));
+
+            for (u32 i = 0; i < array_length(command); i += 1)
+            {
+                auto* arg = command[i];
+                if (arg)
+                {
+                    print("{cstr} ", arg);
+                }
+            }
+
+            print("\n");
             int res = syscall_execve("/usr/bin/cc", command, envp);
             unused(res);
             assert(0);
@@ -5957,6 +6303,9 @@ void entry_point(int argc, const char* argv[])
             auto* main_function = &thread->buffer.functions.pointer[thread->main_function];
             auto* interpreter = interpreter_create(thread);
             interpreter->function = main_function;
+            interpreter->arguments = (Slice(String)) array_to_slice(((String[]) {
+                test_name,
+            }));
             auto exit_code = interpreter_run(interpreter, thread);
             print("Interpreter exited with exit code: {u32}\n", exit_code);
             syscall_exit(exit_code);
