@@ -1837,16 +1837,35 @@ typedef struct TypeTuple TypeTuple;
 
 struct Type
 {
+    Hash hash;
     union
     {
         TypeInteger integer;
         TypeTuple tuple;
     };
-    Hash hash;
     TypeId id;
 };
 typedef struct Type Type;
+static_assert(offsetof(Type, hash) == 0);
 decl_vb(Type);
+
+struct NodeIndex
+{
+    u32 index;
+};
+typedef struct NodeIndex NodeIndex;
+declare_slice(NodeIndex);
+decl_vb(NodeIndex);
+
+struct Function
+{
+    String name;
+    NodeIndex start;
+    NodeIndex stop;
+    TypeIndex return_type;
+};
+typedef struct Function Function;
+decl_vb(Function);
 
 typedef enum NodeId : u8
 {
@@ -1882,14 +1901,6 @@ typedef enum NodeId : u8
     NODE_COUNT,
 } NodeId;
 
-struct NodeIndex
-{
-    u32 index;
-};
-typedef struct NodeIndex NodeIndex;
-declare_slice(NodeIndex);
-decl_vb(NodeIndex);
-
 struct NodeCFG
 {
     s32 immediate_dominator_tree_depth;
@@ -1908,6 +1919,7 @@ struct NodeStart
 {
     NodeCFG cfg;
     TypeIndex arguments;
+    Function* function;
 };
 typedef struct NodeStart NodeStart;
 
@@ -1992,6 +2004,7 @@ struct Node
 };
 typedef struct Node Node;
 declare_slice_p(Node);
+static_assert(offsetof(Node, hash) == 0);
 
 decl_vb(Node);
 decl_vbp(Node);
@@ -2004,15 +2017,6 @@ struct ArrayReference
 typedef struct ArrayReference ArrayReference;
 decl_vb(ArrayReference);
 
-struct Function
-{
-    String name;
-    NodeIndex start;
-    NodeIndex stop;
-    TypeIndex return_type;
-};
-typedef struct Function Function;
-decl_vb(Function);
 
 struct File
 {
@@ -2420,7 +2424,7 @@ fn void node_kill(Thread* thread, NodeIndex node_index)
 {
     node_unlock(thread, node_index);
     auto* node = thread_node_get(thread, node_index);
-    print("[NODE KILLING] (#{u32}, {s}) START\n", node_index.index, node_id_to_string(node));
+    // print("[NODE KILLING] (#{u32}, {s}) START\n", node_index.index, node_id_to_string(node));
     assert(node_is_unused(node));
     node->type = invalidi(Type);
 
@@ -2431,14 +2435,14 @@ fn void node_kill(Thread* thread, NodeIndex node_index)
         node->input_count = input_index;
         auto old_input_index = inputs.pointer[input_index];
 
-        print("[NODE KILLING] (#{u32}, {s}) Removing input #{u32} at slot {u32}\n", node_index.index, node_id_to_string(node), old_input_index.index, input_index);
+        // print("[NODE KILLING] (#{u32}, {s}) Removing input #{u32} at slot {u32}\n", node_index.index, node_id_to_string(node), old_input_index.index, input_index);
         if (validi(old_input_index))
         {
             thread_worklist_push(thread, old_input_index);
             u8 no_more_outputs = node_remove_output(thread, old_input_index, node_index);
             if (no_more_outputs)
             {
-                print("[NODE KILLING] (#{u32}, {s}) (NO MORE OUTPUTS - KILLING) Input #{u32}\n", node_index.index, node_id_to_string(node), old_input_index.index);
+                // print("[NODE KILLING] (#{u32}, {s}) (NO MORE OUTPUTS - KILLING) Input #{u32}\n", node_index.index, node_id_to_string(node), old_input_index.index);
                 node_kill(thread, old_input_index);
             }
         }
@@ -2512,7 +2516,7 @@ typedef struct NodeCreate NodeCreate;
 fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
 {
     auto input_result = thread_get_node_reference_array(thread, data.inputs.length);
-    memcpy(input_result.pointer, data.inputs.pointer, sizeof(Node*) * data.inputs.length);
+    memcpy(input_result.pointer, data.inputs.pointer, sizeof(NodeIndex) * data.inputs.length);
 
     auto* node = vb_add(&thread->buffer.nodes, 1);
     auto node_index = Index(Node, node - thread->buffer.nodes.pointer);
@@ -2522,19 +2526,19 @@ fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
     node->input_count = data.inputs.length;
     node->type = invalidi(Type);
 
-    print("[NODE CREATION] #{u32} {s} | INPUTS: { ", node_index.index, node_id_to_string(node));
+    // print("[NODE CREATION] #{u32} {s} | INPUTS: { ", node_index.index, node_id_to_string(node));
 
     for (u32 i = 0; i < data.inputs.length; i += 1)
     {
         NodeIndex input = data.inputs.pointer[i];
-        print("{u32} ", input.index);
+        // print("{u32} ", input.index);
         if (validi(input))
         {
             node_add_output(thread, input, node_index);
         }
     }
 
-    print("}\n");
+    // print("}\n");
 
     return node_index;
 }
@@ -2792,7 +2796,7 @@ fn NodeIndex constant_int_create_with_type(Thread* thread, Function* function, T
         .type = type_index,
     };
 
-    print("Creating constant integer node #{u32} with value: {u64:x}\n", node_index.index, thread_type_get(thread, type_index)->integer.constant);
+    // print("Creating constant integer node #{u32} with value: {u64:x}\n", node_index.index, thread_type_get(thread, type_index)->integer.constant);
 
     auto result = peephole(thread, function, node_index);
     return result;
@@ -2960,74 +2964,272 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
     return node_input_get(thread, node, 1);
 }
 
-fn void intern_pool_ensure_capacity(InternPool* pool, Arena* arena, u32 additional)
+fn TypeIndex intern_pool_put_new_type_at_assume_not_existent_assume_capacity(Thread* thread, Type* type, u32 index)
+{
+    auto* result = vb_add(&thread->buffer.types, 1);
+    auto buffer_index = result - thread->buffer.types.pointer;
+    auto type_index = Index(Type, buffer_index);
+    *result = *type;
+
+    u32 raw_type = *(u32*)&type_index;
+    thread->interned.types.pointer[index] = raw_type;
+    assert(raw_type);
+    thread->interned.types.length += 1;
+
+    return type_index;
+}
+
+fn TypeIndex intern_pool_put_new_type_assume_not_existent_assume_capacity(Thread* thread, Type* type)
+{
+    assert(thread->interned.types.length < thread->interned.types.capacity);
+    Hash hash = type->hash;
+    assert(hash);
+    auto index = hash & (thread->interned.types.capacity - 1);
+
+    return intern_pool_put_new_type_at_assume_not_existent_assume_capacity(thread, type, index);
+}
+
+typedef enum InternPoolKind
+{
+    INTERN_POOL_KIND_TYPE,
+    INTERN_POOL_KIND_NODE,
+} InternPoolKind;
+
+// This assumes the indices are not equal
+fn u8 node_equal(Thread* thread, Node* a, Node* b)
+{
+    u8 result = 0;
+    assert(a != b);
+    assert(a->hash);
+    assert(b->hash);
+
+    if (((a->id == b->id) & (a->hash == b->hash)) & (a->input_count == b->input_count))
+    {
+        auto inputs_a = node_get_inputs(thread, a);
+        auto inputs_b = node_get_inputs(thread, b);
+        result = 1;
+
+        for (u16 i = 0; i < a->input_count; i += 1)
+        {
+            if (!index_equal(inputs_a.pointer[i], inputs_b.pointer[i]))
+            {
+                result = 0;
+                break;
+            }
+        }
+
+        if (result)
+        {
+            switch (a->id)
+            {
+                case NODE_CONSTANT:
+                    result = index_equal(a->constant.type, b->constant.type);
+                    break;
+                case NODE_START:
+                    result = a->start.function == b->start.function;
+                    break;
+                default:
+                    trap();
+            }
+        }
+    }
+
+    return result;
+}
+
+fn u8 node_index_equal(Thread* thread, NodeIndex a, NodeIndex b)
+{
+    u8 result = 0;
+    if (index_equal(a, b))
+    {
+        result = 1;
+    }
+    else
+    {
+        auto* node_a = thread_node_get(thread, a);
+        auto* node_b = thread_node_get(thread, b);
+        assert(node_a != node_b);
+        result = node_equal(thread, node_a, node_b);
+    }
+
+    return result;
+}
+
+fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex node_index)
+{
+    assert(validi(node_index));
+    auto it_index = original_index;
+    auto existing_capacity = thread->interned.nodes.capacity;
+    s32 result = -1;
+    // auto* node = thread_node_get(thread, node_index);
+
+    for (u32 i = 0; i < existing_capacity; i += 1)
+    {
+        auto index = it_index & (existing_capacity - 1);
+        u32 key = thread->interned.nodes.pointer[index];
+
+        if (key == 0)
+        {
+            assert(thread->interned.nodes.length < thread->interned.nodes.capacity);
+            result = index;
+            break;
+        }
+        else
+        {
+            NodeIndex existing_node_index = *(NodeIndex*)&key;
+            // Exhaustive comparation, shortcircuit when possible
+            if (node_index_equal(thread, existing_node_index, node_index))
+            {
+                result = index;
+                break;
+            }
+        }
+
+        it_index += 1;
+    }
+
+    return result;
+}
+
+fn NodeIndex intern_pool_get_node(Thread* thread, NodeIndex key, Hash hash)
+{
+    auto original_index = hash & (thread->interned.nodes.capacity - 1);
+    auto slot = intern_pool_find_node_slot(thread, original_index, key);
+    auto* pointer_to_slot = &thread->interned.nodes.pointer[slot];
+    return *(NodeIndex*)pointer_to_slot;
+}
+
+fn NodeIndex intern_pool_put_node_at_assume_not_existent_assume_capacity(Thread* thread, NodeIndex node, u32 index)
+{
+    u32 raw_node = *(u32*)&node;
+    assert(raw_node);
+    thread->interned.nodes.pointer[index] = raw_node;
+    thread->interned.nodes.length += 1;
+
+    return node;
+}
+
+fn NodeIndex intern_pool_put_node_assume_not_existent_assume_capacity(Thread* thread, Hash hash, NodeIndex node)
+{
+    auto capacity = thread->interned.nodes.capacity;
+    assert(thread->interned.nodes.length < capacity);
+    auto original_index = hash & (capacity - 1);
+
+    auto slot = intern_pool_find_node_slot(thread, original_index, node);
+    if (slot == -1)
+    {
+        fail();
+    }
+    auto index = (u32)slot;
+
+    return intern_pool_put_node_at_assume_not_existent_assume_capacity(thread, node, index);
+}
+
+fn void intern_pool_ensure_capacity(InternPool* pool, Thread* thread, u32 additional, InternPoolKind kind)
 {
     auto current_capacity = pool->capacity;
+    auto current_length = pool->length;
     auto half_capacity = current_capacity >> 1;
-    auto destination_length = pool->length + additional;
+    auto destination_length = current_length + additional;
 
     if (destination_length > half_capacity)
     {
         u32 new_capacity = MAX(round_up_to_next_power_of_2(destination_length), 32);
-        u32* new_array = arena_allocate(arena, u32, new_capacity);
+        u32* new_array = arena_allocate(thread->arena, u32, new_capacity);
         memset(new_array, 0, sizeof(u32) * new_capacity);
+        if (kind == INTERN_POOL_KIND_NODE)
+        {
+            print("[ENSURE CAPACITY] Current capacity: {u32}. Half capacity: {u32}. New capacity: {u32}\n", current_capacity, half_capacity, new_capacity);
+        }
 
         auto* old_pointer = pool->pointer;
-        auto old_capacity = pool->capacity;
+        auto old_capacity = current_capacity;
+        auto old_length = current_length;
 
         pool->length = 0;
         pool->pointer = new_array;
         pool->capacity = new_capacity;
+
+        u8* buffer;
+        u64 stride;
+        switch (kind)
+        {
+        case INTERN_POOL_KIND_TYPE:
+            buffer = (u8*)thread->buffer.types.pointer;
+            stride = sizeof(Type);
+            assert(pool == &thread->interned.types);
+            break;
+        case INTERN_POOL_KIND_NODE:
+            buffer = (u8*)thread->buffer.nodes.pointer;
+            stride = sizeof(Node);
+            assert(pool == &thread->interned.nodes);
+            break;
+        }
 
         for (u32 i = 0; i < old_capacity; i += 1)
         {
            auto key = old_pointer[i];
            if (key)
            {
-               trap();
+               auto hash = *(Hash*)(buffer + (stride * (key - 1)));
+               assert(hash);
+               switch (kind)
+               {
+               case INTERN_POOL_KIND_TYPE:
+                   {
+                       auto type_index = *(TypeIndex*)&key;
+                       auto* type = thread_type_get(thread, type_index);
+                       assert(type->hash == hash);
+                   } break;
+               case INTERN_POOL_KIND_NODE:
+                   {
+                       auto node_index = *(NodeIndex*)&key;
+                       auto* node = thread_node_get(thread, node_index);
+                       assert(node->hash == hash);
+                       intern_pool_put_node_assume_not_existent_assume_capacity(thread, hash, node_index);
+                   } break;
+               }
+
            }
         }
 
+        assert(old_length == pool->length);
+        assert(pool->capacity == new_capacity);
+
         for (u32 i = 0; i < old_capacity; i += 1)
         {
-            trap();
+            auto key = old_pointer[i];
+            if (key)
+            {
+                auto hash = *(Hash*)(buffer + (stride * (key - 1)));
+                assert(hash);
+                switch (kind)
+                {
+                case INTERN_POOL_KIND_TYPE:
+                    {
+                        auto type_index = *(TypeIndex*)&key;
+                        unused(type_index);
+                        trap();
+                    } break;
+                case INTERN_POOL_KIND_NODE:
+                    {
+                        auto node_index = *(NodeIndex*)&key;
+                        auto* node = thread_node_get(thread, node_index);
+                        assert(node->hash == hash);
+                        auto result = intern_pool_get_node(thread, node_index, hash);
+                        assert(validi(node_index));
+                        assert(index_equal(node_index, result));
+                    } break;
+                }
+            }
         }
     }
 }
 
-fn TypeIndex intern_pool_put_new_type_at_assume_not_existent_assume_capacity(Thread* thread, Type* type, u32 index)
+fn TypeIndex intern_pool_put_new_type_assume_not_existent(Thread* thread, Type* type)
 {
-    auto* result = vb_add(&thread->buffer.types, 1);
-    auto buffer_index = result - thread->buffer.types.pointer;
-    auto type_index = Index(Type, buffer_index);
-    if (type->id == TYPE_INTEGER)
-    {
-        auto diff = (u8*)(&type->hash) - (u8*)(&type->integer.is_signed + 1);
-        for (u32 i = 0; i < diff; i += 1)
-        {
-            assert(*(&type->integer.is_signed + 1 + i) == 0);
-        }
-    }
-    *result = *type;
-
-    thread->interned.types.pointer[index] = *(u32*)&type_index;
-    thread->interned.types.length += 1;
-
-    return type_index;
-}
-
-fn TypeIndex intern_pool_put_new_type_assume_not_existent_assume_capacity(Thread* thread, Hash hash, Type* type)
-{
-    assert(thread->interned.types.length < thread->interned.types.capacity);
-    auto index = hash & (thread->interned.types.capacity - 1);
-
-    return intern_pool_put_new_type_at_assume_not_existent_assume_capacity(thread, type, index);
-}
-
-fn TypeIndex intern_pool_put_new_type_assume_not_existent(Thread* thread, Hash hash, Type* type)
-{
-    intern_pool_ensure_capacity(&thread->interned.types, thread->arena, 1);
-    return intern_pool_put_new_type_assume_not_existent_assume_capacity(thread, hash, type);
+    intern_pool_ensure_capacity(&thread->interned.types, thread, 1, INTERN_POOL_KIND_TYPE);
+    return intern_pool_put_new_type_assume_not_existent_assume_capacity(thread, type);
 }
 
 fn s32 intern_pool_find_type_slot(Thread* thread, u32 original_index, Type* type)
@@ -3094,7 +3296,7 @@ fn TypeGetOrPut intern_pool_get_or_put_new_type(Thread* thread, Type* type)
         }
         else if (thread->interned.types.length == existing_capacity)
         {
-            auto result = intern_pool_put_new_type_assume_not_existent(thread, hash, type);
+            auto result = intern_pool_put_new_type_assume_not_existent(thread, type);
             return (TypeGetOrPut) {
                 .index = result,
                 .existing = 0,
@@ -3387,26 +3589,9 @@ fn Hash hash_type(Thread* thread, Type* type)
     return hash;
 }
 
-fn NodeIndex intern_pool_put_node_at_assume_not_existent_assume_capacity(Thread* thread, NodeIndex node, u32 index)
-{
-    thread->interned.nodes.pointer[index] = *(u32*)&node;
-    thread->interned.nodes.length += 1;
-
-    return node;
-}
-
-fn NodeIndex intern_pool_put_node_assume_not_existent_assume_capacity(Thread* thread, Hash hash, NodeIndex node)
-{
-    auto capacity = thread->interned.nodes.capacity;
-    assert(thread->interned.nodes.length < capacity);
-    auto index = hash & (capacity - 1);
-
-    return intern_pool_put_node_at_assume_not_existent_assume_capacity(thread, node, index);
-}
-
 fn NodeIndex intern_pool_put_node_assume_not_existent(Thread* thread, Hash hash, NodeIndex node)
 {
-    intern_pool_ensure_capacity(&thread->interned.nodes, thread->arena, 1);
+    intern_pool_ensure_capacity(&thread->interned.nodes, thread, 1, INTERN_POOL_KIND_NODE);
     return intern_pool_put_node_assume_not_existent_assume_capacity(thread, hash, node);
 }
 
@@ -3417,98 +3602,8 @@ struct NodeGetOrPut
 };
 typedef struct NodeGetOrPut NodeGetOrPut;
 
-// This assumes the indices are not equal
-fn u8 node_equal(Thread* thread, Node* a, Node* b)
-{
-    u8 result = 0;
-    assert(a != b);
-    assert(a->hash);
-    assert(b->hash);
-
-    if (((a->id == b->id) & (a->hash == b->hash)) & (a->input_count == b->input_count))
-    {
-        auto inputs_a = node_get_inputs(thread, a);
-        auto inputs_b = node_get_inputs(thread, b);
-        result = 1;
-
-        for (u16 i = 0; i < a->input_count; i += 1)
-        {
-            if (!index_equal(inputs_a.pointer[i], inputs_b.pointer[i]))
-            {
-                result = 0;
-                break;
-            }
-        }
-
-        if (result)
-        {
-            switch (a->id)
-            {
-                case NODE_CONSTANT:
-                    result = index_equal(a->constant.type, b->constant.type);
-                    break;
-                default:
-                    trap();
-            }
-        }
-    }
-
-    return result;
-}
 
 
-fn u8 node_index_equal(Thread* thread, NodeIndex a, NodeIndex b)
-{
-    u8 result = 0;
-    if (index_equal(a, b))
-    {
-        result = 1;
-    }
-    else
-    {
-        auto* node_a = thread_node_get(thread, a);
-        auto* node_b = thread_node_get(thread, b);
-        assert(node_a != node_b);
-        result = node_equal(thread, node_a, node_b);
-    }
-
-    return result;
-}
-
-fn s32 intern_pool_find_node_slot(Thread* thread, u32 original_index, NodeIndex node_index)
-{
-    assert(validi(node_index));
-    auto it_index = original_index;
-    auto existing_capacity = thread->interned.nodes.capacity;
-    s32 result = -1;
-    // auto* node = thread_node_get(thread, node_index);
-
-    for (u32 i = 0; i < existing_capacity; i += 1)
-    {
-        auto index = it_index & (existing_capacity - 1);
-        u32 key = thread->interned.nodes.pointer[index];
-
-        if (key == 0)
-        {
-            result = index;
-            break;
-        }
-        else
-        {
-            NodeIndex existing_node_index = *(NodeIndex*)&key;
-            // Exhaustive comparation, shortcircuit when possible
-            if (node_index_equal(thread, existing_node_index, node_index))
-            {
-                result = index;
-                break;
-            }
-        }
-
-        it_index += 1;
-    }
-
-    return result;
-}
 
 fn Hash hash_node(Thread* thread, Node* node, NodeIndex node_index)
 {
@@ -3546,6 +3641,7 @@ fn Hash hash_node(Thread* thread, Node* node, NodeIndex node_index)
 
 fn NodeGetOrPut intern_pool_get_or_put_node(Thread* thread, NodeIndex node_index)
 {
+    assert(thread->interned.nodes.length <= thread->interned.nodes.capacity);
     auto existing_capacity = thread->interned.nodes.capacity;
     auto* node = &thread->buffer.nodes.pointer[geti(node_index)];
     auto hash = hash_node(thread, node, node_index);
@@ -3561,6 +3657,7 @@ fn NodeGetOrPut intern_pool_get_or_put_node(Thread* thread, NodeIndex node_index
         NodeIndex new_value = existing_value;
         if (!existing)
         {
+            assert(thread->interned.nodes.length < thread->interned.nodes.capacity);
             new_value = intern_pool_put_node_at_assume_not_existent_assume_capacity(thread, node_index, index);
             assert(!index_equal(new_value, existing_value));
             assert(index_equal(new_value, node_index));
@@ -3599,44 +3696,52 @@ fn NodeIndex intern_pool_remove_node(Thread* thread, NodeIndex node_index)
     
     auto original_index = hash & (existing_capacity - 1);
     auto slot = intern_pool_find_node_slot(thread, original_index, node_index);
+
     if (slot != -1)
     {
-        auto slot_index = (u32)slot;
-        auto* slot_pointer = &thread->interned.nodes.pointer[slot_index];
+        auto i = (u32)slot;
+        auto* slot_pointer = &thread->interned.nodes.pointer[i];
         auto old_node_index = *(NodeIndex*)slot_pointer;
+        assert(validi(old_node_index));
+        thread->interned.nodes.length -= 1;
         *slot_pointer = 0;
 
-        auto index = slot_index;
+        auto j = i;
 
         while (1)
         {
-            index = (index + 1) & (existing_capacity - 1);
-            auto existing = thread->interned.nodes.pointer[index];
+            j = (j + 1) & (existing_capacity - 1);
+
+            auto existing = thread->interned.nodes.pointer[j];
             if (existing == 0)
             {
                 break;
             }
+
             auto existing_node_index = *(NodeIndex*)&existing;
             auto* existing_node = thread_node_get(thread, existing_node_index);
             auto existing_node_hash = hash_node(thread, existing_node, existing_node_index);
-            auto existing_index = existing_node_hash & (existing_capacity - 1);
+            auto k = existing_node_hash & (existing_capacity - 1);
 
-            if (slot_index <= existing_index)
+            if (i <= j)
             {
-                if ((slot_index < existing_index) & (existing_index <= index))
+                if ((i < k) & (k <= j))
                 {
                     continue;
                 }
             }
             else
             {
-                if ((slot_index <= index) | (slot_index < existing_index))
+                if ((k <= j) | (i < k))
                 {
                     continue;
                 }
             }
 
-            trap();
+            thread->interned.nodes.pointer[i] = thread->interned.nodes.pointer[j];
+            thread->interned.nodes.pointer[j] = 0;
+
+            i = j;
         }
 
         return old_node_index;
@@ -3941,7 +4046,7 @@ fn NodeIndex dead_code_elimination(Thread* thread, NodePair nodes)
 
     if (!index_equal(old, new))
     {
-        print("[DCE] old: #{u32} != new: #{u32}. Proceeding to eliminate\n", old.index, new.index);
+        // print("[DCE] old: #{u32} != new: #{u32}. Proceeding to eliminate\n", old.index, new.index);
         auto* old_node = thread_node_get(thread, old);
         if (node_is_unused(old_node) & !node_is_dead(old_node))
         {
@@ -4009,7 +4114,7 @@ fn NodeIndex peephole_optimize(Thread* thread, Function* function, NodeIndex nod
     assert(enable_peephole);
     auto result = node_index;
     auto* node = thread_node_get(thread, node_index);
-    print("Peepholing node #{u32} ({s})\n", node_index.index, node_id_to_string(node));
+    // print("Peepholing node #{u32} ({s})\n", node_index.index, node_id_to_string(node));
     auto old_type = node->type;
     auto new_type = node_functions[node->id].compute_type(thread, node_index);
 
@@ -4044,7 +4149,7 @@ fn NodeIndex peephole_optimize(Thread* thread, Function* function, NodeIndex nod
                 auto new_type = type_join(thread, interned_node->type, node->type);
                 node_set_type(thread, interned_node, new_type);
                 node->hash = 0;
-                print("[peephole_optimize] Eliminating #{u32} because an existing node was found: #{u32}\n", node_index.index, interned_node_index.index);
+                // print("[peephole_optimize] Eliminating #{u32} because an existing node was found: #{u32}\n", node_index.index, interned_node_index.index);
                 auto dce_node = dead_code_elimination(thread, (NodePair) {
                     .old = node_index,
                     .new = interned_node_index,
@@ -4087,7 +4192,7 @@ fn NodeIndex peephole(Thread* thread, Function* function, NodeIndex node_index)
         if (validi(new_node))
         {
             NodeIndex peephole_new_node = peephole(thread, function, new_node);
-            print("[peephole] Eliminating #{u32} because a better node was found: #{u32}\n", node_index.index, new_node.index);
+            // print("[peephole] Eliminating #{u32} because a better node was found: #{u32}\n", node_index.index, new_node.index);
             auto dce_node = dead_code_elimination(thread, (NodePair)
             {
                 .old = node_index,
@@ -4439,7 +4544,7 @@ fn NodeIndex analyze_multiplication(Thread* thread, Parser* parser, FunctionBuil
         left = peephole(thread, builder->function, new_node_index);
     }
 
-    print("Analyze addition returned node #{u32}\n", left.index);
+    // print("Analyze addition returned node #{u32}\n", left.index);
 
     return left;
 }
@@ -4498,7 +4603,7 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, FunctionBuilder* b
         left = peephole(thread, builder->function, new_node_index);
     }
 
-    print("Analyze addition returned node #{u32}\n", left.index);
+    // print("Analyze addition returned node #{u32}\n", left.index);
 
     return left;
 }
@@ -4932,6 +5037,7 @@ fn void analyze_file(Thread* thread, File* file)
                         assert(validi(tuple));
                         start_node->type = tuple;
                         start_node->start.arguments = tuple;
+                        start_node->start.function = function;
                     }
                 }
 
