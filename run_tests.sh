@@ -21,6 +21,7 @@ test_names=(
     "shift_left"
     "shift_right"
     "thousand_simple_functions"
+    "simple_arg"
 )
 
 if [ "$all" == "1" ]

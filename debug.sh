@@ -15,7 +15,7 @@ exe_name="nest"
 exe_path=$build_dir/$exe_name
 debug_flags="-g"
 optimization_flags="-O0"
-bootstrap_args="$path i"
+bootstrap_args="$path c"
 case "$OSTYPE" in
     darwin*)  static=0;; 
     linux*)   static=1;;
