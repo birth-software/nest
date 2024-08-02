@@ -1,3 +1,5 @@
 build/
 nest/
 *.data
+project
+project.dSYM/
