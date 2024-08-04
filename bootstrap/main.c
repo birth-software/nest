@@ -4906,18 +4906,6 @@ void entry_point(int argc, const char* argv[])
                 (char*)c_source_path.pointer,
                 0,
             };
-            print("Argument count: {u32}\n", (u32)array_length(command));
-
-            for (u32 i = 0; i < array_length(command); i += 1)
-            {
-                auto* arg = command[i];
-                if (arg)
-                {
-                    print("{cstr} ", arg);
-                }
-            }
-
-            print("\n");
 
             run_command((CStringSlice) array_to_slice(command), envp);
         } break;

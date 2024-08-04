@@ -1,6 +1,7 @@
 #include "lib.h"
 
 #define build_dir "build"
+#define nest_dir "nest"
 
 typedef enum OptimizationMode : u8
 {
@@ -282,9 +283,10 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
             print("===========================\n\n");
 
             String compiler_path = arena_join_string(arena, ((Slice(String)) array_to_slice(((String[]){
-                strlit(build_dir "/"),
-                strlit("nest"),
+                strlit(build_dir "/" "nest"),
+                strlit("_"),
                 optimization_string,
+                strlit("_"),
                 linkage_string,
             }))));
             compile_options.out_path = string_to_c(compiler_path);
@@ -299,6 +301,8 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
             {
                 String test_path = test_options->test_paths.pointer[test_i];
                 char* test_path_c = string_to_c(test_path);
+                auto test_dir = string_no_extension(test_path);
+                auto test_name = string_base(test_dir);
 
                 for (u32 engine_i = 0; engine_i < test_options->execution_engines.length; engine_i += 1)
                 {
@@ -323,12 +327,17 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
                         0,
                     };
 
+
                     run_command((CStringSlice) array_to_slice(arguments), envp);
 
                     if (execution_engine != EXECUTION_ENGINE_INTERPRETER)
                     {
+                        String out_program = arena_join_string(arena, ((Slice(String)) array_to_slice(((String[]){
+                                            strlit(nest_dir "/"),
+                                            test_name,
+                                            }))));
                         char* run_arguments[] = {
-                            compile_options.out_path,
+                            string_to_c(out_program),
                             0,
                         };
                         run_command((CStringSlice) array_to_slice(run_arguments), envp);
@@ -350,6 +359,7 @@ int main(int argc, char* argv[], char** envp)
     ExecutionEngine preferred_execution_engine = EXECUTION_ENGINE_COUNT;
     Command command = COMMAND_COUNT;
     u8 test_every_config = 0;
+    String source_file_path = {};
 
     for (int i = 1; i < argc; i += 1)
     {
@@ -377,6 +387,20 @@ int main(int argc, char* argv[], char** envp)
         }
     }
 
+    if (argc > 2)
+    {
+        auto* c_argument = argv[2];
+        auto argument = cstr(c_argument);
+        auto expected_start = strlit("tests/");
+        if (expected_start.length < argument.length)
+        {
+            if (strncmp(c_argument, "tests/", sizeof("tests/") - 1) == 0)
+            {
+                source_file_path = argument;
+            }
+        }
+    }
+
     if (command == COMMAND_COUNT)
     {
         print("Expected a command\n");
@@ -391,15 +415,20 @@ int main(int argc, char* argv[], char** envp)
     switch (command)
     {
     case COMMAND_DEBUG:
+        if (!source_file_path.pointer)
+        {
+            fail();
+        }
+
         compile_and_run(&(CompileOptions) {
             .in_path = compiler_source_path,
-            .out_path = build_dir "/" "nest",
+            .out_path = build_dir "/" "nest_O0_static",
             .compiler = default_compiler,
             .debug_info = 1,
             .error_on_warning = 0,
             .optimization_mode = O0,
             .linkage = LINKAGE_STATIC,
-        }, envp, EXECUTION_ENGINE_INTERPRETER, 1, "tests/first.nat");
+        }, envp, EXECUTION_ENGINE_INTERPRETER, 1, string_to_c(source_file_path));
         break;
     case COMMAND_RUN_TESTS:
         {
@@ -408,13 +437,24 @@ int main(int argc, char* argv[], char** envp)
             static_assert(array_length(all_linkages) == LINKAGE_COUNT);
             OptimizationMode all_optimization_modes[] = { O0, O1, O2, O3, Os, Oz };
             static_assert(array_length(all_optimization_modes) == OPTIMIZATION_COUNT);
-            String all_test_paths[] = {
+            String every_single_test[] = {
                  strlit("tests/first.nat"),
+                 strlit("tests/add_sub.nat"),
+                 strlit("tests/mul.nat"),
+                 strlit("tests/div.nat"),
+                 strlit("tests/and.nat"),
+                 strlit("tests/or.nat"),
+                 strlit("tests/xor.nat"),
+                 strlit("tests/return_var.nat"),
+                 strlit("tests/return_mod_scope.nat"),
+                 strlit("tests/shift_left.nat"),
+                 strlit("tests/shift_right.nat"),
+                 strlit("tests/thousand_simple_functions.nat"),
+                 strlit("tests/simple_arg.nat"),
             };
             ExecutionEngine all_execution_engines[] = { EXECUTION_ENGINE_INTERPRETER, EXECUTION_ENGINE_C };
             static_assert(array_length(all_execution_engines) == EXECUTION_ENGINE_COUNT);
 
-            Slice(String) test_selection = (Slice(String)) array_to_slice(all_test_paths);
             Slice(Linkage) linkage_selection;
             Slice(OptimizationMode) optimization_selection;
             Slice(ExecutionEngine) execution_engine_selection;
@@ -434,6 +474,16 @@ int main(int argc, char* argv[], char** envp)
                 linkage_selection = (Slice(Linkage)) { .pointer = &all_linkages[0], .length = 1 };
                 optimization_selection = (Slice(OptimizationMode)) { .pointer = &all_optimization_modes[0], .length = 1 };
                 execution_engine_selection = (Slice(ExecutionEngine)) { .pointer = &preferred_execution_engine, .length = 1 };
+            }
+
+            Slice(String) test_selection;
+            if (source_file_path.pointer)
+            {
+                test_selection = (Slice(String)) { .pointer = &source_file_path, .length = 1 };
+            }
+            else
+            {
+                test_selection = (Slice(String)) array_to_slice(every_single_test);
             }
 
             run_tests(arena, &(TestOptions) {
