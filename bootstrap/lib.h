@@ -1377,18 +1377,27 @@ fn void run_command(CStringSlice arguments, char* envp[])
         int status = 0;
         int options = 0;
         pid_t result = syscall_waitpid(pid, &status, options);
+        int success = 0;
         if (result == pid)
         {
-            WIFEXITED(status);
-            auto exit_code = WEXITSTATUS(status);
-            if (exit_code != 0)
+            if (WIFEXITED(status))
             {
-                trap();
+                auto exit_code = WEXITSTATUS(status);
+                if (exit_code == 0)
+                {
+                    success = 1;
+                }
             }
         }
         else
         {
             trap();
+        }
+
+        if (!success)
+        {
+            print("Program failed to run!\n");
+            fail();
         }
     }
 }
