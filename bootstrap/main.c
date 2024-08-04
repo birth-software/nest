@@ -531,6 +531,9 @@ typedef enum NodeId : u8
     NODE_INTEGER_XOR,
     NODE_INTEGER_NEGATION,
 
+    NODE_INTEGER_COMPARE_EQUAL,
+    NODE_INTEGER_COMPARE_NOT_EQUAL,
+
     NODE_CONSTANT,
 
     NODE_COUNT,
@@ -1049,9 +1052,11 @@ fn String node_id_to_string(Node* node)
         case_to_name(NODE_, INTEGER_AND);
         case_to_name(NODE_, INTEGER_OR);
         case_to_name(NODE_, INTEGER_XOR);
+        case_to_name(NODE_, INTEGER_NEGATION);
         case_to_name(NODE_, CONSTANT);
         case_to_name(NODE_, COUNT);
-        case_to_name(NODE_, INTEGER_NEGATION);
+        case_to_name(NODE_, INTEGER_COMPARE_EQUAL);
+        case_to_name(NODE_, INTEGER_COMPARE_NOT_EQUAL);
       break;
     }
 }
@@ -1446,6 +1451,45 @@ fn NodeIndex node_idealize_substract(Thread* thread, NodeIndex node_index)
     {
         return invalidi(Node);
     }
+}
+
+fn NodeIndex node_idealize_compare(Thread* thread, NodeIndex node_index)
+{
+    auto* node = thread_node_get(thread, node_index);
+    auto inputs = node_get_inputs(thread, node);
+    auto left_node_index = inputs.pointer[1];
+    auto right_node_index = inputs.pointer[2];
+    auto* left = thread_node_get(thread, left_node_index);
+    auto* right = thread_node_get(thread, right_node_index);
+    if (index_equal(left_node_index, right_node_index))
+    {
+        trap();
+    }
+
+    if (node->id == NODE_INTEGER_COMPARE_EQUAL)
+    {
+        if (right->id != NODE_CONSTANT)
+        {
+            if (left->id == NODE_CONSTANT)
+            {
+                todo();
+            }
+            else if (left_node_index.index > right_node_index.index)
+            {
+                todo();
+            }
+        }
+
+        // TODO: null pointer
+        if (index_equal(right->type, thread->types.integer.zero))
+        {
+            todo();
+        }
+    }
+
+    // TODO: phi constant
+    
+    return invalidi(Node);
 }
 
 struct TypeGetOrPut
@@ -2387,6 +2431,17 @@ global const NodeVirtualTable node_functions[NODE_COUNT] = {
         .compute_type = &compute_type_integer_binary,
     },
 
+    [NODE_INTEGER_COMPARE_EQUAL] = {
+        .compute_type = &compute_type_integer_binary,
+        .idealize = &node_idealize_compare,
+        .get_hash = &node_get_hash_default,
+    },
+    [NODE_INTEGER_COMPARE_NOT_EQUAL] = {
+        .compute_type = &compute_type_integer_binary,
+        .idealize = &node_idealize_compare,
+        .get_hash = &node_get_hash_default,
+    },
+
     // Constant
     [NODE_CONSTANT] = {
         .compute_type = &compute_type_constant,
@@ -3146,7 +3201,6 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
 
 fn NodeIndex analyze_unary(Thread* thread, Parser* parser, FunctionBuilder* builder, String src)
 {
-    // TODO: postfix
     typedef enum PrefixOperator
     {
         PREFIX_OPERATOR_NONE = 0,
@@ -3459,7 +3513,16 @@ fn NodeIndex analyze_comparison(Thread* thread, Parser* parser, FunctionBuilder*
             case '=':
                 todo();
             case '!':
-                todo();
+                if (src.pointer[parser->i + 1] == '=')
+                {
+                    skip_count = 2;
+                    node_id = NODE_INTEGER_COMPARE_NOT_EQUAL;
+                }
+                else
+                {
+                    fail();
+                }
+                break;
             case '<':
                 todo();
             case '>':
@@ -3604,10 +3667,6 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
             }
 
             scope_update(thread, builder, left_name, right);
-        }
-        else if (is_decimal_digit(statement_start_ch))
-        {
-            todo();
         }
         else
         {
@@ -4096,6 +4155,8 @@ fn u8 node_is_pinned(Node* node)
             return 1;
         case NODE_CONSTANT:
         case NODE_INTEGER_SUBSTRACT:
+        case NODE_INTEGER_COMPARE_EQUAL:
+        case NODE_INTEGER_COMPARE_NOT_EQUAL:
             return 0;
         default:
             trap();
@@ -4458,6 +4519,22 @@ fn void c_lower_node(CBackend* backend, Thread* thread, NodeIndex node_index)
                 c_lower_append_string(backend, strlit(" - "));
                 c_lower_node(backend, thread, right);
             } break;
+        case NODE_INTEGER_COMPARE_EQUAL:
+            {
+                auto left = inputs.pointer[1];
+                auto right = inputs.pointer[2];
+                c_lower_node(backend, thread, left);
+                c_lower_append_string(backend, strlit(" == "));
+                c_lower_node(backend, thread, right);
+            } break;
+        case NODE_INTEGER_COMPARE_NOT_EQUAL:
+            {
+                auto left = inputs.pointer[1];
+                auto right = inputs.pointer[2];
+                c_lower_node(backend, thread, left);
+                c_lower_append_string(backend, strlit(" != "));
+                c_lower_node(backend, thread, right);
+            } break;
         case NODE_PROJECTION:
             {
                 auto projected_node_index = inputs.pointer[0];
@@ -4773,6 +4850,18 @@ fn s32 emit_node(Interpreter* interpreter, Thread* thread, NodeIndex node_index)
                 trap();
                 }
 
+            } break;
+        case NODE_INTEGER_COMPARE_EQUAL:
+            {
+                auto left = emit_node(interpreter, thread, inputs.pointer[1]);
+                auto right = emit_node(interpreter, thread, inputs.pointer[2]);
+                result = left == right;
+            } break;
+        case NODE_INTEGER_COMPARE_NOT_EQUAL:
+            {
+                auto left = emit_node(interpreter, thread, inputs.pointer[1]);
+                auto right = emit_node(interpreter, thread, inputs.pointer[2]);
+                result = left != right;
             } break;
         default:
             trap();

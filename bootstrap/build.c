@@ -451,6 +451,7 @@ int main(int argc, char* argv[], char** envp)
                  strlit("tests/shift_right.nat"),
                  strlit("tests/thousand_simple_functions.nat"),
                  strlit("tests/simple_arg.nat"),
+                 strlit("tests/comparison.nat"),
             };
             ExecutionEngine all_execution_engines[] = { EXECUTION_ENGINE_INTERPRETER, EXECUTION_ENGINE_C };
             static_assert(array_length(all_execution_engines) == EXECUTION_ENGINE_COUNT);
