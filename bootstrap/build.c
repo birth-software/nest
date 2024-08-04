@@ -324,6 +324,15 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
                     };
 
                     run_command((CStringSlice) array_to_slice(arguments), envp);
+
+                    if (execution_engine != EXECUTION_ENGINE_INTERPRETER)
+                    {
+                        char* run_arguments[] = {
+                            compile_options.out_path,
+                            0,
+                        };
+                        run_command((CStringSlice) array_to_slice(run_arguments), envp);
+                    }
                 }
             }
         }
