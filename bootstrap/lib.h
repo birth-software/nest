@@ -39,7 +39,8 @@ typedef int64_t s64;
 typedef float f32;
 typedef double f64;
 
-typedef u64 Hash;
+typedef u32 Hash32;
+typedef u64 Hash64;
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
@@ -362,17 +363,17 @@ may_be_unused fn u64 is_identifier_ch(u8 ch)
     return identifier_start | decimal;
 }
 
-global const Hash fnv_offset = 14695981039346656037ull;
+global const Hash64 fnv_offset = 14695981039346656037ull;
 global const u64 fnv_prime = 1099511628211ull;
 
-fn Hash hash_byte(Hash source, u8 ch)
+fn Hash64 hash_byte(Hash64 source, u8 ch)
 {
     source ^= ch;
     source *= fnv_prime;
     return source;
 }
 
-may_be_unused fn Hash hash_bytes(String bytes)
+may_be_unused fn Hash64 hash_bytes(String bytes)
 {
     u64 result = fnv_offset;
     for (u64 i = 0; i < bytes.length; i += 1)
