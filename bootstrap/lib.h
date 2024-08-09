@@ -177,7 +177,8 @@ fn u64 strlen (const char* c_string)
 #endif
 #define slice_from_pointer_range(T, start, end) (Slice(T)) { .pointer = start, .length = (u64)(end - start), }
 
-#define strlit(s) (String){ .pointer = (u8*)(s), .length = sizeof(s) - 1, }
+#define strlit_len(s) (sizeof(s) - 1)
+#define strlit(s) (String){ .pointer = (u8*)(s), .length = strlit_len(s), }
 #define ch_to_str(ch) (String){ .pointer = &ch, .length = 1 }
 #define array_to_slice(arr) { .pointer = (arr), .length = array_length(arr) }
 #define pointer_to_bytes(p) (String) { .pointer = (u8*)(p), .length = sizeof(*p) }
@@ -1466,6 +1467,13 @@ fn u8* vb_generic_add(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
     return vb_generic_add_assume_capacity(vb, item_size, item_count);
 }
 
+may_be_unused fn u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
+{
+    vb_generic_ensure_capacity(vb, sizeof(u8), bytes.length);
+    auto* pointer = vb_generic_add_assume_capacity(vb, sizeof(u8), bytes.length);
+    memcpy(pointer, bytes.pointer, bytes.length);
+    return pointer;
+}
 
 // fn u8* vb_generic_append(VirtualBuffer(u8)* vb, void* item_pointer, u32 item_size, u32 item_count)
 // {
@@ -1475,3 +1483,4 @@ fn u8* vb_generic_add(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
 
 #define vb_add(a, count) (typeof((a)->pointer)) vb_generic_add((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
 #define vb_append_one(a, item) (typeof((a)->pointer)) vb_generic_append((VirtualBuffer(u8)*)(a), &(item), sizeof(*((a)->pointer)), 1)
+#define vb_to_bytes(vb) (Slice(u8)) { .pointer = (u8*)((vb).pointer), .length = sizeof(*((vb).pointer)) * (vb).length, }

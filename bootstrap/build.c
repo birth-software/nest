@@ -148,35 +148,39 @@ fn void compile_c(const CompileOptions *const options, char** envp)
     run_command((CStringSlice) { .pointer = args->pointer, .length = args->length }, envp);
 }
 
-typedef enum ExecutionEngine
+typedef enum CompilerBackend
 {
-    EXECUTION_ENGINE_INTERPRETER,
-    EXECUTION_ENGINE_C,
-    EXECUTION_ENGINE_COUNT,
-} ExecutionEngine;
-declare_slice(ExecutionEngine);
+    COMPILER_BACKEND_INTERPRETER,
+    COMPILER_BACKEND_C,
+    COMPILER_BACKEND_MACHINE,
+    COMPILER_BACKEND_COUNT,
+} CompilerBackend;
+declare_slice(CompilerBackend);
 
-fn void compile_and_run(const CompileOptions* const options, char** envp, ExecutionEngine execution_engine, u8 debug, char* nest_source_path)
+fn void compile_and_run(const CompileOptions* const options, char** envp, CompilerBackend compiler_backend, u8 debug, char* nest_source_path)
 {
     compile_c(options, envp);
     CStringSlice args = {};
-    char* execution_engine_string;
-    switch (execution_engine)
+    char* compiler_backend_string;
+    switch (compiler_backend)
     {
-    case EXECUTION_ENGINE_C:
-        execution_engine_string = "c";
+    case COMPILER_BACKEND_C:
+        compiler_backend_string = "c";
         break;
-    case EXECUTION_ENGINE_INTERPRETER:
-        execution_engine_string = "i";
+    case COMPILER_BACKEND_INTERPRETER:
+        compiler_backend_string = "i";
         break;
-    case EXECUTION_ENGINE_COUNT:
+    case COMPILER_BACKEND_MACHINE:
+        compiler_backend_string = "m";
+        break;
+    case COMPILER_BACKEND_COUNT:
         unreachable();
     }
 
 #define common_compile_and_run_args \
                 options->out_path, \
                 nest_source_path, \
-                execution_engine_string, \
+                compiler_backend_string, \
                 0,
 
     if (debug)
@@ -193,7 +197,7 @@ fn void compile_and_run(const CompileOptions* const options, char** envp, Execut
         }));
 #elif defined(__APPLE__)
         args = (CStringSlice) array_to_slice(((char*[]){ 
-            "lldb",
+            "/usr/bin/lldb",
             "--",
             common_compile_and_run_args 
         }));
@@ -221,7 +225,7 @@ struct TestOptions
     Slice(Linkage) linkages;
     Slice(OptimizationMode) optimization_modes;
     Slice(String) test_paths;
-    Slice(ExecutionEngine) execution_engines;
+    Slice(CompilerBackend) compiler_backends;
 };
 typedef struct TestOptions TestOptions;
 
@@ -304,33 +308,36 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
                 auto test_dir = string_no_extension(test_path);
                 auto test_name = string_base(test_dir);
 
-                for (u32 engine_i = 0; engine_i < test_options->execution_engines.length; engine_i += 1)
+                for (u32 engine_i = 0; engine_i < test_options->compiler_backends.length; engine_i += 1)
                 {
-                    ExecutionEngine execution_engine = test_options->execution_engines.pointer[engine_i];
-                    char* execution_engine_arg;
-                    switch (execution_engine)
+                    CompilerBackend compiler_backend = test_options->compiler_backends.pointer[engine_i];
+                    char* compiler_backend_string;
+                    switch (compiler_backend)
                     {
-                    case EXECUTION_ENGINE_C:
-                        execution_engine_arg = "c";
+                    case COMPILER_BACKEND_C:
+                        compiler_backend_string = "c";
                         break;
-                    case EXECUTION_ENGINE_INTERPRETER:
-                        execution_engine_arg = "i";
+                    case COMPILER_BACKEND_INTERPRETER:
+                        compiler_backend_string = "i";
                         break;
-                    case EXECUTION_ENGINE_COUNT:
+                    case COMPILER_BACKEND_MACHINE:
+                        compiler_backend_string = "m";
+                        break;
+                    case COMPILER_BACKEND_COUNT:
                         unreachable();
                     }
 
                     char* arguments[] = {
                         compile_options.out_path,
                         test_path_c,
-                        execution_engine_arg,
+                        compiler_backend_string,
                         0,
                     };
 
 
                     run_command((CStringSlice) array_to_slice(arguments), envp);
 
-                    if (execution_engine != EXECUTION_ENGINE_INTERPRETER)
+                    if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
                     {
                         String out_program = arena_join_string(arena, ((Slice(String)) array_to_slice(((String[]){
                                             strlit(nest_dir "/"),
@@ -356,7 +363,7 @@ int main(int argc, char* argv[], char** envp)
         return 1;
     }
 
-    ExecutionEngine preferred_execution_engine = EXECUTION_ENGINE_COUNT;
+    CompilerBackend preferred_compiler_backend = COMPILER_BACKEND_COUNT;
     Command command = COMMAND_COUNT;
     u8 test_every_config = 0;
     String source_file_path = {};
@@ -367,11 +374,15 @@ int main(int argc, char* argv[], char** envp)
         auto argument = cstr(c_argument);
         if (s_equal(argument, strlit("i")))
         {
-            preferred_execution_engine = EXECUTION_ENGINE_INTERPRETER;
+            preferred_compiler_backend = COMPILER_BACKEND_INTERPRETER;
         }
         else if (s_equal(argument, strlit("c")))
         {
-            preferred_execution_engine = EXECUTION_ENGINE_C;
+            preferred_compiler_backend = COMPILER_BACKEND_C;
+        }
+        else if (s_equal(argument, strlit("m")))
+        {
+            preferred_compiler_backend = COMPILER_BACKEND_MACHINE;
         }
         else if (s_equal(argument, strlit("test")))
         {
@@ -391,12 +402,19 @@ int main(int argc, char* argv[], char** envp)
     {
         auto* c_argument = argv[2];
         auto argument = cstr(c_argument);
-        auto expected_start = strlit("tests/");
-        if (expected_start.length < argument.length)
+        String expected_starts[] = { strlit("tests/"), strlit("src/") };
+
+        for (u32 i = 0; i < array_length(expected_starts); i += 1)
         {
-            if (strncmp(c_argument, "tests/", sizeof("tests/") - 1) == 0)
+            auto expected_start = expected_starts[i];
+            if (expected_start.length < argument.length)
             {
-                source_file_path = argument;
+                // TODO: make our own function
+                if (strncmp(c_argument, string_to_c(expected_start), expected_start.length) == 0)
+                {
+                    source_file_path = argument;
+                    break;
+                }
             }
         }
     }
@@ -409,7 +427,10 @@ int main(int argc, char* argv[], char** envp)
 
     if ((command == COMMAND_DEBUG) | ((command == COMMAND_RUN_TESTS) & (test_every_config == 0)))
     {
-        preferred_execution_engine = EXECUTION_ENGINE_INTERPRETER;
+        if (preferred_compiler_backend == COMPILER_BACKEND_COUNT)
+        {
+            preferred_compiler_backend = COMPILER_BACKEND_INTERPRETER;
+        }
     }
 
     switch (command)
@@ -427,8 +448,12 @@ int main(int argc, char* argv[], char** envp)
             .debug_info = 1,
             .error_on_warning = 0,
             .optimization_mode = O0,
+#if defined(__linux__)
             .linkage = LINKAGE_STATIC,
-        }, envp, EXECUTION_ENGINE_INTERPRETER, 1, string_to_c(source_file_path));
+#else
+            .linkage = LINKAGE_DYNAMIC,
+#endif
+        }, envp, preferred_compiler_backend, 1, string_to_c(source_file_path));
         break;
     case COMMAND_RUN_TESTS:
         {
@@ -453,12 +478,17 @@ int main(int argc, char* argv[], char** envp)
                  strlit("tests/simple_arg.nat"),
                  strlit("tests/comparison.nat"),
             };
-            ExecutionEngine all_execution_engines[] = { EXECUTION_ENGINE_INTERPRETER, EXECUTION_ENGINE_C };
-            static_assert(array_length(all_execution_engines) == EXECUTION_ENGINE_COUNT);
+            CompilerBackend all_compiler_backends[] = {
+                COMPILER_BACKEND_INTERPRETER,
+                COMPILER_BACKEND_C,
+#ifdef __linux__
+                COMPILER_BACKEND_MACHINE,
+#endif
+            };
 
             Slice(Linkage) linkage_selection;
             Slice(OptimizationMode) optimization_selection;
-            Slice(ExecutionEngine) execution_engine_selection;
+            Slice(CompilerBackend) compiler_backend_selection;
 
             if (test_every_config)
             {
@@ -468,13 +498,13 @@ int main(int argc, char* argv[], char** envp)
                 linkage_selection = (Slice(Linkage)) { .pointer = &all_linkages[0], .length = 1 };
 #endif
                 optimization_selection = (Slice(OptimizationMode)) array_to_slice(all_optimization_modes);
-                execution_engine_selection = (Slice(ExecutionEngine)) array_to_slice(all_execution_engines);
+                compiler_backend_selection = (Slice(CompilerBackend)) array_to_slice(all_compiler_backends);
             }
             else
             {
                 linkage_selection = (Slice(Linkage)) { .pointer = &all_linkages[0], .length = 1 };
                 optimization_selection = (Slice(OptimizationMode)) { .pointer = &all_optimization_modes[0], .length = 1 };
-                execution_engine_selection = (Slice(ExecutionEngine)) { .pointer = &preferred_execution_engine, .length = 1 };
+                compiler_backend_selection = (Slice(CompilerBackend)) { .pointer = &preferred_compiler_backend, .length = 1 };
             }
 
             Slice(String) test_selection;
@@ -491,7 +521,7 @@ int main(int argc, char* argv[], char** envp)
                 .linkages = linkage_selection,
                 .optimization_modes = optimization_selection,
                 .test_paths = test_selection,
-                .execution_engines = execution_engine_selection,
+                .compiler_backends = compiler_backend_selection,
             }, envp);
         } break;
     case COMMAND_COUNT:

@@ -1,4 +1,6 @@
 #include "lib.h"
+#define clang_path "/usr/bin/clang"
+
 struct StringMapValue
 {
     String string;
@@ -208,9 +210,49 @@ fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 val
     }
 }
 
+// fn void string_map_get_or_put(StringMap* map, Arena* arena, String key, u32 value)
+// {
+//     assert(value);
+//     auto hash = hash_bytes(key);
+//     auto index = hash & (map->capacity - 1);
+//     auto slot = string_map_find_slot(map, index, key);
+//     if (slot != -1)
+//     {
+//         auto* values = string_map_values(map);
+//         auto* key_pointer = &map->pointer[slot];
+//         todo();
+//         // auto old_key_pointer = *key_pointer;
+//         // *key_pointer = hash;
+//         // values[slot].string = key;
+//         // values[slot].value = value;
+//         // return (StringMapPut) {
+//         //     .value = value,
+//         //     .existing = old_key_pointer != 0,
+//         // };
+//     }
+//     else
+//     {
+//         if (map->length < map->capacity)
+//         {
+//             todo();
+//         }
+//         else if (map->length == map->capacity)
+//         {
+//             todo();
+//             // auto result = string_map_put_assume_not_existent(map, arena, hash, key, value);
+//             // assert(!result.existing);
+//             // return result;
+//         }
+//         else
+//         {
+//             todo();
+//         }
+//     }
+// }
+
 fn int file_write(String file_path, String file_data)
 {
-    int file_descriptor = syscall_open((char*)file_path.pointer, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int file_descriptor = syscall_open(string_to_c(file_path), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     assert(file_descriptor != -1);
 
     auto bytes = syscall_write(file_descriptor, file_data.pointer, file_data.length);
@@ -225,7 +267,7 @@ fn int file_write(String file_path, String file_data)
 fn String file_read(Arena* arena, String path)
 {
     String result = {};
-    int file_descriptor = syscall_open((char*)path.pointer, 0, 0);
+    int file_descriptor = syscall_open(string_to_c(path), 0, 0);
     assert(file_descriptor != -1);
 
     struct stat stat_buffer;
@@ -263,23 +305,23 @@ fn void print_string(String message)
 
 typedef enum ELFSectionType : u32
 {
-    null = 0x00,
-    program = 0x01,
-    symbol_table = 0x02,
-    string_table = 0x03,
-    relocation_with_addends = 0x04,
-    symbol_hash_table = 0x05,
-    dynamic = 0x06,
-    note = 0x07,
-    bss = 0x08,
-    relocation_no_addends = 0x09,
-    lib = 0x0a, // reserved
-    dynamic_symbol_table = 0x0b,
-    init_array = 0x0e,
-    fini_array = 0x0f,
-    preinit_array = 0x10,
-    group = 0x11,
-    symbol_table_section_header_index = 0x12,
+    ELF_SECTION_NULL = 0X00,
+    ELF_SECTION_PROGRAM = 0X01,
+    ELF_SECTION_SYMBOL_TABLE = 0X02,
+    ELF_SECTION_STRING_TABLE = 0X03,
+    ELF_SECTION_RELOCATION_WITH_ADDENDS = 0X04,
+    ELF_SECTION_SYMBOL_HASH_TABLE = 0X05,
+    ELF_SECTION_DYNAMIC = 0X06,
+    ELF_SECTION_NOTE = 0X07,
+    ELF_SECTION_BSS = 0X08,
+    ELF_SECTION_RELOCATION_NO_ADDENDS = 0X09,
+    ELF_SECTION_LIB = 0X0A, // RESERVED
+    ELF_SECTION_DYNAMIC_SYMBOL_TABLE = 0X0B,
+    ELF_SECTION_INIT_ARRAY = 0X0E,
+    ELF_SECTION_FINI_ARRAY = 0X0F,
+    ELF_SECTION_PREINIT_ARRAY = 0X10,
+    ELF_SECTION_GROUP = 0X11,
+    ELF_SECTION_SYMBOL_TABLE_SECTION_HEADER_INDEX = 0X12,
 } ELFSectionType;
 
 struct ELFSectionHeaderFlags
@@ -295,8 +337,10 @@ struct ELFSectionHeaderFlags
     u64 os_non_conforming:1;
     u64 group:1;
     u64 tls:1;
+    u64 reserved:53;
 };
 typedef struct ELFSectionHeaderFlags ELFSectionHeaderFlags;
+static_assert(sizeof(ELFSectionHeaderFlags) == sizeof(u64));
 
 struct ELFSectionHeader
 {
@@ -313,6 +357,7 @@ struct ELFSectionHeader
 };
 typedef struct ELFSectionHeader ELFSectionHeader;
 static_assert(sizeof(ELFSectionHeader) == 64);
+decl_vb(ELFSectionHeader);
 
 typedef enum ELFBitCount : u8
 {
@@ -376,7 +421,6 @@ struct ELFHeader
     u16 section_header_size;
     u16 section_header_count;
     u16 section_header_string_table_index;
-
 };
 typedef struct ELFHeader ELFHeader;
 static_assert(sizeof(ELFHeader) == 0x40);
@@ -409,7 +453,19 @@ struct ELFSymbol
     u64 size;
 };
 typedef struct ELFSymbol ELFSymbol;
+decl_vb(ELFSymbol);
 static_assert(sizeof(ELFSymbol) == 24);
+
+// DWARF
+struct DWARFCompilationUnit
+{
+    u32 length;
+    u16 version;
+    u8 type;
+    u8 address_size;
+    u32 debug_abbreviation_offset;
+};
+typedef struct DWARFCompilationUnit DWARFCompilationUnit;
 
 struct NameReference
 {
@@ -440,6 +496,7 @@ struct TypeIndex
 {
     u32 index;
 };
+
 typedef struct TypeIndex TypeIndex;
 #define index_equal(a, b) (a.index == b.index)
 static_assert(sizeof(TypeIndex) == sizeof(u32));
@@ -4434,8 +4491,7 @@ typedef struct CBackend CBackend;
 
 fn void c_lower_append_string(CBackend* backend, String string)
 {
-    u8* pointer = vb_add(&backend->buffer, string.length);
-    memcpy(pointer, string.pointer, string.length);
+    vb_append_bytes(&backend->buffer, string);
 }
 
 fn void c_lower_append_ch(CBackend* backend, u8 ch)
@@ -4761,11 +4817,12 @@ fn void unit_tests()
 
 Slice(String) arguments;
 
-typedef enum ExecutionEngine : u8
+typedef enum CompilerBackend : u8
 {
-    EXECUTION_ENGINE_C = 'c',
-    EXECUTION_ENGINE_INTERPRETER = 'i',
-} ExecutionEngine;
+    COMPILER_BACKEND_C = 'c',
+    COMPILER_BACKEND_INTERPRETER = 'i',
+    COMPILER_BACKEND_MACHINE = 'm',
+} CompilerBackend;
 
 struct Interpreter
 {
@@ -4900,6 +4957,233 @@ fn s32 interpreter_run(Interpreter* interpreter, Thread* thread)
     return result;
 }
 
+struct ELFOptions
+{
+    char* object_path;
+    char* exe_path;
+    Slice(u8) code;
+};
+typedef struct ELFOptions ELFOptions;
+
+struct ELFBuilder
+{
+    VirtualBuffer(u8) file;
+    VirtualBuffer(u8) string_table;
+    VirtualBuffer(ELFSymbol) symbol_table;
+    VirtualBuffer(ELFSectionHeader) section_table;
+};
+typedef struct ELFBuilder ELFBuilder;
+
+fn u32 elf_builder_add_string(ELFBuilder* builder, String string)
+{
+    u32 name_offset = 0;
+    if (string.length)
+    {
+        name_offset = builder->string_table.length;
+        vb_append_bytes(&builder->string_table, string);
+        *vb_add(&builder->string_table, 1) = 0;
+    }
+
+    return name_offset;
+}
+
+fn void elf_builder_add_symbol(ELFBuilder* builder, ELFSymbol symbol, String string)
+{
+    symbol.name_offset = elf_builder_add_string(builder, string);
+    *vb_add(&builder->symbol_table, 1) = symbol;
+}
+
+fn void vb_align(VirtualBuffer(u8)* buffer, u64 alignment)
+{
+    auto current_length = buffer->length;
+    auto target_len = align_forward(current_length, alignment);
+    auto count = target_len - current_length;
+    auto* pointer = vb_add(buffer, count);
+    memset(pointer, 0, count);
+}
+
+fn ELFSectionHeader* elf_builder_add_section(ELFBuilder* builder, ELFSectionHeader section, String section_name, Slice(u8) content)
+{
+    section.name_offset = elf_builder_add_string(builder, section_name);
+    section.offset = builder->file.length;
+    section.size = content.length;
+    if (content.length)
+    {
+        vb_align(&builder->file, section.alignment);
+        section.offset = builder->file.length;
+        vb_append_bytes(&builder->file, content);
+    }
+    auto* section_header = vb_add(&builder->section_table, 1);
+    *section_header = section;
+    return section_header;
+}
+
+fn void write_elf(Thread* thread, char** envp, const ELFOptions* const options)
+{
+    // {
+    //     auto main_c_content = strlit("int main()\n{\n    return 0;\n}");
+    //     int fd = syscall_open("main.c", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    //     assert(fd != -1);
+    //     auto result = syscall_write(fd, main_c_content.pointer, main_c_content.length);
+    //     assert(result >= 0);
+    //     assert((u64)result == main_c_content.length);
+    //     syscall_close(fd);
+    // }
+
+    // {
+    //     char* command[] = {
+    //         clang_path,
+    //         "-c",
+    //         "main.c",
+    //         "-o",
+    //         "main.o",
+    //         "-Oz",
+    //         "-fno-exceptions",
+    //         "-fno-asynchronous-unwind-tables",
+    //         "-fno-addrsig",
+    //         "-fno-stack-protector",
+    //         "-fno-ident",
+    //         0,
+    //     };
+    //     run_command((CStringSlice) array_to_slice(command), envp);
+    // }
+    //
+    // {
+    //     char* command[] = {
+    //         "/usr/bin/objcopy",
+    //         "--remove-section",
+    //         ".note.GNU-stack",
+    //         "main.o",
+    //         "main2.o",
+    //         0,
+    //     };
+    //     run_command((CStringSlice) array_to_slice(command), envp);
+    // }
+    //
+    // {
+    //
+    //     main_o = file_read(thread->arena, strlit("main2.o"));
+    //     auto r1 = syscall_unlink("main.o");
+    //     assert(!r1);
+    //     auto r2 = syscall_unlink("main2.o");
+    //     assert(!r2);
+    //     auto r3 = syscall_unlink("main.c");
+    //     assert(!r3);
+    // }
+
+    ELFBuilder builder_stack = {};
+    ELFBuilder* builder = &builder_stack;
+    auto* elf_header = (ELFHeader*)(vb_add(&builder->file, sizeof(ELFHeader)));
+    // vb_append_bytes(&file, struct_to_bytes(elf_header));
+    
+    // .symtab
+    // Null symbol
+    *vb_add(&builder->string_table, 1) = 0;
+    elf_builder_add_symbol(builder, (ELFSymbol){}, (String){});
+    elf_builder_add_section(builder, (ELFSectionHeader) {}, (String){}, (Slice(u8)){});
+
+    assert(builder->string_table.length == 1);
+    elf_builder_add_symbol(builder, (ELFSymbol){
+        .type = ELF_SYMBOL_TYPE_FILE,
+        .binding = LOCAL,
+        .section_index = (u16)ABSOLUTE,
+        .value = 0,
+        .size = 0,
+    }, strlit("main.c"));
+
+    assert(builder->string_table.length == 8);
+    elf_builder_add_symbol(builder, (ELFSymbol) {
+        .type = ELF_SYMBOL_TYPE_FUNCTION,
+        .binding = GLOBAL,
+        .section_index = 1,
+        .value = 0,
+        .size = 3,
+    }, strlit("main"));
+
+    elf_builder_add_section(builder, (ELFSectionHeader) {
+        .type = ELF_SECTION_PROGRAM,
+        .flags = {
+            .alloc = 1,
+            .executable = 1,
+        },
+        .address = 0,
+        .size = options->code.length,
+        .link = 0,
+        .info = 0,
+        .alignment = 4,
+        .entry_size = 0,
+    }, strlit(".text"), options->code);
+
+    elf_builder_add_section(builder, (ELFSectionHeader) {
+        .type = ELF_SECTION_SYMBOL_TABLE,
+        .link = builder->section_table.length + 1,
+        // TODO: One greater than the symbol table index of the last local symbol (binding STB_LOCAL).
+        .info = builder->symbol_table.length - 1,
+        .alignment = alignof(ELFSymbol),
+        .entry_size = sizeof(ELFSymbol),
+    }, strlit(".symtab"), vb_to_bytes(builder->symbol_table));
+
+    auto strtab_name_offset = elf_builder_add_string(builder, strlit(".strtab"));
+    auto strtab_bytes = vb_to_bytes(builder->string_table);
+    auto strtab_offset = builder->file.length;
+    vb_append_bytes(&builder->file, strtab_bytes);
+
+    auto* strtab_section_header = vb_add(&builder->section_table, 1);
+    *strtab_section_header = (ELFSectionHeader) {
+        .name_offset = strtab_name_offset,
+        .type = ELF_SECTION_STRING_TABLE,
+        .offset = strtab_offset,
+        .size = strtab_bytes.length,
+        .alignment = 1,
+    };
+
+    vb_align(&builder->file, alignof(ELFSectionHeader));
+    auto section_header_offset = builder->file.length;
+    vb_append_bytes(&builder->file, vb_to_bytes(builder->section_table));
+
+    *elf_header = (ELFHeader)
+    {
+        .identifier = { 0x7f, 'E', 'L', 'F' },
+        .bit_count = bits64,
+        .endianness = little,
+        .format_version = 1,
+        .abi = system_v_abi,
+        .abi_version = 0,
+        .padding = {},
+        .type = relocatable,
+        .machine = x86_64,
+        .version = 1,
+        .entry_point = 0,
+        .program_header_offset = 0,
+        .section_header_offset = section_header_offset,
+        .flags = 0,
+        .elf_header_size = sizeof(ELFHeader),
+        .program_header_size = 0,
+        .program_header_count = 0,
+        .section_header_size = sizeof(ELFSectionHeader),
+        .section_header_count = builder->section_table.length,
+        .section_header_string_table_index = builder->section_table.length - 1,
+    };
+
+    auto object_path_z = options->object_path;
+    {
+        int fd = syscall_open(object_path_z, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        assert(fd != -1);
+        syscall_write(fd, builder->file.pointer, builder->file.length);
+
+        syscall_close(fd);
+    }
+
+    char* command[] = {
+        clang_path,
+        object_path_z,
+        "-o",
+        options->exe_path,
+        0,
+    };
+    run_command((CStringSlice) array_to_slice(command), envp);
+}
+
 #if LINK_LIBC
 int main(int argc, const char* argv[], char* envp[])
 {
@@ -4933,7 +5217,7 @@ void entry_point(int argc, const char* argv[])
     }
 
     String source_file_path = arguments.pointer[1];
-    ExecutionEngine execution_engine = arguments.pointer[2].pointer[0];
+    CompilerBackend compiler_backend = arguments.pointer[2].pointer[0];
 
     Thread* thread = arena_allocate(global_arena, Thread, 1);
     thread_init(thread);
@@ -4969,36 +5253,36 @@ void entry_point(int argc, const char* argv[])
         fail();
     }
 
-    auto c_source_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
+    auto object_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
                     strlit("nest/"),
                     test_name,
-                    strlit(".c"),
-                    })));
+                    compiler_backend == COMPILER_BACKEND_C ? strlit(".c") : strlit(".o"),
+    })));
 
-    auto exe_path_view = s_get_slice(u8, c_source_path, 0, c_source_path.length - 2);
+    auto exe_path_view = s_get_slice(u8, object_path, 0, object_path.length - 2);
     auto exe_path = (char*)arena_allocate_bytes(thread->arena, exe_path_view.length + 1, 1);
-    memcpy((char*)exe_path, exe_path_view.pointer, exe_path_view.length);
+    memcpy(exe_path, exe_path_view.pointer, exe_path_view.length);
     exe_path[exe_path_view.length] = 0;
 
-    switch (execution_engine)
+    switch (compiler_backend)
     {
-    case EXECUTION_ENGINE_C:
+    case COMPILER_BACKEND_C:
         {
             auto lowered_source = c_lower(thread);
             // print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
 
-            file_write(c_source_path, lowered_source);
+            file_write(object_path, lowered_source);
 
             char* command[] = {
-                "/usr/bin/cc", "-g",
+                clang_path, "-g",
                 "-o", exe_path,
-                (char*)c_source_path.pointer,
+                string_to_c(object_path),
                 0,
             };
 
             run_command((CStringSlice) array_to_slice(command), envp);
         } break;
-    case EXECUTION_ENGINE_INTERPRETER:
+    case COMPILER_BACKEND_INTERPRETER:
         {
             auto* main_function = &thread->buffer.functions.pointer[thread->main_function];
             auto* interpreter = interpreter_create(thread);
@@ -5009,6 +5293,21 @@ void entry_point(int argc, const char* argv[])
             auto exit_code = interpreter_run(interpreter, thread);
             print("Interpreter exited with exit code: {u32}\n", exit_code);
             syscall_exit(exit_code);
+        } break;
+    case COMPILER_BACKEND_MACHINE:
+        {
+            // TODO:
+            // Code: 
+            // main:
+            //      xor eax, eax
+            //      ret
+            u8 code[] = { 0x31, 0xc0, 0xc3 };
+            auto code_slice = (Slice(u8)) { .pointer = code, .length = sizeof(code) };
+            write_elf(thread, envp, &(ELFOptions) {
+                .object_path = string_to_c(object_path),
+                .exe_path = exe_path,
+                .code = code_slice,
+            });
         } break;
     }
 
