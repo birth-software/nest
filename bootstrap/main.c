@@ -153,7 +153,9 @@ fn StringMapPut string_map_get(StringMap* map, String key)
 {
     u32 value = 0;
     auto long_hash = hash_bytes(key);
-    auto hash = (Hash32)long_hash;
+    static_assert(sizeof(long_hash) == sizeof(u64));
+    auto hash = hash64_to_hash32(long_hash);
+    static_assert(sizeof(hash) == sizeof(u32));
     assert(hash);
     auto index = hash & (map->capacity - 1);
     auto slot = string_map_find_slot(map, index, key);
@@ -174,7 +176,9 @@ fn StringMapPut string_map_get(StringMap* map, String key)
 fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 value)
 {
     auto long_hash = hash_bytes(key);
-    auto hash = (Hash32)long_hash;
+    static_assert(sizeof(long_hash) == sizeof(u64));
+    auto hash = hash64_to_hash32(long_hash);
+    static_assert(sizeof(hash) == sizeof(u32));
     assert(hash);
     auto index = hash & (map->capacity - 1);
     auto slot = string_map_find_slot(map, index, key);
