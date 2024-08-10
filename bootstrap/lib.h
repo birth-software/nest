@@ -384,6 +384,14 @@ may_be_unused fn Hash64 hash_bytes(String bytes)
     return result;
 }
 
+may_be_unused fn Hash32 hash64_to_hash32(Hash64 hash64)
+{
+    Hash32 low = hash64 & 0xffff;
+    Hash32 high = (hash64 >> 32) & 0xffff;
+    Hash32 result = (high << 16) | low;
+    return result;
+}
+
 #if LINK_LIBC == 0
 #ifdef __linux__
 may_be_unused fn forceinline long syscall0(long n)
