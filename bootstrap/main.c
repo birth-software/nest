@@ -152,8 +152,8 @@ fn StringMapPut string_map_put_assume_not_existent(StringMap* map, Arena* arena,
 fn StringMapPut string_map_get(StringMap* map, String key)
 {
     u32 value = 0;
-    Hash long_hash = hash_bytes(key);
-    auto hash = (u32)long_hash;
+    auto long_hash = hash_bytes(key);
+    auto hash = (Hash32)long_hash;
     assert(hash);
     auto index = hash & (map->capacity - 1);
     auto slot = string_map_find_slot(map, index, key);
@@ -173,8 +173,8 @@ fn StringMapPut string_map_get(StringMap* map, String key)
 
 fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 value)
 {
-    Hash long_hash = hash_bytes(key);
-    auto hash = (u32)long_hash;
+    auto long_hash = hash_bytes(key);
+    auto hash = (Hash32)long_hash;
     assert(hash);
     auto index = hash & (map->capacity - 1);
     auto slot = string_map_find_slot(map, index, key);
@@ -528,7 +528,7 @@ typedef struct TypeTuple TypeTuple;
 
 struct Type
 {
-    Hash hash;
+    Hash64 hash;
     union
     {
         TypeInteger integer;
@@ -673,7 +673,7 @@ typedef struct NodeDeadControl NodeDeadControl;
 
 struct Node
 {
-    Hash hash;
+    Hash64 hash;
     u32 input_offset;
     u32 output_offset;
     u32 dependency_offset;
@@ -1427,9 +1427,9 @@ fn u8 type_equal(Type* a, Type* b)
     return result;
 }
 
-fn Hash hash_type(Thread* thread, Type* type);
+fn Hash64 hash_type(Thread* thread, Type* type);
 
-fn Hash node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
+fn Hash64 node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index, Hash64 hash)
 {
     unused(thread);
     unused(node);
@@ -1437,7 +1437,7 @@ fn Hash node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index, 
     return hash;
 }
 
-fn Hash node_get_hash_projection(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
+fn Hash64 node_get_hash_projection(Thread* thread, Node* node, NodeIndex node_index, Hash64 hash)
 {
     unused(thread);
     unused(node_index);
@@ -1451,7 +1451,7 @@ fn Hash node_get_hash_projection(Thread* thread, Node* node, NodeIndex node_inde
     return hash;
 }
 
-fn Hash node_get_hash_control_projection(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
+fn Hash64 node_get_hash_control_projection(Thread* thread, Node* node, NodeIndex node_index, Hash64 hash)
 {
     unused(thread);
     unused(node_index);
@@ -1465,7 +1465,7 @@ fn Hash node_get_hash_control_projection(Thread* thread, Node* node, NodeIndex n
     return hash;
 }
 
-fn Hash node_get_hash_constant(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
+fn Hash64 node_get_hash_constant(Thread* thread, Node* node, NodeIndex node_index, Hash64 hash)
 {
     unused(node_index);
     assert(hash == fnv_offset);
@@ -1476,7 +1476,7 @@ fn Hash node_get_hash_constant(Thread* thread, Node* node, NodeIndex node_index,
     return type_hash;
 }
 
-fn Hash node_get_hash_scope(Thread* thread, Node* node, NodeIndex node_index, Hash hash)
+fn Hash64 node_get_hash_scope(Thread* thread, Node* node, NodeIndex node_index, Hash64 hash)
 {
     unused(thread);
     unused(node);
@@ -1561,8 +1561,8 @@ fn TypeGetOrPut intern_pool_get_or_put_new_type(Thread* thread, Type* type);
 
 typedef NodeIndex NodeIdealize(Thread* thread, NodeIndex node_index);
 typedef TypeIndex NodeComputeType(Thread* thread, NodeIndex node_index);
-typedef Hash TypeGetHash(Thread* thread, Type* type);
-typedef Hash NodeGetHash(Thread* thread, Node* node, NodeIndex node_index, Hash hash);
+typedef Hash64 TypeGetHash(Thread* thread, Type* type);
+typedef Hash64 NodeGetHash(Thread* thread, Node* node, NodeIndex node_index, Hash64 hash);
 
 fn TypeIndex thread_get_integer_type(Thread* thread, TypeInteger type_integer)
 {
@@ -1622,7 +1622,7 @@ struct TypeVirtualTable
     TypeGetHash* const get_hash;
 };
 typedef struct TypeVirtualTable TypeVirtualTable;
-fn Hash hash_type(Thread* thread, Type* type);
+fn Hash64 hash_type(Thread* thread, Type* type);
 
 fn NodeIndex idealize_null(Thread* thread, NodeIndex node_index)
 {
@@ -1638,11 +1638,11 @@ fn TypeIndex compute_type_constant(Thread* thread, NodeIndex node_index)
     return node->constant.type;
 }
 
-fn Hash type_get_hash_default(Thread* thread, Type* type)
+fn Hash64 type_get_hash_default(Thread* thread, Type* type)
 {
     unused(thread);
     assert(!type->hash);
-    Hash hash = fnv_offset;
+    Hash64 hash = fnv_offset;
 
     // u32 i = 0;
     for (auto* it = (u8*)type; it < (u8*)(type + 1); it += 1)
@@ -1658,9 +1658,9 @@ fn Hash type_get_hash_default(Thread* thread, Type* type)
     return hash;
 }
 
-fn Hash type_get_hash_tuple(Thread* thread, Type* type)
+fn Hash64 type_get_hash_tuple(Thread* thread, Type* type)
 {
-    Hash hash = fnv_offset;
+    Hash64 hash = fnv_offset;
     for (u64 i = 0; i < type->tuple.types.length; i += 1)
     {
         auto* tuple_type = thread_type_get(thread,type->tuple.types.pointer[i]); 
@@ -1778,7 +1778,7 @@ fn TypeIndex intern_pool_put_new_type_at_assume_not_existent_assume_capacity(Thr
 fn TypeIndex intern_pool_put_new_type_assume_not_existent_assume_capacity(Thread* thread, Type* type)
 {
     assert(thread->interned.types.length < thread->interned.types.capacity);
-    Hash hash = type->hash;
+    Hash64 hash = type->hash;
     assert(hash);
     auto index = hash & (thread->interned.types.capacity - 1);
 
@@ -1836,17 +1836,9 @@ fn u8 node_equal(Thread* thread, Node* a, Node* b)
 fn u8 node_index_equal(Thread* thread, NodeIndex a, NodeIndex b)
 {
     u8 result = 0;
-    if (index_equal(a, b))
-    {
-        result = 1;
-    }
-    else
-    {
-        auto* node_a = thread_node_get(thread, a);
-        auto* node_b = thread_node_get(thread, b);
-        assert(node_a != node_b);
-        result = node_equal(thread, node_a, node_b);
-    }
+    auto* node_a = thread_node_get(thread, a);
+    auto* node_b = thread_node_get(thread, b);
+    result = index_equal(a, b) || node_equal(thread, node_a, node_b);
 
     return result;
 }
@@ -1887,7 +1879,7 @@ fn u8 node_index_equal(Thread* thread, NodeIndex a, NodeIndex b)
     return result;
 }
 
-fn NodeIndex intern_pool_get_node(Thread* thread, NodeIndex key, Hash hash)
+fn NodeIndex intern_pool_get_node(Thread* thread, NodeIndex key, Hash64 hash)
 {
     auto original_index = hash & (thread->interned.nodes.capacity - 1);
     auto slot = intern_pool_find_node_slot(thread, original_index, key);
@@ -1905,7 +1897,7 @@ fn NodeIndex intern_pool_put_node_at_assume_not_existent_assume_capacity(Thread*
     return node;
 }
 
-fn NodeIndex intern_pool_put_node_assume_not_existent_assume_capacity(Thread* thread, Hash hash, NodeIndex node)
+fn NodeIndex intern_pool_put_node_assume_not_existent_assume_capacity(Thread* thread, Hash64 hash, NodeIndex node)
 {
     auto capacity = thread->interned.nodes.capacity;
     assert(thread->interned.nodes.length < capacity);
@@ -1963,7 +1955,7 @@ fn void intern_pool_ensure_capacity(InternPool* pool, Thread* thread, u32 additi
            auto key = old_pointer[i];
            if (key)
            {
-               auto hash = *(Hash*)(buffer + (stride * (key - 1)));
+               auto hash = *(Hash64*)(buffer + (stride * (key - 1)));
                assert(hash);
                switch (kind)
                {
@@ -1993,7 +1985,7 @@ fn void intern_pool_ensure_capacity(InternPool* pool, Thread* thread, u32 additi
             auto key = old_pointer[i];
             if (key)
             {
-                auto hash = *(Hash*)(buffer + (stride * (key - 1)));
+                auto hash = *(Hash64*)(buffer + (stride * (key - 1)));
                 assert(hash);
                 switch (kind)
                 {
@@ -2521,9 +2513,9 @@ may_be_unused fn String type_id_to_string(Type* type)
     }
 }
 
-fn Hash hash_type(Thread* thread, Type* type)
+fn Hash64 hash_type(Thread* thread, Type* type)
 {
-    Hash hash = type->hash;
+    Hash64 hash = type->hash;
 
     if (!hash)
     {
@@ -2537,7 +2529,7 @@ fn Hash hash_type(Thread* thread, Type* type)
     return hash;
 }
 
-fn NodeIndex intern_pool_put_node_assume_not_existent(Thread* thread, Hash hash, NodeIndex node)
+fn NodeIndex intern_pool_put_node_assume_not_existent(Thread* thread, Hash64 hash, NodeIndex node)
 {
     intern_pool_ensure_capacity(&thread->interned.nodes, thread, 1, INTERN_POOL_KIND_NODE);
     return intern_pool_put_node_assume_not_existent_assume_capacity(thread, hash, node);
@@ -2550,10 +2542,7 @@ struct NodeGetOrPut
 };
 typedef struct NodeGetOrPut NodeGetOrPut;
 
-
-
-
-fn Hash hash_node(Thread* thread, Node* node, NodeIndex node_index)
+fn Hash64 hash_node(Thread* thread, Node* node, NodeIndex node_index)
 {
     auto hash = node->hash;
     if (!hash)
