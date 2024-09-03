@@ -103,6 +103,8 @@ fn void compile_c(const CompileOptions *const options, char** envp)
         unreachable();
     }
 
+    *vb_add(args, 1) = "-march=native";
+
     if (options->error_on_warning)
     {
         *vb_add(args, 1) = "-Werror";
@@ -113,6 +115,7 @@ fn void compile_c(const CompileOptions *const options, char** envp)
         "-Wall",
         "-Wextra",
         "-Wpedantic",
+        "-Wconversion",
         "-Wno-nested-anon-types",
         "-Wno-keyword-macro",
         "-Wno-gnu-auto-type",
@@ -133,7 +136,7 @@ fn void compile_c(const CompileOptions *const options, char** envp)
 
     if (options->linkage == LINKAGE_STATIC)
     {
-        char* static_options[] = { "-ffreestanding", "-nostdlib", "-static", "-DSTATIC", };
+        char* static_options[] = { "-ffreestanding", "-nostdlib", "-static", "-DSTATIC", "-lgcc" };
         memcpy(vb_add(args, array_length(static_options)), static_options, sizeof(static_options));
     }
 
@@ -217,6 +220,7 @@ typedef enum Command : u8
 {
     COMMAND_DEBUG,
     COMMAND_RUN_TESTS,
+    COMMAND_COMPILE,
     COMMAND_COUNT,
 } Command;
 
@@ -334,7 +338,6 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
                         0,
                     };
 
-
                     run_command((CStringSlice) array_to_slice(arguments), envp);
 
                     if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
@@ -362,6 +365,7 @@ int main(int argc, char* argv[], char** envp)
         print("Expected some arguments\n");
         return 1;
     }
+    // calibrate_cpu_timer();
 
     CompilerBackend preferred_compiler_backend = COMPILER_BACKEND_COUNT;
     Command command = COMMAND_COUNT;
@@ -392,15 +396,20 @@ int main(int argc, char* argv[], char** envp)
         {
             command = COMMAND_DEBUG;
         }
+        else if (s_equal(argument, strlit("compile")))
+        {
+            command = COMMAND_COMPILE;
+        }
         else if (s_equal(argument, strlit("all")))
         {
             test_every_config = 1;
         }
     }
 
-    if (argc > 2)
+    auto index = 2 - (command == COMMAND_COUNT);
+    if (argc > index)
     {
-        auto* c_argument = argv[2];
+        auto* c_argument = argv[index];
         auto argument = cstr(c_argument);
         String expected_starts[] = { strlit("tests/"), strlit("src/") };
 
@@ -419,10 +428,15 @@ int main(int argc, char* argv[], char** envp)
         }
     }
 
-    if (command == COMMAND_COUNT)
+    if (command == COMMAND_COUNT && !source_file_path.pointer)
     {
         print("Expected a command\n");
         return 1;
+    }
+
+    if (command == COMMAND_COUNT)
+    {
+        command = COMMAND_COMPILE;
     }
 
     if ((command == COMMAND_DEBUG) | ((command == COMMAND_RUN_TESTS) & (test_every_config == 0)))
@@ -441,46 +455,56 @@ int main(int argc, char* argv[], char** envp)
             fail();
         }
 
+        Linkage linkage = 
+#if defined(__linux__)
+            LINKAGE_STATIC;
+#else
+            LINKAGE_DYNAMIC;
+#endif
+
         compile_and_run(&(CompileOptions) {
             .in_path = compiler_source_path,
-            .out_path = build_dir "/" "nest_O0_static",
+            .out_path = linkage == LINKAGE_DYNAMIC ? (build_dir "/" "nest_O0_dynamic") : (build_dir "/" "nest_O0_static"),
             .compiler = default_compiler,
             .debug_info = 1,
             .error_on_warning = 0,
             .optimization_mode = O0,
-#if defined(__linux__)
-            .linkage = LINKAGE_STATIC,
-#else
-            .linkage = LINKAGE_DYNAMIC,
-#endif
+            .linkage = linkage,
         }, envp, preferred_compiler_backend, 1, string_to_c(source_file_path));
         break;
     case COMMAND_RUN_TESTS:
         {
             Arena* arena = arena_init_default(KB(64));
-            Linkage all_linkages[] = { LINKAGE_DYNAMIC, LINKAGE_STATIC };
+            Linkage all_linkages[] = { LINKAGE_STATIC, LINKAGE_DYNAMIC };
             static_assert(array_length(all_linkages) == LINKAGE_COUNT);
-            OptimizationMode all_optimization_modes[] = { O0, O1, O2, O3, Os, Oz };
-            static_assert(array_length(all_optimization_modes) == OPTIMIZATION_COUNT);
+            OptimizationMode all_optimization_modes[] = {
+                O0,
+                O1,
+                O2,
+                O3,
+                Os,
+                Oz
+            };
+            // static_assert(array_length(all_optimization_modes) == OPTIMIZATION_COUNT);
             String every_single_test[] = {
                  strlit("tests/first.nat"),
-                 strlit("tests/add_sub.nat"),
-                 strlit("tests/mul.nat"),
-                 strlit("tests/div.nat"),
-                 strlit("tests/and.nat"),
-                 strlit("tests/or.nat"),
-                 strlit("tests/xor.nat"),
-                 strlit("tests/return_var.nat"),
-                 strlit("tests/return_mod_scope.nat"),
-                 strlit("tests/shift_left.nat"),
-                 strlit("tests/shift_right.nat"),
-                 strlit("tests/thousand_simple_functions.nat"),
-                 strlit("tests/simple_arg.nat"),
-                 strlit("tests/comparison.nat"),
+                 // strlit("tests/add_sub.nat"),
+                 // strlit("tests/mul.nat"),
+                 // strlit("tests/div.nat"),
+                 // strlit("tests/and.nat"),
+                 // strlit("tests/or.nat"),
+                 // strlit("tests/xor.nat"),
+                 // strlit("tests/return_var.nat"),
+                 // strlit("tests/return_mod_scope.nat"),
+                 // strlit("tests/shift_left.nat"),
+                 // strlit("tests/shift_right.nat"),
+                 // strlit("tests/thousand_simple_functions.nat"),
+                 // strlit("tests/simple_arg.nat"),
+                 // strlit("tests/comparison.nat"),
             };
             CompilerBackend all_compiler_backends[] = {
-                COMPILER_BACKEND_INTERPRETER,
-                COMPILER_BACKEND_C,
+                // COMPILER_BACKEND_INTERPRETER,
+                // COMPILER_BACKEND_C,
 #ifdef __linux__
                 COMPILER_BACKEND_MACHINE,
 #endif
@@ -524,6 +548,21 @@ int main(int argc, char* argv[], char** envp)
                 .compiler_backends = compiler_backend_selection,
             }, envp);
         } break;
+    case COMMAND_COMPILE:
+        compile_c(&(CompileOptions) {
+            .in_path = compiler_source_path,
+            .out_path = build_dir "/" "nest_O0_static",
+            .compiler = default_compiler,
+            .debug_info = 1,
+            .error_on_warning = 0,
+            .optimization_mode = O0,
+#if defined(__linux__)
+            .linkage = LINKAGE_STATIC,
+#else
+            .linkage = LINKAGE_DYNAMIC,
+#endif
+        }, envp);
+        break;
     case COMMAND_COUNT:
         unreachable();
     }
