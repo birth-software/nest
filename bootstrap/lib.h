@@ -50,13 +50,13 @@ typedef u32 Hash32;
 typedef u64 Hash64;
 
 #define FOR_N(it, start, end) \
-for (ptrdiff_t it = (start), end__ = (end); it < end__; ++it)
+for (u32 it = (start), end__ = (end); it < end__; ++it)
 
 #define FOR_REV_N(it, start, end) \
-for (ptrdiff_t it = (end), start__ = (start); (it--) > start__;)
+for (u32 it = (end), start__ = (start); (it--) > start__;)
 
 #define FOR_BIT(it, start, bits) \
-for (uint64_t _bits_ = (bits), it = (start); _bits_; _bits_ >>= 1, ++it) if (_bits_ & 1)
+for (typeof(bits) _bits_ = (bits), it = (start); _bits_; _bits_ >>= 1, ++it) if (_bits_ & 1)
 
 #define FOREACH_SET(it, set) \
 FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.pointer[_i])
@@ -112,6 +112,9 @@ may_be_unused fn u16 cast_u32_to_u16(u32 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u16)source;
     return result;
@@ -125,6 +128,9 @@ may_be_unused fn s16 cast_u32_to_s16(u32 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (s16)source;
     return result;
@@ -138,6 +144,9 @@ may_be_unused fn s32 cast_u32_to_s32(u32 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (s32)source;
     return result;
@@ -151,6 +160,9 @@ may_be_unused fn u8 cast_u64_to_u8(u64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u8)source;
     return result;
@@ -164,6 +176,9 @@ may_be_unused fn u16 cast_u64_to_u16(u64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u16)source;
     return result;
@@ -177,6 +192,9 @@ may_be_unused fn u32 cast_u64_to_u32(u64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u32)source;
     return result;
@@ -190,6 +208,9 @@ may_be_unused fn s32 cast_u64_to_s32(u64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (s32)source;
     return result;
@@ -203,6 +224,9 @@ may_be_unused fn s64 cast_u64_to_s64(u64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (s64)source;
     return result;
@@ -221,6 +245,9 @@ may_be_unused fn u8 cast_s32_to_u8(s32 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u8)source;
     return result;
@@ -239,6 +266,9 @@ may_be_unused fn u16 cast_s32_to_u16(s32 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u16)source;
     return result;
@@ -252,6 +282,9 @@ may_be_unused fn u32 cast_s32_to_u32(s32 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u32)source;
     return result;
@@ -265,8 +298,32 @@ may_be_unused fn u64 cast_s32_to_u64(s32 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u64)source;
+    return result;
+}
+
+may_be_unused fn s16 cast_s32_to_s16(s32 source, const char* name, int line)
+{
+#if _DEBUG
+    if (source > INT16_MAX)
+    {
+        print("Cast failed at {cstr}:{u32}\n", name, line);
+        trap();
+    }
+    if (source < INT16_MIN)
+    {
+        print("Cast failed at {cstr}:{u32}\n", name, line);
+        trap();
+    }
+#else 
+    unused(name);
+    unused(line);
+#endif
+    auto result = (s16)source;
     return result;
 }
 
@@ -283,6 +340,9 @@ may_be_unused fn u16 cast_s64_to_u16(s64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u16)source;
     return result;
@@ -296,6 +356,9 @@ may_be_unused fn u32 cast_s64_to_u32(s64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u32)source;
     return result;
@@ -309,6 +372,9 @@ may_be_unused fn u64 cast_s64_to_u64(s64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (u64)source;
     return result;
@@ -328,6 +394,9 @@ may_be_unused fn s32 cast_s64_to_s32(s64 source, const char* name, int line)
         print("Cast failed at {cstr}:{u32}\n", name, line);
         trap();
     }
+#else 
+    unused(name);
+    unused(line);
 #endif
     auto result = (s32)source;
     return result;
@@ -406,7 +475,7 @@ may_be_unused fn u64 round_up_to_next_power_of_2(u64 n)
 
 may_be_unused fn u64 absolute_int(s64 n)
 {
-    return n < 0 ? -n : n;
+    return n < 0 ? cast(u64, s64, -n) : cast(u64, s64, n);
 }
 
 #if LINK_LIBC == 0
@@ -433,12 +502,12 @@ void* memmove(void* const dst, const void* const src, u64 n)
 
 	if (from == to || n == 0)
 		return dst;
-	if (to > from && to-from < (int)n) {
+	if (to > from && to-from < (s64)n) {
 		/* to overlaps with from */
 		/*  <from......>         */
 		/*         <to........>  */
 		/* copy in reverse, to avoid overwriting from */
-		int i;
+		u64 i;
 		for(i=n-1; i>=0; i--)
 			to[i] = from[i];
 		return dst;
@@ -448,7 +517,7 @@ void* memmove(void* const dst, const void* const src, u64 n)
 		/*        <from......>   */
 		/*  <to........>         */
 		/* copy forwards, to avoid overwriting from */
-		size_t i;
+		u64 i;
 		for(i=0; i<n; i++)
 			to[i] = from[i];
 		return dst;
@@ -2671,6 +2740,7 @@ typedef struct StructName StructName
 decl_vb(u8);
 decl_vbp(u8);
 decl_vb(s32);
+decl_vb(u32);
 
 fn void vb_generic_ensure_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
 {

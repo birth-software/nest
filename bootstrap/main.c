@@ -7171,7 +7171,7 @@ fn RegisterMaskIndex register_mask_meet(Thread* thread, RegisterMaskIndex a_inde
     auto* a = thread_register_mask_get(thread, a_index);
     auto* b = thread_register_mask_get(thread, b_index);
 
-    u64 may_spill = a->may_spill && b->may_spill;
+    u32 may_spill = a->may_spill && b->may_spill;
     if (!may_spill && a->class != b->class)
     {
         return empty_register_mask;
@@ -7224,6 +7224,8 @@ fn u8 interfere_in_block(Thread* thread, VirtualBuffer(BasicBlockIndex) schedule
             phi = left;
             other = right;
         }
+
+        unused(other);
 
         block_index = scheduled.pointer[geti(phi)];
         block = &bb.pointer[geti(block_index)];
@@ -7338,7 +7340,7 @@ fn u8 can_remat(Thread* thread, NodeIndex node_index)
     }
 }
 
-fn f32 get_spill_cost(Thread* thread, VirtualRegister* virtual_register)
+may_be_unused fn f32 get_spill_cost(Thread* thread, VirtualRegister* virtual_register)
 {
     auto spill_cost = virtual_register->spill_cost;
     if (__builtin_isnan(spill_cost))
@@ -7548,7 +7550,7 @@ fn String gpr_to_string(GPR gpr)
     }
 }
 
-fn u8 register_allocate(Thread* thread, VirtualBuffer(VirtualRegister) virtual_registers, VirtualBuffer(s32)* spills, Bitset* active, Bitset* future_active, VirtualBuffer(BasicBlockIndex) scheduled, VirtualBuffer(BasicBlock) bb, Slice(s32) order, u32 virtual_register_id, u32 in_use)
+fn u8 register_allocate(Thread* thread, VirtualBuffer(VirtualRegister) virtual_registers, VirtualBuffer(u32)* spills, Bitset* active, Bitset* future_active, VirtualBuffer(BasicBlockIndex) scheduled, VirtualBuffer(BasicBlock) bb, Slice(s32) order, u32 virtual_register_id, u32 in_use)
 {
     if (bitset_get(future_active, virtual_register_id))
     {
@@ -7589,7 +7591,7 @@ fn u8 register_allocate(Thread* thread, VirtualBuffer(VirtualRegister) virtual_r
         {
             print("Interfere with active: {u32}\n", (s32)other->assigned);
             in_use |= ((u32)1 << other->assigned);
-            *vb_add(spills, 1) = i;
+            *vb_add(spills, 1) = cast(u32, u64, i);
         }
     }
 
@@ -7635,8 +7637,8 @@ fn u8 register_allocate(Thread* thread, VirtualBuffer(VirtualRegister) virtual_r
     }
     else
     {
-        virtual_register->assigned = __builtin_ffsll(~in_use) - 1;
-        print("Register assigned: {s}\n", gpr_to_string(virtual_register->assigned));
+        virtual_register->assigned = cast(s16, s32, __builtin_ffsll(~in_use) - 1);
+        print("Register assigned: {s}\n", gpr_to_string((GPR)virtual_register->assigned));
     }
 
     bitset_set_value(active, virtual_register_id, 1);
@@ -7671,7 +7673,7 @@ struct MachineOperand
 };
 typedef struct MachineOperand MachineOperand;
 
-fn MachineOperand operand_from_node(Thread* thread, VirtualBuffer(VirtualRegister) virtual_registers, u32* virtual_register_map, NodeIndex node_index)
+fn MachineOperand operand_from_node(VirtualBuffer(VirtualRegister) virtual_registers, u32* virtual_register_map, NodeIndex node_index)
 {
     assert(validi(node_index));
     auto virtual_register_id = virtual_register_map[geti(node_index)];
@@ -7833,7 +7835,7 @@ struct CodegenOptions
 };
 typedef struct CodegenOptions CodegenOptions;
 
-fn BasicBlockIndex cfg_get_predicate_basic_block(Thread* restrict thread, CFGBuilder* restrict builder, FixedBlockMap* map, NodeIndex arg_node_index, u16 i)
+fn BasicBlockIndex cfg_get_predicate_basic_block(Thread* restrict thread, FixedBlockMap* map, NodeIndex arg_node_index, u16 i)
 {
     auto* arg_node = thread_node_get(thread, arg_node_index);
     auto arg_inputs = node_get_inputs(thread, arg_node);
@@ -7869,7 +7871,7 @@ fn void cfg_build(CFGBuilder* restrict builder, Thread* restrict thread, Functio
 {
     thread_worklist_push(thread, builder->worker, function->root);
 
-    for (u64 i = 0; i < thread_worklist_length(thread, builder->worker); i += 1)
+    for (u32 i = 0; i < thread_worklist_length(thread, builder->worker); i += 1)
     {
         NodeIndex node_index = thread_worklist_get(thread, builder->worker, i);
         Node* node = thread_node_get(thread, node_index);
@@ -8034,7 +8036,7 @@ fn void cfg_build(CFGBuilder* restrict builder, Thread* restrict thread, Functio
         
         for (u32 i = 1; i < block_count; i += 1)
         {
-            auto basic_block_index = Index(BasicBlock, i);
+            // auto basic_block_index = Index(BasicBlock, i);
             auto* basic_block = &blocks[i];
 
             auto new_immediate_dominator_index = invalidi(BasicBlock);
@@ -8042,11 +8044,11 @@ fn void cfg_build(CFGBuilder* restrict builder, Thread* restrict thread, Functio
             auto start_index = basic_block->start;
             auto* start_node = thread_node_get(thread, start_index);
 
-            auto start_inputs = node_get_inputs(thread, start_node);
+            // auto start_inputs = node_get_inputs(thread, start_node);
 
             for (u16 j = 0; j < start_node->input_count; j += 1)
             {
-                auto predecessor_basic_block_index = cfg_get_predicate_basic_block(thread, builder, &builder->block_map, start_index, j);
+                auto predecessor_basic_block_index = cfg_get_predicate_basic_block(thread, &builder->block_map, start_index, j);
                 if (validi(predecessor_basic_block_index))
                 {
                     auto* predecessor_basic_block = &blocks[geti(predecessor_basic_block_index)];
@@ -8315,7 +8317,7 @@ fn void cfg_global_schedule(CFGBuilder* restrict builder, Thread* restrict threa
     }
 
     // Late schedule
-    for (u64 i = thread_worklist_length(thread, builder->worker); i > 0; i -= 1)
+    for (u32 i = thread_worklist_length(thread, builder->worker); i > 0; i -= 1)
     {
         auto node_index = thread_worklist_get(thread, builder->worker, i - 1);
         auto* node = thread_node_get(thread, node_index);
@@ -8561,7 +8563,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
         u32 max_ins = 0;
         u32 virtual_register_count = 1;
         auto* virtual_register_map = arena_allocate(thread->arena, u32, round_up_to_next_power_of_2( node_count + 16));
-        VirtualBuffer(s32) spills = {};
+        VirtualBuffer(u32) spills = {};
 
         for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
         {
@@ -8689,7 +8691,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
                 auto mask = register_mask_intern(thread, (RegisterMask) {
                     .class = class,
                     .may_spill = 0,
-                    .mask = class == 0 ? i : ((u64)1 << i),
+                    .mask = class == 0 ? i : ((u32)1 << i),
                 });
 
                 *vb_add(&virtual_registers, 1) = (VirtualRegister) {
@@ -8760,7 +8762,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
 
                             if (fixed >= 0)
                             {
-                                auto fixed_mask = ((u32)1 << fixed);
+                                // auto fixed_mask = ((u32)1 << fixed);
                                 auto shared_edge = node_to_address(thread, input_index);
 
                                 if (shared_edge >= 0)
@@ -8825,7 +8827,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
                 assert(node->id == MACHINE_COPY);
                 auto id = virtual_register_map[geti(node_index)];
                 assert(id > 0);
-                auto mask_index = virtual_registers.pointer[id].mask;
+                // auto mask_index = virtual_registers.pointer[id].mask;
                 auto inputs = node_get_inputs(thread, node);
 
                 if (!interfere(thread, builder->scheduled, builder->basic_blocks, order, node_index, inputs.pointer[1]))
@@ -8887,7 +8889,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
 
                     if (virtual_register_id > 0)
                     {
-                        auto* node = thread_node_get(thread, node_index);
+                        // auto* node = thread_node_get(thread, node_index);
 
                         auto mask_index = virtual_registers.pointer[virtual_register_id].mask;
                         auto mask_pointer = thread_register_mask_get(thread, mask_index);
@@ -8931,6 +8933,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
                             auto* other_basic_block = &builder->basic_blocks.pointer[k];
                             if (bitset_get(&other_basic_block->live_in, j))
                             {
+                                unused(pause);
                                 todo();
                             }
                         }
@@ -9080,7 +9083,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
         for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
         {
             auto* basic_block = &builder->basic_blocks.pointer[i];
-            auto basic_block_index = Index(BasicBlock, basic_block - builder->basic_blocks.pointer);
+            auto basic_block_index = Index(BasicBlock, cast(u32, s64, basic_block - builder->basic_blocks.pointer));
             auto first_node = thread_node_get(thread, basic_block->items.pointer[0]);
             auto item_count = basic_block->items.length;
             u8 empty = 1;
@@ -9163,7 +9166,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
         auto* order = arena_allocate(thread->arena, s32, builder->basic_blocks.length);
 
         u32 order_index = 0;
-        for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
+        for (s32 i = 0; i < cast(s32, u32, builder->basic_blocks.length); i += 1)
         {
             auto* basic_block = &builder->basic_blocks.pointer[i];
             if (basic_block->forward == i)
@@ -9177,7 +9180,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
             }
         }
 
-        for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
+        for (s32 i = 0; i < cast(s32, u32, builder->basic_blocks.length); i += 1)
         {
             auto* basic_block = &builder->basic_blocks.pointer[i];
             if (basic_block->forward == i)
@@ -9203,8 +9206,8 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
             {
                 auto node_index = basic_block->items.pointer[i];
                 auto* node = thread_node_get(thread, node_index);
-                auto virtual_register_id = virtual_register_map[geti(node_index)];
-                auto* virtual_register = &virtual_registers.pointer[virtual_register_id];
+                // auto virtual_register_id = virtual_register_map[geti(node_index)];
+                // auto* virtual_register = &virtual_registers.pointer[virtual_register_id];
                 auto inputs = node_get_inputs(thread, node);
 
                 auto fallthrough = INT32_MAX;
@@ -9222,7 +9225,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
                     case IR_INTEGER_CONSTANT:
                         {
                             auto value = node->integer_constant.unsigned_value;
-                            GPR gpr = machine_operand_at(virtual_register_map, virtual_registers, node_index, REGISTER_CLASS_X86_64_GPR);
+                            auto gpr = (GPR)machine_operand_at(virtual_register_map, virtual_registers, node_index, REGISTER_CLASS_X86_64_GPR);
                             auto backend_type = type_pair_get_backend(node->type);
 
                             if (backend_type == BACKEND_TYPE_INTEGER_32)
@@ -9247,8 +9250,8 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
                         } break;
                     case MACHINE_MOVE:
                         {
-                            auto destination = operand_from_node(thread, virtual_registers, virtual_register_map, node_index);
-                            auto source = operand_from_node(thread, virtual_registers, virtual_register_map, inputs.pointer[1]);
+                            auto destination = operand_from_node(virtual_registers, virtual_register_map, node_index);
+                            auto source = operand_from_node(virtual_registers, virtual_register_map, inputs.pointer[1]);
                             if (!operand_equal(destination, source))
                             {
                                 todo();
@@ -9355,7 +9358,7 @@ struct SchedPhi
 typedef struct SchedPhi SchedPhi;
 decl_vb(SchedPhi);
 
-fn void fill_phis(Thread* restrict thread, CFGBuilder* restrict builder, Function* restrict function, VirtualBuffer(SchedPhi)* sched_phis, Node* restrict successor_node, NodeIndex original_index)
+fn void fill_phis(Thread* restrict thread, VirtualBuffer(SchedPhi)* sched_phis, Node* restrict successor_node, NodeIndex original_index)
 {
     auto succesor_inputs = node_get_inputs(thread, successor_node);
     u16 i;
@@ -9420,7 +9423,7 @@ fn void greedy_scheduler(Thread* restrict thread, CFGBuilder* restrict builder, 
         auto* successor_node = thread_node_get(thread, successor_index);
         if (successor_node->id == IR_REGION)
         {
-            fill_phis(thread, builder, function, &phis, successor_node, end_index);
+            fill_phis(thread, &phis, successor_node, end_index);
         }
     }
 
@@ -9548,8 +9551,9 @@ fn void greedy_scheduler(Thread* restrict thread, CFGBuilder* restrict builder, 
     }
 }
 
-fn void print_reference_to_node(Thread* restrict thread, CFGBuilder* restrict builder, Function* restrict function, NodeIndex node_index, u8 def)
+fn void print_reference_to_node(Thread* restrict thread, NodeIndex node_index, u8 def)
 {
+    unused(def);
     auto* restrict node = thread_node_get(thread, node_index);
     print("[#{u32} ({s})", geti(node_index), node_id_to_string(node->id));
 
@@ -9587,7 +9591,7 @@ fn void print_reference_to_node(Thread* restrict thread, CFGBuilder* restrict bu
 fn void print_basic_block(Thread* restrict thread, CFGBuilder* restrict builder, Function* restrict function, BasicBlockIndex basic_block_index)
 {
     auto* restrict basic_block = &builder->basic_blocks.pointer[geti(basic_block_index)];
-    print_reference_to_node(thread, builder, function, basic_block->start, 1);
+    print_reference_to_node(thread, basic_block->start, 1);
     print("\n");
     greedy_scheduler(thread, builder, function, basic_block_index);
 
@@ -9638,7 +9642,7 @@ fn void print_basic_block(Thread* restrict thread, CFGBuilder* restrict builder,
                             {
                                 print(", ");
                             }
-                            print_reference_to_node(thread, builder, function, inputs.pointer[i], 0);
+                            print_reference_to_node(thread, inputs.pointer[i], 0);
                         }
                     }
                     else
