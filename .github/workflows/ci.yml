@@ -24,6 +24,9 @@ jobs:
   #   steps:
   #     - name: Checkout
   #       uses: actions/checkout@v4
+  #     - name: Install LLVM
+  #       run: |
+  #         brew list llvm || brew install llvm
   #     - name: Build and test
   #       run: |
   #         ./project.sh test all

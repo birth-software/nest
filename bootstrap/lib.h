@@ -61,6 +61,10 @@ for (typeof(bits) _bits_ = (bits), it = (start); _bits_; _bits_ >>= 1, ++it) if 
 #define FOREACH_SET(it, set) \
 FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.pointer[_i])
 
+#define STRUCT_FORWARD_DECL(S) typedef struct S S
+#define STRUCT(S) STRUCT_FORWARD_DECL(S); struct S
+#define UNION_FORWARD_DECL(U) typedef union U U
+#define UNION(U) UNION_FORWARD_DECL(U); union U
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
@@ -479,6 +483,25 @@ may_be_unused fn u64 absolute_int(s64 n)
 }
 
 #if LINK_LIBC == 0
+int strcmp(const char* s1, const char* s2)
+{
+    auto diff = 0;
+    while (1)
+    {
+        auto ch1 = *s1;
+        auto ch2 = *s2;
+        diff = ch1 - ch2;
+        if (ch1 == 0 || ch2 == 0 || diff)
+        {
+            break;
+        }
+
+        s1 += 1;
+        s2 += 1;
+    }
+
+    return diff;
+}
 void* memcpy(void* const restrict dst, const void* const restrict src, u64 size)
 {
     auto* destination = (u8*)dst;
@@ -492,38 +515,37 @@ void* memcpy(void* const restrict dst, const void* const restrict src, u64 size)
     return dst;
 }
 
-
 void* memmove(void* const dst, const void* const src, u64 n)
 {
     // Implementation
     // https://opensource.apple.com/source/network_cmds/network_cmds-481.20.1/unbound/compat/memmove.c.auto.html
-	uint8_t* from = (uint8_t*) src;
-	uint8_t* to = (uint8_t*) dst;
+    uint8_t* from = (uint8_t*) src;
+    uint8_t* to = (uint8_t*) dst;
 
-	if (from == to || n == 0)
-		return dst;
-	if (to > from && to-from < (s64)n) {
-		/* to overlaps with from */
-		/*  <from......>         */
-		/*         <to........>  */
-		/* copy in reverse, to avoid overwriting from */
-		u64 i;
-		for(i=n-1; i>=0; i--)
-			to[i] = from[i];
-		return dst;
-	}
-	if (from > to && from-to < (int)n) {
-		/* to overlaps with from */
-		/*        <from......>   */
-		/*  <to........>         */
-		/* copy forwards, to avoid overwriting from */
-		u64 i;
-		for(i=0; i<n; i++)
-			to[i] = from[i];
-		return dst;
-	}
-	memcpy(dst, src, n);
-	return dst;
+    if (from == to || n == 0)
+    return dst;
+    if (to > from && to-from < (s64)n) {
+    /* to overlaps with from */
+    /*  <from......>         */
+    /*         <to........>  */
+    /* copy in reverse, to avoid overwriting from */
+    u64 i;
+    for(i=n-1; i>=0; i--)
+    to[i] = from[i];
+    return dst;
+    }
+    if (from > to && from-to < (int)n) {
+    /* to overlaps with from */
+    /*        <from......>   */
+    /*  <to........>         */
+    /* copy forwards, to avoid overwriting from */
+    u64 i;
+    for(i=0; i<n; i++)
+    to[i] = from[i];
+    return dst;
+    }
+    memcpy(dst, src, n);
+    return dst;
 }
 
 void* memset(void* dst, u8 n, u64 size)
@@ -537,11 +559,17 @@ void* memset(void* dst, u8 n, u64 size)
     return dst;
 }
 
-fn int memcmp(const void* left, const void* right, u64 n)
+fn int memcmp(const void* a, const void* b, u64 n)
 {
-	const u8 *l=(const u8*)left, *r=(const u8*)right;
-	for (; n && *l == *r; n--, l++, r++);
-	return n ? *l - *r : 0;
+    auto *s1 = (u8*)a;
+    auto *s2 = (u8*)b;
+
+    while (n-- > 0)
+    {
+        if (*s1++ != *s2++)
+            return s1[-1] < s2[-1] ? -1 : 1;
+    }
+    return 0;
 }
 
 fn u64 strlen (const char* c_string)
@@ -569,12 +597,11 @@ fn u64 strlen (const char* c_string)
 
 #define Slice(T) Slice_ ## T
 #define SliceP(T) SliceP_ ## T
-#define declare_slice_ex(T, StructName) struct StructName \
+#define declare_slice_ex(T, StructName) STRUCT(StructName) \
 {\
     T* pointer;\
     u64 length;\
-};\
-typedef struct StructName StructName
+}
 
 #define declare_slice(T) declare_slice_ex(T, Slice(T))
 #define declare_slice_p(T) declare_slice_ex(T*, SliceP(T))
@@ -582,7 +609,7 @@ typedef struct StructName StructName
 #define s_get(s, i) (s).pointer[i]
 #define s_get_pointer(s, i) &((s).pointer[i])
 #define s_get_slice(T, s, start, end) (Slice(T)){ .pointer = ((s).pointer) + (start), .length = (end) - (start) }
-#define s_equal(a, b) ((a).length == (b).length && memcmp((a).pointer, (b).pointer, sizeof(*((a).pointer))) == 0)
+#define s_equal(a, b) ((a).length == (b).length && memcmp((a).pointer, (b).pointer, sizeof(*((a).pointer)) * (a).length) == 0)
 
 declare_slice(u8);
 declare_slice(s32);
@@ -777,62 +804,62 @@ may_be_unused fn Hash32 hash64_to_hash32(Hash64 hash64)
 #ifdef __linux__
 may_be_unused fn forceinline long syscall0(long n)
 {
-	long ret;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n) : "rcx", "r11", "memory");
-	return ret;
+    long ret;
+    __asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n) : "rcx", "r11", "memory");
+    return ret;
 }
 
 may_be_unused fn forceinline long syscall1(long n, long a1)
 {
-	long ret;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1) : "rcx", "r11", "memory");
-	return ret;
+    long ret;
+    __asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1) : "rcx", "r11", "memory");
+    return ret;
 }
 
 may_be_unused fn forceinline long syscall2(long n, long a1, long a2)
 {
-	long ret;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2)
-						  : "rcx", "r11", "memory");
-	return ret;
+    long ret;
+    __asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2)
+    : "rcx", "r11", "memory");
+    return ret;
 }
 
 may_be_unused fn forceinline long syscall3(long n, long a1, long a2, long a3)
 {
-	long ret;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
-						  "d"(a3) : "rcx", "r11", "memory");
-	return ret;
+    long ret;
+    __asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
+    "d"(a3) : "rcx", "r11", "memory");
+    return ret;
 }
 
 may_be_unused fn forceinline long syscall4(long n, long a1, long a2, long a3, long a4)
 {
-	long ret;
-	register long r10 __asm__("r10") = a4;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
-						  "d"(a3), "r"(r10): "rcx", "r11", "memory");
-	return ret;
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    __asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
+    "d"(a3), "r"(r10): "rcx", "r11", "memory");
+    return ret;
 }
 
 may_be_unused fn forceinline long syscall5(long n, long a1, long a2, long a3, long a4, long a5)
 {
-	long ret;
-	register long r10 __asm__("r10") = a4;
-	register long r8 __asm__("r8") = a5;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
-						  "d"(a3), "r"(r10), "r"(r8) : "rcx", "r11", "memory");
-	return ret;
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    register long r8 __asm__("r8") = a5;
+    __asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
+    "d"(a3), "r"(r10), "r"(r8) : "rcx", "r11", "memory");
+    return ret;
 }
 
 may_be_unused fn forceinline long syscall6(long n, long a1, long a2, long a3, long a4, long a5, long a6)
 {
-	long ret;
-	register long r10 __asm__("r10") = a4;
-	register long r8 __asm__("r8") = a5;
-	register long r9 __asm__("r9") = a6;
-	__asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
-						  "d"(a3), "r"(r10), "r"(r8), "r"(r9) : "rcx", "r11", "memory");
-	return ret;
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    register long r8 __asm__("r8") = a5;
+    register long r9 __asm__("r9") = a6;
+    __asm__ __volatile__ ("syscall" : "=a"(ret) : "a"(n), "D"(a1), "S"(a2),
+    "d"(a3), "r"(r10), "r"(r8), "r"(r9) : "rcx", "r11", "memory");
+    return ret;
 }
 
 enum SyscallX86_64 : u64 {
@@ -1512,13 +1539,12 @@ fn u32 format_decimal(String buffer, u64 decimal)
 }
 
 #define SILENT (0)
-struct SmallIntResult
+STRUCT(SmallIntResult)
 {
     u64 mantissa;
     s32 exponent;
     u8 is_small_int;
 };
-typedef struct SmallIntResult SmallIntResult;
 
 #define double_mantissa_bits 52
 #define double_exponent_bits 11
@@ -1972,12 +1998,11 @@ static inline uint32_t mod1e9(const uint64_t x) {
   return (uint32_t) (x - 1000000000 * div1e9(x));
 }
 
-struct Double
+STRUCT(Double)
 {
     u64 mantissa;
     s32 exponent;
 };
-typedef struct Double Double;
 
 may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
 {
@@ -2145,12 +2170,13 @@ fn u32 decimalLength17(const u64 v) {
 }
 
 // A floating decimal representing m * 10^e.
-typedef struct floating_decimal_64 {
+STRUCT(floating_decimal_64)
+{
   uint64_t mantissa;
   // Decimal exponent's range is -324 to 308
   // inclusive, and can fit in a short if needed.
   int32_t exponent;
-} floating_decimal_64;
+};
 
 fn u8* digits2(u64 value)
 {
@@ -2565,7 +2591,7 @@ global u64 minimum_granularity = page_size;
 // global u64 middle_granularity = MB(2);
 global u64 default_size = GB(4);
 
-struct Arena
+STRUCT(Arena)
 {
     u64 reserved_size;
     u64 committed;
@@ -2574,7 +2600,6 @@ struct Arena
     u8 reserved[4 * 8];
 };
 
-typedef struct Arena Arena;
 static_assert(sizeof(Arena) == 64);
 
 fn Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size)
@@ -2798,6 +2823,8 @@ may_be_unused fn u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
 }
 
 #define vb_add(a, count) (typeof((a)->pointer)) vb_generic_add((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
+#define vb_add_struct(a, S) (S*) vb_generic_add(a, 1, sizeof(S))
+#define vb_append_struct(a, T, s) *(vb_add_struct(a, T)) = s
 #define vb_append_one(a, item) (typeof((a)->pointer)) vb_generic_append((VirtualBuffer(u8)*)(a), &(item), sizeof(*((a)->pointer)), 1)
 #define vb_to_bytes(vb) (Slice(u8)) { .pointer = (u8*)((vb).pointer), .length = sizeof(*((vb).pointer)) * (vb).length, }
 #define vb_ensure_capacity(a, count) vb_generic_ensure_capacity((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
