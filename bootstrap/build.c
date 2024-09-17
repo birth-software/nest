@@ -564,11 +564,11 @@ fn void entry_point(int argc, char* argv[], char* envp[])
             .debug_info = 1,
             .error_on_warning = 0,
             .optimization_mode = O0,
-#if defined(__linux__)
-            .linkage = LINKAGE_STATIC,
-#else
+// #if defined(__linux__)
+//             .linkage = LINKAGE_STATIC,
+// #else
             .linkage = LINKAGE_DYNAMIC,
-#endif
+// #endif
         }, envp);
         break;
     case COMMAND_COUNT:
