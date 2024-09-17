@@ -145,6 +145,8 @@ fn void compile_c(const CompileOptions *const options, char** envp)
         memcpy(vb_add(args, array_length(static_options)), static_options, sizeof(static_options));
     }
 
+    *vb_add(args, 1) = "-DSILENT";
+
     if (options->compiler == clang)
     {
         *vb_add(args, 1) = "-MJ";
@@ -364,14 +366,13 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
     }
 }
 
-int main(int argc, char* argv[], char** envp)
+fn void entry_point(int argc, char* argv[], char* envp[])
 {
     if (argc < 2)
     {
         print("Expected some arguments\n");
-        return 1;
+        fail();
     }
-    // calibrate_cpu_timer();
 
     CompilerBackend preferred_compiler_backend = COMPILER_BACKEND_COUNT;
     Command command = COMMAND_COUNT;
@@ -437,7 +438,7 @@ int main(int argc, char* argv[], char** envp)
     if (command == COMMAND_COUNT && !source_file_path.pointer)
     {
         print("Expected a command\n");
-        return 1;
+        fail();
     }
 
     if (command == COMMAND_COUNT)
@@ -461,12 +462,8 @@ int main(int argc, char* argv[], char** envp)
             fail();
         }
 
-        Linkage linkage = 
-#if defined(__linux__)
-            LINKAGE_STATIC;
-#else
-            LINKAGE_DYNAMIC;
-#endif
+        // Test always with dynamic linkage because it's more trustworthy
+        Linkage linkage = LINKAGE_DYNAMIC;
 
         compile_and_run(&(CompileOptions) {
             .in_path = compiler_source_path,
@@ -481,8 +478,13 @@ int main(int argc, char* argv[], char** envp)
     case COMMAND_RUN_TESTS:
         {
             Arena* arena = arena_init_default(KB(64));
-            Linkage all_linkages[] = { LINKAGE_DYNAMIC, LINKAGE_STATIC };
-            static_assert(array_length(all_linkages) == LINKAGE_COUNT);
+            Linkage all_linkages[] = {
+                LINKAGE_DYNAMIC,
+#ifdef __linux__
+                LINKAGE_STATIC
+#endif
+            };
+
             OptimizationMode all_optimization_modes[] = {
                 O0,
                 O1,

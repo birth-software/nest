@@ -61,7 +61,7 @@ fn String file_read(Arena* arena, String path)
 
 fn void print_string(String message)
 {
-#if SILENT == 0
+#ifndef SILENT
         ssize_t result = syscall_write(1, message.pointer, message.length);
         assert(result >= 0);
         assert((u64)result == message.length);
@@ -12538,21 +12538,6 @@ fn void print_ir(Thread* restrict thread)
     }
 }
 
-#if LINK_LIBC == 0
-[[gnu::naked]] [[noreturn]] void _start()
-{
-    __asm__ __volatile__(
-            "\nxor %ebp, %ebp"
-            "\npopq %rdi"
-            "\nmov %rsp, %rsi"
-            "\nand $~0xf, %rsp"
-            "\npushq %rsp"
-            "\npushq $0"
-            "\ncallq entry_point"
-            "\nud2\n"
-       );
-}
-#endif
 
 fn void dwarf_playground(Thread* thread)
 {
@@ -12817,21 +12802,11 @@ fn void dwarf_playground(Thread* thread)
     assert(*debug_info_bytes.pointer == 0);
 }
 
-#if LINK_LIBC
-int main(int argc, const char* argv[], char* envp[])
+fn void entry_point(int argc, char* argv[], char* envp[])
 {
-#else
-void entry_point(int argc, const char* argv[])
-{
-    char** envp = (char**)&argv[argc + 1];
-    unused(envp);
-#endif
 #if DO_UNIT_TESTS
     unit_tests();
 #endif
-
-    // calibrate_cpu_timer();
-
 
     Arena* global_arena = arena_init(MB(2), KB(64), KB(64));
 
@@ -12890,13 +12865,10 @@ void entry_point(int argc, const char* argv[])
     else
     {
         code_generation(thread, (CodegenOptions) {
-            .test_name = test_name,
-            .backend = compiler_backend,
-        }, envp);
+                .test_name = test_name,
+                .backend = compiler_backend,
+                }, envp);
     }
 
     thread_clear(thread);
-#if LINK_LIBC == 0
-    syscall_exit(0);
-#endif
 }
