@@ -33,7 +33,7 @@ typedef enum Linkage: u8
 } Linkage;
 declare_slice(Linkage);
 
-struct CompileOptions
+STRUCT(CompileOptions)
 {
     char* out_path;
     char* in_path;
@@ -43,7 +43,6 @@ struct CompileOptions
     Compiler compiler:1;
     Linkage linkage:1;
 };
-typedef struct CompileOptions CompileOptions;
 decl_vbp(char);
 
 fn u8 is_debug(OptimizationMode optimization_mode, u8 debug_info)
@@ -63,20 +62,25 @@ fn void compile_c(const CompileOptions *const options, char** envp)
         compiler = "/usr/bin/gcc";
         break;
     case clang:
+#ifdef __APPLE__
+        compiler = "/opt/homebrew/opt/llvm/bin/clang";
+#else
         compiler = "/usr/bin/clang";
+#endif
         break;
     case COMPILER_COUNT:
         unreachable();
     }
 
     *vb_add(args, 1) = compiler;
+    // *vb_add(args, 1) = "-E";
     *vb_add(args, 1) = options->in_path;
     *vb_add(args, 1) = "-o";
     *vb_add(args, 1) = options->out_path;
 
     if (options->debug_info)
     {
-        *vb_add(args, 1) = "-g";
+        *vb_add(args, 1) = "-g3";
     }
 
     switch (options->optimization_mode)
@@ -122,6 +126,7 @@ fn void compile_c(const CompileOptions *const options, char** envp)
         "-Wno-auto-decl-extensions",
         "-Wno-gnu-empty-initializer",
         "-Wno-fixed-enum-extension",
+        "-Wno-gnu-binary-literal",
         "-pedantic",
         "-fno-exceptions",
         "-fno-stack-protector",
@@ -201,6 +206,8 @@ fn void compile_and_run(const CompileOptions* const options, char** envp, Compil
 #elif defined(__APPLE__)
         args = (CStringSlice) array_to_slice(((char*[]){ 
             "/usr/bin/lldb",
+            "-o",
+            "run",
             "--",
             common_compile_and_run_args 
         }));
@@ -224,14 +231,13 @@ typedef enum Command : u8
     COMMAND_COUNT,
 } Command;
 
-struct TestOptions
+STRUCT(TestOptions)
 {
     Slice(Linkage) linkages;
     Slice(OptimizationMode) optimization_modes;
     Slice(String) test_paths;
     Slice(CompilerBackend) compiler_backends;
 };
-typedef struct TestOptions TestOptions;
 
 fn String linkage_name(Linkage linkage)
 {
@@ -475,7 +481,7 @@ int main(int argc, char* argv[], char** envp)
     case COMMAND_RUN_TESTS:
         {
             Arena* arena = arena_init_default(KB(64));
-            Linkage all_linkages[] = { LINKAGE_STATIC, LINKAGE_DYNAMIC };
+            Linkage all_linkages[] = { LINKAGE_DYNAMIC, LINKAGE_STATIC };
             static_assert(array_length(all_linkages) == LINKAGE_COUNT);
             OptimizationMode all_optimization_modes[] = {
                 O0,

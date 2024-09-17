@@ -1,5 +1,9 @@
 #include "lib.h"
+#ifdef __APPLE__
+#define clang_path "/opt/homebrew/opt/llvm/bin/clang"
+#else
 #define clang_path "/usr/bin/clang"
+#endif
 
 #define RawIndex(T, i) (T ## Index) { .index = (i) }
 #define Index(T, i) RawIndex(T, (i) + 1)
@@ -10,245 +14,17 @@
 #define InternPool(T) InternPool_ ## T
 #define GetOrPut(T) T ## GetOrPut
 #define declare_ip(T) \
-struct InternPool(T) \
+STRUCT(InternPool(T)) \
 { \
     T ## Index * pointer; \
     u32 length;\
     u32 capacity;\
 }; \
-typedef struct InternPool(T) InternPool(T);\
-struct GetOrPut(T) \
+STRUCT(GetOrPut(T)) \
 {\
     T ## Index index; \
     u8 existing;\
-};\
-typedef struct GetOrPut(T) GetOrPut(T)
-
-struct StringMapValue
-{
-    String string;
-    u32 value;
-};
-typedef struct StringMapValue StringMapValue;
-
-struct StringMap
-{
-    u32* pointer;
-    u32 length;
-    u32 capacity;
-};
-typedef struct StringMap StringMap;
-
-// fn StringMapValue* string_map_values(StringMap* map)
-// {
-//     assert(map->pointer);
-//     return (StringMapValue*)(map->pointer + map->capacity);
-// }
-
-// fn s32 string_map_find_slot(StringMap* map, u32 original_index, String key)
-// {
-//     s32 result = -1;
-//
-//     if (map->pointer)
-//     {
-//         auto it_index = original_index;
-//         auto existing_capacity = map->capacity;
-//         auto* values = string_map_values(map);
-//
-//         for (u32 i = 0; i < existing_capacity; i += 1)
-//         {
-//             auto index = it_index & (existing_capacity - 1);
-//             u32 existing_key = map->pointer[index];
-//
-//             // Not set
-//             if (existing_key == 0)
-//             {
-//                 result = cast(s32, u32, index);
-//                 break;
-//             }
-//             else 
-//             {
-//                 auto pair = &values[index];
-//                 if (s_equal(pair->string, key))
-//                 {
-//                     result = cast(s32, u32, index);
-//                     break;
-//                 }
-//                 else
-//                 {
-//                     trap();
-//                 }
-//             }
-//
-//             it_index += 1;
-//         }
-//     }
-//
-//     return result;
-// }
-
-struct StringMapPut
-{
-    u32 value;
-    u8 existing;
-};
-typedef struct StringMapPut StringMapPut;
-
-// fn void string_map_ensure_capacity(StringMap* map, Arena* arena, u32 additional)
-// {
-//     auto current_capacity = map->capacity;
-//     auto half_capacity = current_capacity >> 1;
-//     auto destination_length = map->length + additional;
-//
-//     if (destination_length > half_capacity)
-//     {
-//         auto new_capacity = cast(u32, u64, MAX(round_up_to_next_power_of_2(destination_length), 32));
-//         auto new_capacity_bytes = sizeof(u32) * new_capacity + new_capacity * sizeof(StringMapValue);
-//
-//         void* ptr = arena_allocate_bytes(arena, new_capacity_bytes, MAX(alignof(u32), alignof(StringMapValue)));
-//         memset(ptr, 0, new_capacity_bytes);
-//
-//         auto* keys = (u32*)ptr;
-//         auto* values = (StringMapValue*)(keys + new_capacity);
-//
-//         auto* old_keys = map->pointer;
-//         auto old_capacity = map->capacity;
-//         auto* old_values = (StringMapValue*)(map->pointer + current_capacity);
-//
-//         map->length = 0;
-//         map->pointer = keys;
-//         map->capacity = new_capacity;
-//
-//         for (u32 i = 0; i < old_capacity; i += 1)
-//         {
-//             auto key = old_keys[i];
-//             if (key)
-//             {
-//                 unused(values);
-//                 unused(old_values);
-//                 trap();
-//             }
-//         }
-//
-//         for (u32 i = 0; i < old_capacity; i += 1)
-//         {
-//             trap();
-//         }
-//     }
-// }
-
-// fn StringMapPut string_map_put_at_assume_not_existent_assume_capacity(StringMap* map, u32 hash, String key, u32 value, u32 index)
-// {
-//     u32 existing_hash = map->pointer[index];
-//     map->pointer[index] = hash;
-//     auto* values = string_map_values(map);
-//     auto existing_value = values[index];
-//     values[index] = (StringMapValue) {
-//         .value = value,
-//         .string = key,
-//     };
-//     map->length += 1;
-//     assert(existing_hash ? s_equal(existing_value.string, key) : 1);
-//
-//     return (StringMapPut)
-//     {
-//         .value = existing_value.value,
-//         .existing = existing_hash != 0,
-//     };
-// }
-
-// fn StringMapPut string_map_put_assume_not_existent_assume_capacity(StringMap* map, u32 hash, String key, u32 value)
-// {
-//     assert(map->length < map->capacity);
-//     auto index = hash & (map->capacity - 1);
-//     
-//     return string_map_put_at_assume_not_existent_assume_capacity(map, hash, key, value, index);
-// }
-
-// fn StringMapPut string_map_put_assume_not_existent(StringMap* map, Arena* arena, u32 hash, String key, u32 value)
-// {
-//     string_map_ensure_capacity(map, arena, 1);
-//     return string_map_put_assume_not_existent_assume_capacity(map, hash, key, value);
-// }
-
-// fn StringMapPut string_map_get(StringMap* map, String key)
-// {
-//     u32 value = 0;
-//     auto long_hash = hash_bytes(key);
-//     static_assert(sizeof(long_hash) == sizeof(u64));
-//     auto hash = hash64_to_hash32(long_hash);
-//     static_assert(sizeof(hash) == sizeof(u32));
-//     assert(hash);
-//     auto index = hash & (map->capacity - 1);
-//     auto slot = string_map_find_slot(map, index, key);
-//     u8 existing = slot != -1;
-//     if (existing)
-//     {
-//         existing = map->pointer[slot] != 0;
-//         auto* value_pair = &string_map_values(map)[slot];
-//         value = value_pair->value;
-//     }
-//
-//     return (StringMapPut) {
-//         .value = value,
-//         .existing = existing,
-//     };
-// }
-
-// fn StringMapPut string_map_put(StringMap* map, Arena* arena, String key, u32 value)
-// {
-//     auto long_hash = hash_bytes(key);
-//     static_assert(sizeof(long_hash) == sizeof(u64));
-//     auto hash = hash64_to_hash32(long_hash);
-//     static_assert(sizeof(hash) == sizeof(u32));
-//     assert(hash);
-//     auto index = hash & (map->capacity - 1);
-//     auto slot = string_map_find_slot(map, index, key);
-//     if (slot != -1)
-//     {
-//         auto* values = string_map_values(map);
-//         auto* key_pointer = &map->pointer[slot];
-//         auto old_key_pointer = *key_pointer;
-//         *key_pointer = hash;
-//         values[slot].string = key;
-//         values[slot].value = value;
-//         return (StringMapPut) {
-//             .value = value,
-//             .existing = old_key_pointer != 0,
-//         };
-//     }
-//     else
-//     {
-//         if (map->length < map->capacity)
-//         {
-//             trap();
-//         }
-//         else if (map->length == map->capacity)
-//         {
-//             auto result = string_map_put_assume_not_existent(map, arena, hash, key, value);
-//             assert(!result.existing);
-//             return result;
-//         }
-//         else
-//         {
-//             trap();
-//         }
-//     }
-// }
-
-// fn int file_write(String file_path, String file_data)
-// {
-//     int file_descriptor = syscall_open(string_to_c(file_path), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-//     assert(file_descriptor != -1);
-//
-//     auto bytes = syscall_write(file_descriptor, file_data.pointer, file_data.length);
-//     assert(bytes >= 0);
-//     assert((u64)bytes == file_data.length);
-//
-//     int close_result = syscall_close(file_descriptor);
-//     assert(close_result == 0);
-//     return 0;
-// }
+}
 
 fn int dir_make(const char* path)
 {
@@ -294,6 +70,196 @@ fn void print_string(String message)
 #endif
 }
 
+STRUCT(ElfRelocation)
+{
+    u64 offset;
+    u64 info;
+    u64 addend;
+};
+
+typedef enum ElfDynamicEntryTag : s64
+{
+    DT_NULL = 0,
+    DT_NEEDED = 1,
+    DT_PLTRELSZ = 2,
+    DT_PLTGOT = 3,
+    DT_HASH = 4,
+    DT_STRTAB = 5,
+    DT_SYMTAB = 6,
+    DT_RELA = 7,
+    DT_RELASZ = 8,
+    DT_RELAENT = 9,
+    DT_STRSZ = 10,
+    DT_SYMENT = 11,
+    DT_INIT = 12,
+    DT_FINI = 13,
+    DT_SONAME = 14,
+    DT_RPATH = 15,
+    DT_SYMBOLIC = 16,
+    DT_REL = 17,
+    DT_RELSZ = 18,
+    DT_RELENT = 19,
+    DT_PLTREL = 20,
+    DT_DEBUG = 21,
+    DT_TEXTREL = 22,
+    DT_JMPREL = 23,
+    DT_BIND_NOW = 24,
+    DT_INIT_ARRAY = 25,
+    DT_FINI_ARRAY = 26,
+    DT_INIT_ARRAYSZ = 27,
+    DT_FINI_ARRAYSZ = 28,
+    DT_RUNPATH = 29,
+    DT_FLAGS = 30,
+    DT_ENCODING = 32,
+    DT_PREINIT_ARRAY = 32,
+    DT_PREINIT_ARRAYSZ = 33,
+    DT_SYMTAB_SHNDX = 34,
+    DT_RELRSZ = 35,
+    DT_RELR = 36,
+    DT_RELRENT = 37,
+    DT_NUM = 38,
+    DT_LOOS = 0x6000000d,
+    DT_HIOS = 0x6ffff000,
+    DT_LOPROC = 0x70000000,
+    DT_HIPROC = 0x7fffffff,
+    DT_VALRNGLO = 0x6ffffd00,
+    DT_GNU_PRELINKED = 0x6ffffdf5,
+    DT_GNU_CONFLICTSZ = 0x6ffffdf6,
+    DT_GNU_LIBLISTSZ = 0x6ffffdf7,
+    DT_CHECKSUM = 0x6ffffdf8,
+    DT_PLTPADSZ = 0x6ffffdf9,
+    DT_MOVEENT = 0x6ffffdfa,
+    DT_MOVESZ = 0x6ffffdfb,
+    DT_FEATURE_1 = 0x6ffffdfc,
+    DT_POSFLAG_1 = 0x6ffffdfd,
+
+    DT_SYMINSZ = 0x6ffffdfe,
+    DT_SYMINENT = 0x6ffffdff,
+    DT_VALRNGHI = 0x6ffffdff,
+    DT_VALNUM = 12,
+
+    DT_ADDRRNGLO = 0x6ffffe00,
+    DT_GNU_HASH = 0x6ffffef5,
+    DT_TLSDESC_PLT = 0x6ffffef6,
+    DT_TLSDESC_GOT = 0x6ffffef7,
+    DT_GNU_CONFLICT = 0x6ffffef8,
+    DT_GNU_LIBLIST = 0x6ffffef9,
+    DT_CONFIG = 0x6ffffefa,
+    DT_DEPAUDIT = 0x6ffffefb,
+    DT_AUDIT = 0x6ffffefc,
+    DT_PLTPAD = 0x6ffffefd,
+    DT_MOVETAB = 0x6ffffefe,
+    DT_SYMINFO = 0x6ffffeff,
+    DT_ADDRRNGHI = 0x6ffffeff,
+    DT_ADDRNUM = 11,
+
+    DT_VERSYM = 0x6ffffff0,
+
+    DT_RELACOUNT = 0x6ffffff9,
+    DT_RELCOUNT = 0x6ffffffa,
+
+    DT_FLAGS_1 = 0x6ffffffb,
+    DT_VERDEF = 0x6ffffffc,
+
+    DT_VERDEFNUM = 0x6ffffffd,
+    DT_VERNEED = 0x6ffffffe,
+
+    DT_VERNEEDNUM = 0x6fffffff,
+    DT_VERSIONTAGNUM = 16,
+
+    DT_AUXILIARY = 0x7ffffffd,
+    DT_FILTER = 0x7fffffff,
+    DT_EXTRANUM = 3,
+
+    DT_SPARC_REGISTER = 0x70000001,
+    DT_SPARC_NUM = 2,
+
+    DT_MIPS_RLD_VERSION = 0x70000001,
+    DT_MIPS_TIME_STAMP = 0x70000002,
+    DT_MIPS_ICHECKSUM = 0x70000003,
+    DT_MIPS_IVERSION = 0x70000004,
+    DT_MIPS_FLAGS = 0x70000005,
+    DT_MIPS_BASE_ADDRESS = 0x70000006,
+    DT_MIPS_MSYM = 0x70000007,
+    DT_MIPS_CONFLICT = 0x70000008,
+    DT_MIPS_LIBLIST = 0x70000009,
+    DT_MIPS_LOCAL_GOTNO = 0x7000000a,
+    DT_MIPS_CONFLICTNO = 0x7000000b,
+    DT_MIPS_LIBLISTNO = 0x70000010,
+    DT_MIPS_SYMTABNO = 0x70000011,
+    DT_MIPS_UNREFEXTNO = 0x70000012,
+    DT_MIPS_GOTSYM = 0x70000013,
+    DT_MIPS_HIPAGENO = 0x70000014,
+    DT_MIPS_RLD_MAP = 0x70000016,
+    DT_MIPS_DELTA_CLASS = 0x70000017,
+    DT_MIPS_DELTA_CLASS_NO = 0x70000018,
+
+    DT_MIPS_DELTA_INSTANCE = 0x70000019,
+    DT_MIPS_DELTA_INSTANCE_NO = 0x7000001a,
+
+    DT_MIPS_DELTA_RELOC = 0x7000001b,
+    DT_MIPS_DELTA_RELOC_NO = 0x7000001c,
+
+    DT_MIPS_DELTA_SYM = 0x7000001d,
+
+    DT_MIPS_DELTA_SYM_NO = 0x7000001e,
+
+    DT_MIPS_DELTA_CLASSSYM = 0x70000020,
+
+    DT_MIPS_DELTA_CLASSSYM_NO = 0x70000021,
+
+    DT_MIPS_CXX_FLAGS = 0x70000022,
+    DT_MIPS_PIXIE_INIT = 0x70000023,
+    DT_MIPS_SYMBOL_LIB = 0x70000024,
+    DT_MIPS_LOCALPAGE_GOTIDX = 0x70000025,
+    DT_MIPS_LOCAL_GOTIDX = 0x70000026,
+    DT_MIPS_HIDDEN_GOTIDX = 0x70000027,
+    DT_MIPS_PROTECTED_GOTIDX = 0x70000028,
+    DT_MIPS_OPTIONS = 0x70000029,
+    DT_MIPS_INTERFACE = 0x7000002a,
+    DT_MIPS_DYNSTR_ALIGN = 0x7000002b,
+    DT_MIPS_INTERFACE_SIZE = 0x7000002c,
+    DT_MIPS_RLD_TEXT_RESOLVE_ADDR = 0x7000002d,
+
+    DT_MIPS_PERF_SUFFIX = 0x7000002e,
+
+    DT_MIPS_COMPACT_SIZE = 0x7000002f,
+    DT_MIPS_GP_VALUE = 0x70000030,
+    DT_MIPS_AUX_DYNAMIC = 0x70000031,
+
+    DT_MIPS_PLTGOT = 0x70000032,
+
+    DT_MIPS_RWPLT = 0x70000034,
+    DT_MIPS_RLD_MAP_REL = 0x70000035,
+    DT_MIPS_NUM = 0x36,
+
+    DT_ALPHA_PLTRO = (DT_LOPROC + 0),
+    DT_ALPHA_NUM = 1,
+
+    DT_PPC_GOT = (DT_LOPROC + 0),
+    DT_PPC_OPT = (DT_LOPROC + 1),
+    DT_PPC_NUM = 2,
+
+    DT_PPC64_GLINK = (DT_LOPROC + 0),
+    DT_PPC64_OPD = (DT_LOPROC + 1),
+    DT_PPC64_OPDSZ = (DT_LOPROC + 2),
+    DT_PPC64_OPT = (DT_LOPROC + 3),
+    DT_PPC64_NUM = 4,
+
+    DT_IA_64_PLT_RESERVE = (DT_LOPROC + 0),
+    DT_IA_64_NUM = 1,
+} ElfDynamicEntryTag;
+
+STRUCT(ElfDynamicEntry)
+{
+    ElfDynamicEntryTag tag;
+    union
+    {
+        u64 address;
+        s64 value;
+    };
+};
+
 typedef enum ELFSectionType : u32
 {
     ELF_SECTION_NULL = 0X00,
@@ -313,9 +279,43 @@ typedef enum ELFSectionType : u32
     ELF_SECTION_PREINIT_ARRAY = 0X10,
     ELF_SECTION_GROUP = 0X11,
     ELF_SECTION_SYMBOL_TABLE_SECTION_HEADER_INDEX = 0X12,
+    ELF_SECTION_GNU_HASH = 0x6ffffff6,
+    ELF_SECTION_GNU_VERDEF = 0x6ffffffd,
+    ELF_SECTION_GNU_VERNEED = 0x6ffffffe,
+    ELF_SECTION_GNU_VERSYM = 0x6fffffff,
+
 } ELFSectionType;
 
-struct ELFSectionHeaderFlags
+fn String elf_section_type_to_string(ELFSectionType type)
+{
+    switch (type)
+    {
+        case_to_name(ELF_SECTION_, NULL);
+        case_to_name(ELF_SECTION_, PROGRAM);
+        case_to_name(ELF_SECTION_, SYMBOL_TABLE);
+        case_to_name(ELF_SECTION_, STRING_TABLE);
+        case_to_name(ELF_SECTION_, RELOCATION_WITH_ADDENDS);
+        case_to_name(ELF_SECTION_, SYMBOL_HASH_TABLE);
+        case_to_name(ELF_SECTION_, DYNAMIC);
+        case_to_name(ELF_SECTION_, NOTE);
+        case_to_name(ELF_SECTION_, BSS);
+        case_to_name(ELF_SECTION_, RELOCATION_NO_ADDENDS);
+        case_to_name(ELF_SECTION_, LIB);
+        case_to_name(ELF_SECTION_, DYNAMIC_SYMBOL_TABLE);
+        case_to_name(ELF_SECTION_, INIT_ARRAY);
+        case_to_name(ELF_SECTION_, FINI_ARRAY);
+        case_to_name(ELF_SECTION_, PREINIT_ARRAY);
+        case_to_name(ELF_SECTION_, GROUP);
+        case_to_name(ELF_SECTION_, SYMBOL_TABLE_SECTION_HEADER_INDEX);
+        case_to_name(ELF_SECTION_, GNU_HASH);
+        case_to_name(ELF_SECTION_, GNU_VERDEF);
+        case_to_name(ELF_SECTION_, GNU_VERNEED);
+        case_to_name(ELF_SECTION_, GNU_VERSYM);
+      break;
+    }
+}
+
+STRUCT(ELFSectionHeaderFlags)
 {
     u64 write:1;
     u64 alloc:1;
@@ -330,10 +330,9 @@ struct ELFSectionHeaderFlags
     u64 tls:1;
     u64 reserved:53;
 };
-typedef struct ELFSectionHeaderFlags ELFSectionHeaderFlags;
 static_assert(sizeof(ELFSectionHeaderFlags) == sizeof(u64));
 
-struct ELFSectionHeader
+STRUCT(ELFSectionHeader)
 {
     u32 name_offset;
     ELFSectionType type;
@@ -346,9 +345,47 @@ struct ELFSectionHeader
     u64 alignment;
     u64 entry_size;
 };
-typedef struct ELFSectionHeader ELFSectionHeader;
 static_assert(sizeof(ELFSectionHeader) == 64);
 decl_vb(ELFSectionHeader);
+
+typedef enum ElfProgramHeaderType : u32
+{
+    PT_NULL = 0,
+    PT_LOAD = 1,
+    PT_DYNAMIC = 2,
+    PT_INTERP = 3,
+    PT_NOTE = 4,
+    PT_SHLIB = 5,
+    PT_PHDR = 6,
+    PT_TLS = 7,
+    PT_GNU_EH_FRAME	= 0x6474e550, /* GCC .eh_frame_hdr segment */
+    PT_GNU_STACK	= 0x6474e551, /* Indicates stack executability */
+    PT_GNU_RELRO	= 0x6474e552, /* Read-only after relocation */
+    PT_GNU_PROPERTY	= 0x6474e553, /* GNU property */
+    PT_GNU_SFRAME	= 0x6474e554, /* SFrame segment.  */
+} ElfProgramHeaderType;
+
+STRUCT(ElfProgramHeaderFlags)
+{
+    u32 executable:1;
+    u32 writeable:1;
+    u32 readable:1;
+    u32 reserved:29;
+};
+
+STRUCT(ElfProgramHeader)
+{
+    ElfProgramHeaderType type;
+    ElfProgramHeaderFlags flags;
+    u64 offset;
+    u64 virtual_address;
+    u64 physical_address;
+    u64 file_size;
+    u64 memory_size;
+    u64 alignment;
+};
+static_assert(sizeof(ElfProgramHeader) == 0x38);
+declare_slice(ElfProgramHeader);
 
 typedef enum ELFBitCount : u8
 {
@@ -364,8 +401,8 @@ typedef enum ELFEndianness : u8
 
 typedef enum ELFAbi : u8
 {
-    system_v_abi = 0,
-    linux_abi = 3,
+    ELF_ABI_SYSTEM_V = 0,
+    ELF_ABI_LINUX = 3,
 } ELFAbi;
 
 typedef enum ELFType : u16
@@ -390,7 +427,7 @@ typedef enum ELFSectionIndex : u16
     COMMON = 0xfff2,
 } ELFSectionIndex;
 
-struct ELFHeader
+STRUCT(ELFHeader)
 {
     u8 identifier[4];
     ELFBitCount bit_count;
@@ -413,14 +450,13 @@ struct ELFHeader
     u16 section_header_count;
     u16 section_header_string_table_index;
 };
-typedef struct ELFHeader ELFHeader;
 static_assert(sizeof(ELFHeader) == 0x40);
 
 typedef enum ELFSymbolBinding : u8
 {
-    LOCAL = 0,
-    GLOBAL = 1,
-    WEAK = 2,
+    ELF_SYMBOL_BINDING_LOCAL = 0,
+    ELF_SYMBOL_BINDING_GLOBAL = 1,
+    ELF_SYMBOL_BINDING_WEAK = 2,
 } ELFSymbolBinding;
 
 typedef enum ELFSymbolType : u8
@@ -433,7 +469,8 @@ typedef enum ELFSymbolType : u8
     ELF_SYMBOL_TYPE_COMMON = 5,
     ELF_SYMBOL_TYPE_TLS = 6,
 } ELFSymbolType;
-struct ELFSymbol
+
+STRUCT(ELFSymbol)
 {
     u32 name_offset;
     ELFSymbolType type:4;
@@ -443,30 +480,990 @@ struct ELFSymbol
     u64 value;
     u64 size;
 };
-typedef struct ELFSymbol ELFSymbol;
 decl_vb(ELFSymbol);
 static_assert(sizeof(ELFSymbol) == 24);
 
+STRUCT(ElfGnuHashHeader)
+{
+    u32 bucket_count;
+    u32 symbol_offset;
+    u32 bloom_size;
+    u32 bloom_shift;
+};
+
+typedef enum RelocationType_x86_64 : u32
+{
+    R_X86_64_NONE= 0, /* No reloc */
+     R_X86_64_64= 1, /* Direct 64 bit  */
+    R_X86_64_PC32= 2, /* PC relative 32 bit signed */
+    R_X86_64_GOT32= 3, /* 32 bit GOT entry */
+    R_X86_64_PLT32 = 4, /* 32 bit PLT address */
+    R_X86_64_COPY = 5, /* Copy symbol at runtime */
+    R_X86_64_GLOB_DAT = 6, /* Create GOT entry */
+    R_X86_64_JUMP_SLOT = 7, /* Create PLT entry */
+    R_X86_64_RELATIVE = 8, /* Adjust by program base */
+    R_X86_64_GOTPCREL = 9, /* 32 bit signed PC relative offset to GOT */
+    R_X86_64_32 = 10, /* Direct 32 bit zero extended */
+    R_X86_64_32S = 11, /* Direct 32 bit sign extended */
+    R_X86_64_16 = 12, /* Direct 16 bit zero extended */
+    R_X86_64_PC16 = 13, /* 16 bit sign extended pc relative */
+    R_X86_64_8 = 14, /* Direct 8 bit sign extended  */
+    R_X86_64_PC8 = 15, /* 8 bit sign extended pc relative */
+    R_X86_64_DTPMOD64 = 16, /* ID of module containing symbol */
+    R_X86_64_DTPOFF64 = 17, /* Offset in module's TLS block */
+    R_X86_64_TPOFF64 = 18, /* Offset in initial TLS block */
+    R_X86_64_TLSGD = 19, /* 32 bit signed PC relative offset to two GOT entries for GD symbol */
+    R_X86_64_TLSLD = 20, /* 32 bit signed PC relative offset to two GOT entries for LD symbol */
+    R_X86_64_DTPOFF32 = 21, /* Offset in TLS block */
+    R_X86_64_GOTTPOFF = 22, /* 32 bit signed PC relative offset to GOT entry for IE symbol */
+    R_X86_64_TPOFF32 = 23, /* Offset in initial TLS block */
+    R_X86_64_PC64 = 24, /* PC relative 64 bit */
+    R_X86_64_GOTOFF64 = 25, /* 64 bit offset to GOT */
+    R_X86_64_GOTPC32 = 26, /* 32 bit signed pc relative offset to GOT */
+    R_X86_64_GOT64 = 27, /* 64-bit GOT entry offset */
+    R_X86_64_GOTPCREL64 = 28, /* 64-bit PC relative offset to GOT entry */
+    R_X86_64_GOTPC64 = 29, /* 64-bit PC relative offset to GOT */
+    R_X86_64_GOTPLT64 = 30 , /* like GOT64, says PLT entry needed */
+    R_X86_64_PLTOFF64 = 31, /* 64-bit GOT relative offset to PLT entry */
+    R_X86_64_SIZE32 = 32, /* Size of symbol plus 32-bit addend */
+    R_X86_64_SIZE64 = 33, /* Size of symbol plus 64-bit addend */
+    R_X86_64_GOTPC32_TLSDESC = 34, /* GOT offset for TLS descriptor.  */
+    R_X86_64_TLSDESC_CALL = 35, /* Marker for call through TLS descriptor.  */
+    R_X86_64_TLSDESC = 36, /* TLS descriptor.  */
+    R_X86_64_IRELATIVE = 37, /* Adjust indirectly by program base */
+    R_X86_64_RELATIVE64 = 38, /* 64-bit adjust by program base */
+    /* 39 Reserved was R_X86_64_PC32_BND */
+    /* 40 Reserved was R_X86_64_PLT32_BND */
+    R_X86_64_GOTPCRELX = 41, /* Load from 32 bit signed pc relative offset to GOT entry without REX prefix, relaxable.  */
+    R_X86_64_REX_GOTPCRELX = 42, /* Load from 32 bit signed pc relative offset to GOT entry with REX prefix, relaxable.  */
+    R_X86_64_NUM = 43,
+} RelocationType_x86_64;
+
+UNION(RelocationType)
+{
+    RelocationType_x86_64 x86_64;
+};
+
+STRUCT(ElfRelocationWithAddendInfo)
+{
+    RelocationType type;
+    u32 symbol;
+};
+
+STRUCT(ElfRelocationWithAddend)
+{
+    u64 offset;
+    ElfRelocationWithAddendInfo info;
+    u64 addend;
+};
+
+// Custom ELF structures
+
+STRUCT(SymbolTable)
+{
+    VirtualBuffer(ELFSymbol) symbol_table;
+    VirtualBuffer(u8) string_table;
+};
+
 // DWARF
-struct DwarfCompilationUnit
+
+typedef enum DwarfTag : u16
+{
+    DW_TAG_array_type = 0x01,
+    DW_TAG_class_type = 0x02,
+    DW_TAG_entry_point = 0x03,
+    DW_TAG_enumeration_type = 0x04,
+    DW_TAG_formal_parameter = 0x05,
+    DW_TAG_imported_declaration = 0x08,
+    DW_TAG_label = 0x0a,
+    DW_TAG_lexical_block = 0x0b,
+    DW_TAG_member = 0x0d,
+    DW_TAG_pointer_type = 0x0f,
+    DW_TAG_reference_type = 0x10,
+    DW_TAG_compile_unit = 0x11,
+    DW_TAG_string_type = 0x12,
+    DW_TAG_structure_type = 0x13,
+    DW_TAG_subroutine_type = 0x15,
+    DW_TAG_typedef = 0x16,
+    DW_TAG_union_type = 0x17,
+    DW_TAG_unspecified_parameters = 0x18,
+    DW_TAG_variant = 0x19,
+    DW_TAG_common_block = 0x1a,
+    DW_TAG_common_inclusion = 0x1b,
+    DW_TAG_inheritance = 0x1c,
+    DW_TAG_inlined_subroutine = 0x1d,
+    DW_TAG_module = 0x1e,
+    DW_TAG_ptr_to_member_type = 0x1f,
+    DW_TAG_set_type = 0x20,
+    DW_TAG_subrange_type = 0x21,
+    DW_TAG_with_stmt = 0x22,
+    DW_TAG_access_declaration = 0x23,
+    DW_TAG_base_type = 0x24,
+    DW_TAG_catch_block = 0x25,
+    DW_TAG_const_type = 0x26,
+    DW_TAG_constant = 0x27,
+    DW_TAG_enumerator = 0x28,
+    DW_TAG_file_type = 0x29,
+    DW_TAG_friend = 0x2a,
+    DW_TAG_namelist = 0x2b,
+    DW_TAG_namelist_item = 0x2c,
+    DW_TAG_packed_type = 0x2d,
+    DW_TAG_subprogram = 0x2e,
+    DW_TAG_template_type_parameter = 0x2f,
+    DW_TAG_template_value_parameter = 0x30,
+    DW_TAG_thrown_type = 0x31,
+    DW_TAG_try_block = 0x32,
+    DW_TAG_variant_part = 0x33,
+    DW_TAG_variable = 0x34,
+    DW_TAG_volatile_type = 0x35,
+    DW_TAG_dwarf_procedure = 0x36,
+    DW_TAG_restrict_type = 0x37,
+    DW_TAG_interface_type = 0x38,
+    DW_TAG_namespace = 0x39,
+    DW_TAG_imported_module = 0x3a,
+    DW_TAG_unspecified_type = 0x3b,
+    DW_TAG_partial_unit = 0x3c,
+    DW_TAG_imported_unit = 0x3d,
+    DW_TAG_condition = 0x3f,
+    DW_TAG_shared_type = 0x40,
+    DW_TAG_type_unit = 0x41,
+    DW_TAG_rvalue_reference_type = 0x42,
+    DW_TAG_template_alias = 0x43,
+    DW_TAG_coarray_type = 0x44,
+    DW_TAG_generic_subrange = 0x45,
+    DW_TAG_dynamic_type = 0x46,
+    DW_TAG_atomic_type = 0x47,
+    DW_TAG_call_site = 0x48,
+    DW_TAG_call_site_parameter = 0x49,
+    DW_TAG_skeleton_unit = 0x4a,
+    DW_TAG_immutable_type = 0x4b,
+    DW_TAG_lo_user = 0x4080,
+    DW_TAG_hi_user = 0xffff,
+} DwarfTag;
+
+fn String dwarf_tag_to_string(DwarfTag tag)
+{
+    switch (tag)
+    {
+        case_to_name(DW_TAG_, array_type);
+        case_to_name(DW_TAG_, class_type);
+        case_to_name(DW_TAG_, entry_point);
+        case_to_name(DW_TAG_, enumeration_type);
+        case_to_name(DW_TAG_, formal_parameter);
+        case_to_name(DW_TAG_, imported_declaration);
+        case_to_name(DW_TAG_, label);
+        case_to_name(DW_TAG_, lexical_block);
+        case_to_name(DW_TAG_, member);
+        case_to_name(DW_TAG_, pointer_type);
+        case_to_name(DW_TAG_, reference_type);
+        case_to_name(DW_TAG_, compile_unit);
+        case_to_name(DW_TAG_, string_type);
+        case_to_name(DW_TAG_, structure_type);
+        case_to_name(DW_TAG_, subroutine_type);
+        case_to_name(DW_TAG_, typedef);
+        case_to_name(DW_TAG_, union_type);
+        case_to_name(DW_TAG_, unspecified_parameters);
+        case_to_name(DW_TAG_, variant);
+        case_to_name(DW_TAG_, common_block);
+        case_to_name(DW_TAG_, common_inclusion);
+        case_to_name(DW_TAG_, inheritance);
+        case_to_name(DW_TAG_, inlined_subroutine);
+        case_to_name(DW_TAG_, module);
+        case_to_name(DW_TAG_, ptr_to_member_type);
+        case_to_name(DW_TAG_, set_type);
+        case_to_name(DW_TAG_, subrange_type);
+        case_to_name(DW_TAG_, with_stmt);
+        case_to_name(DW_TAG_, access_declaration);
+        case_to_name(DW_TAG_, base_type);
+        case_to_name(DW_TAG_, catch_block);
+        case_to_name(DW_TAG_, const_type);
+        case_to_name(DW_TAG_, constant);
+        case_to_name(DW_TAG_, enumerator);
+        case_to_name(DW_TAG_, file_type);
+        case_to_name(DW_TAG_, friend);
+        case_to_name(DW_TAG_, namelist);
+        case_to_name(DW_TAG_, namelist_item);
+        case_to_name(DW_TAG_, packed_type);
+        case_to_name(DW_TAG_, subprogram);
+        case_to_name(DW_TAG_, template_type_parameter);
+        case_to_name(DW_TAG_, template_value_parameter);
+        case_to_name(DW_TAG_, thrown_type);
+        case_to_name(DW_TAG_, try_block);
+        case_to_name(DW_TAG_, variant_part);
+        case_to_name(DW_TAG_, variable);
+        case_to_name(DW_TAG_, volatile_type);
+        case_to_name(DW_TAG_, dwarf_procedure);
+        case_to_name(DW_TAG_, restrict_type);
+        case_to_name(DW_TAG_, interface_type);
+        case_to_name(DW_TAG_, namespace);
+        case_to_name(DW_TAG_, imported_module);
+        case_to_name(DW_TAG_, unspecified_type);
+        case_to_name(DW_TAG_, partial_unit);
+        case_to_name(DW_TAG_, imported_unit);
+        case_to_name(DW_TAG_, condition);
+        case_to_name(DW_TAG_, shared_type);
+        case_to_name(DW_TAG_, type_unit);
+        case_to_name(DW_TAG_, rvalue_reference_type);
+        case_to_name(DW_TAG_, template_alias);
+        case_to_name(DW_TAG_, coarray_type);
+        case_to_name(DW_TAG_, generic_subrange);
+        case_to_name(DW_TAG_, dynamic_type);
+        case_to_name(DW_TAG_, atomic_type);
+        case_to_name(DW_TAG_, call_site);
+        case_to_name(DW_TAG_, call_site_parameter);
+        case_to_name(DW_TAG_, skeleton_unit);
+        case_to_name(DW_TAG_, immutable_type);
+        case_to_name(DW_TAG_, lo_user);
+        case_to_name(DW_TAG_, hi_user);
+    }
+}
+
+typedef enum DwarfAttribute : u16
+{
+    DW_AT_sibling = 0x01, // reference
+    DW_AT_location = 0x02, // exprloc, loclist
+    DW_AT_name = 0x03, // string
+    DW_AT_ordering = 0x09, // constant
+    DW_AT_byte_size = 0x0b, // constant, exprloc, reference
+    DW_AT_bit_size = 0x0d, // constant, exprloc, reference
+    DW_AT_stmt_list = 0x10, // lineptr
+    DW_AT_low_pc = 0x11, // address
+    DW_AT_high_pc = 0x12, // address, constant
+    DW_AT_language = 0x13, // constant
+    DW_AT_discr = 0x15, //reference
+    DW_AT_discr_value = 0x16, // constant
+    DW_AT_visibility = 0x17, // constant
+    DW_AT_import = 0x18, // reference
+    DW_AT_string_length = 0x19, // exprloc, loclist, reference
+    DW_AT_common_reference = 0x1a, // reference
+    DW_AT_comp_dir = 0x1b, // string
+    DW_AT_const_value = 0x1c, // block, constant, string
+    DW_AT_containing_type = 0x1d, // reference
+    DW_AT_default_value = 0x1e, // constant, reference, flag
+    DW_AT_inline = 0x20, // constant
+    DW_AT_is_optional = 0x21, // flag
+    DW_AT_lower_bound = 0x22, // constant, exprloc, reference
+    DW_AT_producer = 0x25, // string
+    DW_AT_prototyped = 0x27, // flag
+    DW_AT_return_addr = 0x2a, // exprloc, loclist
+    DW_AT_start_scope = 0x2c, // constant, rnglist
+    DW_AT_bit_stride = 0x2e, // constant, exprloc, reference
+    DW_AT_upper_bound = 0x2f, // constant, exprloc, reference
+    DW_AT_abstract_origin = 0x31, // reference
+    DW_AT_accessibility = 0x32, // constant
+    DW_AT_address_class = 0x33, // constant
+    DW_AT_artificial = 0x34, // flag
+    DW_AT_base_types = 0x35, // reference
+    DW_AT_calling_convention = 0x36, // constant
+    DW_AT_count = 0x37, // constant, exprloc, reference
+    DW_AT_data_member_location = 0x38, // constant, exprloc, loclist
+    DW_AT_decl_column = 0x39, // constant
+    DW_AT_decl_file = 0x3a, // constant
+    DW_AT_decl_line = 0x3b, // constant
+    DW_AT_declaration = 0x3c, // flag
+    DW_AT_discr_list = 0x3d, // block
+    DW_AT_encoding = 0x3e, // constant
+    DW_AT_external = 0x3f, // flag
+    DW_AT_frame_base = 0x40, // exprloc, loclist
+    DW_AT_friend = 0x41, // reference
+    DW_AT_identifier_case = 0x42, // constant
+    Reserved = 0x433, // macptr
+    DW_AT_namelist_item = 0x44, // reference
+    DW_AT_priority = 0x45, // reference
+    DW_AT_segment = 0x46, // exprloc, loclist
+    DW_AT_specification = 0x47, // reference
+    DW_AT_static_link = 0x48, // exprloc, loclist
+    DW_AT_type = 0x49, // reference
+    DW_AT_use_location = 0x4a, // exprloc, loclist
+    DW_AT_variable_parameter = 0x4b, //flag
+    DW_AT_virtuality = 0x4c, // constant
+    DW_AT_vtable_elem_location = 0x4d, // exprloc, loclist
+    DW_AT_allocated = 0x4e, // constant, exprloc, reference
+    DW_AT_associated = 0x4f, // constant, exprloc, reference
+    DW_AT_data_location = 0x50, // exprloc
+    DW_AT_byte_stride = 0x51, // constant, exprloc, reference
+    DW_AT_entry_pc = 0x52, // address, constant
+    DW_AT_use_UTF8 = 0x53, // flag
+    DW_AT_extension = 0x54, // reference
+    DW_AT_ranges = 0x55, // rnglist
+    DW_AT_trampoline = 0x56, // address, flag, reference, string
+    DW_AT_call_column = 0x57, // constant
+    DW_AT_call_file = 0x58, // constant
+    DW_AT_call_line = 0x59, // constant
+    DW_AT_description = 0x5a, // string
+    DW_AT_binary_scale = 0x5b, // constant
+    DW_AT_decimal_scale = 0x5c, // constant
+    DW_AT_small = 0x5d, // reference
+    DW_AT_decimal_sign = 0x5e, // constant
+    DW_AT_digit_count = 0x5f, // constant
+    DW_AT_picture_string = 0x60, // string
+    DW_AT_mutable = 0x61, // flag
+    DW_AT_threads_scaled = 0x62, // flag
+    DW_AT_explicit = 0x63, // flag
+    DW_AT_object_pointer = 0x64, // reference
+    DW_AT_endianity = 0x65, // constant
+    DW_AT_elemental = 0x66, // flag
+    DW_AT_pure = 0x67, // flag
+    DW_AT_recursive = 0x68, // flag
+    DW_AT_signature = 0x69, // reference
+    DW_AT_main_subprogram = 0x6a, // flag
+    DW_AT_data_bit_offset = 0x6b, // constant
+    DW_AT_const_expr = 0x6c, // flag
+    DW_AT_enum_class = 0x6d, // flag
+    DW_AT_linkage_name = 0x6e, // string
+    DW_AT_string_length_bit_size = 0x6f, //constant
+    DW_AT_string_length_byte_size = 0x70, //constant
+    DW_AT_rank = 0x71, //constant, exprloc
+    DW_AT_str_offsets_base = 0x72, //stroffsetsptr
+    DW_AT_addr_base = 0x73, //addrptr
+    DW_AT_rnglists_base = 0x74, //rnglistsptr
+    DW_AT_dwo_name = 0x76, //string
+    DW_AT_reference = 0x77, //flag
+    DW_AT_rvalue_reference = 0x78, //flag
+    DW_AT_macros = 0x79, //macptr
+    DW_AT_call_all_calls = 0x7a, //flag
+    DW_AT_call_all_source_calls = 0x7b, //flag
+    DW_AT_call_all_tail_calls = 0x7c, //flag
+    DW_AT_call_return_pc = 0x7d, //address
+    DW_AT_call_value = 0x7e, //exprloc
+    DW_AT_call_origin = 0x7f, //exprloc
+    DW_AT_call_parameter = 0x80, //reference
+    DW_AT_call_pc = 0x81, //address
+    DW_AT_call_tail_call = 0x82, //flag
+    DW_AT_call_target = 0x83, //exprloc
+    DW_AT_call_target_clobbered = 0x84, //exprloc
+    DW_AT_call_data_location = 0x85, //exprloc
+    DW_AT_call_data_value = 0x86, //exprloc
+    DW_AT_noreturn = 0x87, //flag
+    DW_AT_alignment = 0x88, //constant
+    DW_AT_export_symbols = 0x89, //flag
+    DW_AT_deleted = 0x8a, //flag
+    DW_AT_defaulted = 0x8b, //constant
+    DW_AT_loclists_base = 0x8c, //loclistsptr
+    DW_AT_lo_user = 0x2000,
+    DW_AT_hi_user = 0x3fff,
+} DwarfAttribute;
+
+String dwarf_attribute_to_string(DwarfAttribute attribute)
+{
+    switch (attribute)
+    {
+        case_to_name(DW_AT_, sibling);
+        case_to_name(DW_AT_, location);
+        case_to_name(DW_AT_, name);
+        case_to_name(DW_AT_, ordering);
+        case_to_name(DW_AT_, byte_size);
+        case_to_name(DW_AT_, bit_size);
+        case_to_name(DW_AT_, stmt_list);
+        case_to_name(DW_AT_, low_pc);
+        case_to_name(DW_AT_, high_pc);
+        case_to_name(DW_AT_, language);
+        case_to_name(DW_AT_, discr);
+        case_to_name(DW_AT_, discr_value);
+        case_to_name(DW_AT_, visibility);
+        case_to_name(DW_AT_, import);
+        case_to_name(DW_AT_, string_length);
+        case_to_name(DW_AT_, common_reference);
+        case_to_name(DW_AT_, comp_dir);
+        case_to_name(DW_AT_, const_value);
+        case_to_name(DW_AT_, containing_type);
+        case_to_name(DW_AT_, default_value);
+        case_to_name(DW_AT_, inline);
+        case_to_name(DW_AT_, is_optional);
+        case_to_name(DW_AT_, lower_bound);
+        case_to_name(DW_AT_, producer);
+        case_to_name(DW_AT_, prototyped);
+        case_to_name(DW_AT_, return_addr);
+        case_to_name(DW_AT_, start_scope);
+        case_to_name(DW_AT_, bit_stride);
+        case_to_name(DW_AT_, upper_bound);
+        case_to_name(DW_AT_, abstract_origin);
+        case_to_name(DW_AT_, accessibility);
+        case_to_name(DW_AT_, address_class);
+        case_to_name(DW_AT_, artificial);
+        case_to_name(DW_AT_, base_types);
+        case_to_name(DW_AT_, calling_convention);
+        case_to_name(DW_AT_, count);
+        case_to_name(DW_AT_, data_member_location);
+        case_to_name(DW_AT_, decl_column);
+        case_to_name(DW_AT_, decl_file);
+        case_to_name(DW_AT_, decl_line);
+        case_to_name(DW_AT_, declaration);
+        case_to_name(DW_AT_, discr_list);
+        case_to_name(DW_AT_, encoding);
+        case_to_name(DW_AT_, external);
+        case_to_name(DW_AT_, frame_base);
+        case_to_name(DW_AT_, friend);
+        case_to_name(DW_AT_, identifier_case);
+        case_to_name(Reserv, ed);
+        case_to_name(DW_AT_, namelist_item);
+        case_to_name(DW_AT_, priority);
+        case_to_name(DW_AT_, segment);
+        case_to_name(DW_AT_, specification);
+        case_to_name(DW_AT_, static_link);
+        case_to_name(DW_AT_, type);
+        case_to_name(DW_AT_, use_location);
+        case_to_name(DW_AT_, variable_parameter);
+        case_to_name(DW_AT_, virtuality);
+        case_to_name(DW_AT_, vtable_elem_location);
+        case_to_name(DW_AT_, allocated);
+        case_to_name(DW_AT_, associated);
+        case_to_name(DW_AT_, data_location);
+        case_to_name(DW_AT_, byte_stride);
+        case_to_name(DW_AT_, entry_pc);
+        case_to_name(DW_AT_, use_UTF8);
+        case_to_name(DW_AT_, extension);
+        case_to_name(DW_AT_, ranges);
+        case_to_name(DW_AT_, trampoline);
+        case_to_name(DW_AT_, call_column);
+        case_to_name(DW_AT_, call_file);
+        case_to_name(DW_AT_, call_line);
+        case_to_name(DW_AT_, description);
+        case_to_name(DW_AT_, binary_scale);
+        case_to_name(DW_AT_, decimal_scale);
+        case_to_name(DW_AT_, small);
+        case_to_name(DW_AT_, decimal_sign);
+        case_to_name(DW_AT_, digit_count);
+        case_to_name(DW_AT_, picture_string);
+        case_to_name(DW_AT_, mutable);
+        case_to_name(DW_AT_, threads_scaled);
+        case_to_name(DW_AT_, explicit);
+        case_to_name(DW_AT_, object_pointer);
+        case_to_name(DW_AT_, endianity);
+        case_to_name(DW_AT_, elemental);
+        case_to_name(DW_AT_, pure);
+        case_to_name(DW_AT_, recursive);
+        case_to_name(DW_AT_, signature);
+        case_to_name(DW_AT_, main_subprogram);
+        case_to_name(DW_AT_, data_bit_offset);
+        case_to_name(DW_AT_, const_expr);
+        case_to_name(DW_AT_, enum_class);
+        case_to_name(DW_AT_, linkage_name);
+        case_to_name(DW_AT_, string_length_bit_size);
+        case_to_name(DW_AT_, string_length_byte_size);
+        case_to_name(DW_AT_, rank);
+        case_to_name(DW_AT_, str_offsets_base);
+        case_to_name(DW_AT_, addr_base);
+        case_to_name(DW_AT_, rnglists_base);
+        case_to_name(DW_AT_, dwo_name);
+        case_to_name(DW_AT_, reference);
+        case_to_name(DW_AT_, rvalue_reference);
+        case_to_name(DW_AT_, macros);
+        case_to_name(DW_AT_, call_all_calls);
+        case_to_name(DW_AT_, call_all_source_calls);
+        case_to_name(DW_AT_, call_all_tail_calls);
+        case_to_name(DW_AT_, call_return_pc);
+        case_to_name(DW_AT_, call_value);
+        case_to_name(DW_AT_, call_origin);
+        case_to_name(DW_AT_, call_parameter);
+        case_to_name(DW_AT_, call_pc);
+        case_to_name(DW_AT_, call_tail_call);
+        case_to_name(DW_AT_, call_target);
+        case_to_name(DW_AT_, call_target_clobbered);
+        case_to_name(DW_AT_, call_data_location);
+        case_to_name(DW_AT_, call_data_value);
+        case_to_name(DW_AT_, noreturn);
+        case_to_name(DW_AT_, alignment);
+        case_to_name(DW_AT_, export_symbols);
+        case_to_name(DW_AT_, deleted);
+        case_to_name(DW_AT_, defaulted);
+        case_to_name(DW_AT_, loclists_base);
+        case_to_name(DW_AT_, lo_user);
+        case_to_name(DW_AT_, hi_user);
+    }
+}
+
+typedef enum DwarfForm : u8
+{
+    DW_FORM_addr = 0x01, // address
+    DW_FORM_block2 = 0x03, // block
+    DW_FORM_block4 = 0x04, // block
+    DW_FORM_data2 = 0x05, // constant
+    DW_FORM_data4 = 0x06, // constant
+    DW_FORM_data8 = 0x07, // constant
+    DW_FORM_string = 0x08, // string
+    DW_FORM_block = 0x09, // block
+    DW_FORM_block1 = 0x0a, // block
+    DW_FORM_data1 = 0x0b, // constant
+    DW_FORM_flag = 0x0c, // flag
+    DW_FORM_sdata = 0x0d, // constant
+    DW_FORM_strp = 0x0e, // string
+    DW_FORM_udata = 0x0f, // constant
+    DW_FORM_ref_addr = 0x10, // reference
+    DW_FORM_ref1 = 0x11, // reference
+    DW_FORM_ref2 = 0x12, // reference
+    DW_FORM_ref4 = 0x13, // reference
+    DW_FORM_ref8 = 0x14, // reference
+    DW_FORM_ref_udata = 0x15, // reference
+    DW_FORM_indirect = 0x16, // (see Section 7.5.3 on page 203)
+    DW_FORM_sec_offset = 0x17, // addrptr, lineptr, loclist, loclistsptr, macptr, rnglist, rnglistsptr, stroffsetsptr
+    DW_FORM_exprloc = 0x18, // exprloc
+    DW_FORM_flag_present = 0x19, // flag
+    DW_FORM_strx = 0x1a, // string
+    DW_FORM_addrx = 0x1b, // address
+    DW_FORM_ref_sup4 = 0x1c, // reference
+    DW_FORM_strp_sup = 0x1d, // string
+    DW_FORM_data16 = 0x1e, // constant
+    DW_FORM_line_strp = 0x1f, // string
+    DW_FORM_ref_sig8 = 0x20, // reference
+    DW_FORM_implicit_const = 0x21, // constant
+    DW_FORM_loclistx = 0x22, // loclist
+    DW_FORM_rnglistx = 0x23, // rnglist
+    DW_FORM_ref_sup8 = 0x24, // reference
+    DW_FORM_strx1 = 0x25, // string
+    DW_FORM_strx2 = 0x26, // string
+    DW_FORM_strx3 = 0x27, // string
+    DW_FORM_strx4 = 0x28, // string
+    DW_FORM_addrx1 = 0x29, // address
+    DW_FORM_addrx2 = 0x2a, // address
+    DW_FORM_addrx3 = 0x2b, // address
+    DW_FORM_addrx4 = 0x2c, // address
+} DwarfForm;
+
+fn String dwarf_form_to_string(DwarfForm form)
+{
+    switch (form)
+    {
+        case_to_name(DW_FORM_, addr);
+        case_to_name(DW_FORM_, block2);
+        case_to_name(DW_FORM_, block4);
+        case_to_name(DW_FORM_, data2);
+        case_to_name(DW_FORM_, data4);
+        case_to_name(DW_FORM_, data8);
+        case_to_name(DW_FORM_, string);
+        case_to_name(DW_FORM_, block);
+        case_to_name(DW_FORM_, block1);
+        case_to_name(DW_FORM_, data1);
+        case_to_name(DW_FORM_, flag);
+        case_to_name(DW_FORM_, sdata);
+        case_to_name(DW_FORM_, strp);
+        case_to_name(DW_FORM_, udata);
+        case_to_name(DW_FORM_, ref_addr);
+        case_to_name(DW_FORM_, ref1);
+        case_to_name(DW_FORM_, ref2);
+        case_to_name(DW_FORM_, ref4);
+        case_to_name(DW_FORM_, ref8);
+        case_to_name(DW_FORM_, ref_udata);
+        case_to_name(DW_FORM_, indirect);
+        case_to_name(DW_FORM_, sec_offset);
+        case_to_name(DW_FORM_, exprloc);
+        case_to_name(DW_FORM_, flag_present);
+        case_to_name(DW_FORM_, strx);
+        case_to_name(DW_FORM_, addrx);
+        case_to_name(DW_FORM_, ref_sup4);
+        case_to_name(DW_FORM_, strp_sup);
+        case_to_name(DW_FORM_, data16);
+        case_to_name(DW_FORM_, line_strp);
+        case_to_name(DW_FORM_, ref_sig8);
+        case_to_name(DW_FORM_, implicit_const);
+        case_to_name(DW_FORM_, loclistx);
+        case_to_name(DW_FORM_, rnglistx);
+        case_to_name(DW_FORM_, ref_sup8);
+        case_to_name(DW_FORM_, strx1);
+        case_to_name(DW_FORM_, strx2);
+        case_to_name(DW_FORM_, strx3);
+        case_to_name(DW_FORM_, strx4);
+        case_to_name(DW_FORM_, addrx1);
+        case_to_name(DW_FORM_, addrx2);
+        case_to_name(DW_FORM_, addrx3);
+        case_to_name(DW_FORM_, addrx4);
+    }
+}
+
+typedef enum DwarfUnitType : u8
+{
+    DW_UT_compile = 0x01, 
+    DW_UT_type = 0x02, 
+    DW_UT_partial = 0x03, 
+    DW_UT_skeleton = 0x04, 
+    DW_UT_split_compile = 0x05, 
+    DW_UT_split_type = 0x06, 
+    DW_UT_lo_user = 0x80, 
+    DW_UT_hi_user = 0xff, 
+} DwarfUnitType;
+
+typedef enum DwarfOperation : u8
+{
+    DW_OP_addr = 0x03, // Operands: 1
+    DW_OP_deref = 0x06, // Operands: 0
+    DW_OP_const1u = 0x08, // Operands: 1
+    DW_OP_const1s = 0x09, // Operands: 1
+    DW_OP_const2u = 0x0a, // Operands: 1
+    DW_OP_const2s = 0x0b, // Operands: 1
+    DW_OP_const4u = 0x0c, // Operands: 1
+    DW_OP_const4s = 0x0d, // Operands: 1
+    DW_OP_const8u = 0x0e, // Operands: 1
+    DW_OP_const8s = 0x0f, // Operands: 1
+    DW_OP_constu = 0x10, // Operands: 1, uleb128
+    DW_OP_consts = 0x11, // Operands: 1 sleb128
+    DW_OP_dup = 0x12, // Operands: 0
+    DW_OP_drop = 0x13, // Operands: 0
+    DW_OP_over = 0x14, // Operands: 0
+    DW_OP_pick = 0x15, // Operands: 1, 1-byte stack index
+    DW_OP_swap = 0x16, // Operands: 0
+    DW_OP_rot = 0x17, // Operands: 0
+    DW_OP_xderef = 0x18, // Operands: 0
+    DW_OP_abs = 0x19, // Operands: 0
+    DW_OP_and = 0x1a , // Operands: 0
+    DW_OP_div = 0x1b, // Operands: 0
+    DW_OP_minus = 0x1c, // Operands: 0
+    DW_OP_mod = 0x1d, // Operands: 0
+    DW_OP_mul = 0x1e, // Operands: 0
+    DW_OP_neg = 0x1f, // Operands: 0
+    DW_OP_not = 0x20, // Operands: 0
+    DW_OP_or = 0x21, // Operands: 0
+    DW_OP_plus = 0x22, // Operands: 0
+    DW_OP_plus_uconst = 0x23, // Operands: 1, ULEB128 addend
+    DW_OP_shl = 0x24, // Operands: 0
+    DW_OP_shr = 0x25, // Operands: 0
+    DW_OP_shra = 0x26, // Operands: 0
+    DW_OP_xor = 0x27, // Operands: 0
+    DW_OP_bra = 0x28, // Operands: 1, signed 2-byte constant
+    DW_OP_eq = 0x29, // Operands: 0
+    DW_OP_ge = 0x2a, // Operands: 0
+    DW_OP_gt = 0x2b, // Operands: 0
+    DW_OP_le = 0x2c, // Operands: 0
+    DW_OP_lt = 0x2d, // Operands: 0
+    DW_OP_ne = 0x2e, // Operands: 0
+    DW_OP_skip = 0x2f, // Operands: 1, signed 2-byte constant
+    DW_OP_lit0 = 0x30, // Operands: 0
+    DW_OP_lit1 = 0x31, // Operands: 0
+    DW_OP_lit2 = 0x32, // Operands: 0
+    DW_OP_lit3 = 0x33, // Operands: 0
+    DW_OP_lit4 = 0x34, // Operands: 0
+    DW_OP_lit5 = 0x35, // Operands: 0
+    DW_OP_lit6 = 0x36, // Operands: 0
+    DW_OP_lit7 = 0x37, // Operands: 0
+    DW_OP_lit8 = 0x38, // Operands: 0
+    DW_OP_lit9 = 0x39, // Operands: 0
+    DW_OP_lit10 = 0x3a, // Operands: 0
+    DW_OP_lit11 = 0x3b, // Operands: 0
+    DW_OP_lit12 = 0x3c, // Operands: 0
+    DW_OP_lit13 = 0x3d, // Operands: 0
+    DW_OP_lit14 = 0x3e, // Operands: 0
+    DW_OP_lit15 = 0x3f, // Operands: 0
+    DW_OP_lit16 = 0x40, // Operands: 0
+    DW_OP_lit17 = 0x41, // Operands: 0
+    DW_OP_lit18 = 0x42, // Operands: 0
+    DW_OP_lit19 = 0x43, // Operands: 0
+    DW_OP_lit20 = 0x44, // Operands: 0
+    DW_OP_lit21 = 0x45, // Operands: 0
+    DW_OP_lit22 = 0x46, // Operands: 0
+    DW_OP_lit23 = 0x47, // Operands: 0
+    DW_OP_lit24 = 0x48, // Operands: 0
+    DW_OP_lit25 = 0x49, // Operands: 0
+    DW_OP_lit26 = 0x4a, // Operands: 0
+    DW_OP_lit27 = 0x4b, // Operands: 0
+    DW_OP_lit28 = 0x4c, // Operands: 0
+    DW_OP_lit29 = 0x4d, // Operands: 0
+    DW_OP_lit30 = 0x4e, // Operands: 0
+    DW_OP_lit31 = 0x4f, // Operands: 0
+    DW_OP_reg0 = 0x50, // Operands: 0
+    DW_OP_reg1 = 0x51, // Operands: 0
+    DW_OP_reg2 = 0x52, // Operands: 0
+    DW_OP_reg3 = 0x53, // Operands: 0
+    DW_OP_reg4 = 0x54, // Operands: 0
+    DW_OP_reg5 = 0x55, // Operands: 0
+    DW_OP_reg6 = 0x56, // Operands: 0
+    DW_OP_reg7 = 0x57, // Operands: 0
+    DW_OP_reg8 = 0x58, // Operands: 0
+    DW_OP_reg9 = 0x59, // Operands: 0
+    DW_OP_reg10 = 0x5a, // Operands: 0
+    DW_OP_reg11 = 0x5b, // Operands: 0
+    DW_OP_reg12 = 0x5c, // Operands: 0
+    DW_OP_reg13 = 0x5d, // Operands: 0
+    DW_OP_reg14 = 0x5e, // Operands: 0
+    DW_OP_reg15 = 0x5f, // Operands: 0
+    DW_OP_reg16 = 0x60, // Operands: 0
+    DW_OP_reg17 = 0x61, // Operands: 0
+    DW_OP_reg18 = 0x62, // Operands: 0
+    DW_OP_reg19 = 0x63, // Operands: 0
+    DW_OP_reg20 = 0x64, // Operands: 0
+    DW_OP_reg21 = 0x65, // Operands: 0
+    DW_OP_reg22 = 0x66, // Operands: 0
+    DW_OP_reg23 = 0x67, // Operands: 0
+    DW_OP_reg24 = 0x68, // Operands: 0
+    DW_OP_reg25 = 0x69, // Operands: 0
+    DW_OP_reg26 = 0x6a, // Operands: 0
+    DW_OP_reg27 = 0x6b, // Operands: 0
+    DW_OP_reg28 = 0x6c, // Operands: 0
+    DW_OP_reg29 = 0x6d, // Operands: 0
+    DW_OP_reg30 = 0x6e, // Operands: 0
+    DW_OP_reg31 = 0x6f, // Operands: 0
+    DW_OP_breg0 = 0x70, // Operands: 1, SLEB128 offset
+    DW_OP_breg1 = 0x71, // Operands: 1, SLEB128 offset
+    DW_OP_breg2 = 0x72, // Operands: 1, SLEB128 offset
+    DW_OP_breg3 = 0x73, // Operands: 1, SLEB128 offset
+    DW_OP_breg4 = 0x74, // Operands: 1, SLEB128 offset
+    DW_OP_breg5 = 0x75, // Operands: 1, SLEB128 offset
+    DW_OP_breg6 = 0x76, // Operands: 1, SLEB128 offset
+    DW_OP_breg7 = 0x77, // Operands: 1, SLEB128 offset
+    DW_OP_breg8 = 0x78, // Operands: 1, SLEB128 offset
+    DW_OP_breg9 = 0x79, // Operands: 1, SLEB128 offset
+    DW_OP_breg10 = 0x7a, // Operands: 1, SLEB128 offset
+    DW_OP_breg11 = 0x7b, // Operands: 1, SLEB128 offset
+    DW_OP_breg12 = 0x7c, // Operands: 1, SLEB128 offset
+    DW_OP_breg13 = 0x7d, // Operands: 1, SLEB128 offset
+    DW_OP_breg14 = 0x7e, // Operands: 1, SLEB128 offset
+    DW_OP_breg15 = 0x7f, // Operands: 1, SLEB128 offset
+    DW_OP_breg16 = 0x80, // Operands: 1, SLEB128 offset
+    DW_OP_breg17 = 0x81, // Operands: 1, SLEB128 offset
+    DW_OP_breg18 = 0x82, // Operands: 1, SLEB128 offset
+    DW_OP_breg19 = 0x83, // Operands: 1, SLEB128 offset
+    DW_OP_breg20 = 0x84, // Operands: 1, SLEB128 offset
+    DW_OP_breg21 = 0x85, // Operands: 1, SLEB128 offset
+    DW_OP_breg22 = 0x86, // Operands: 1, SLEB128 offset
+    DW_OP_breg23 = 0x87, // Operands: 1, SLEB128 offset
+    DW_OP_breg24 = 0x88, // Operands: 1, SLEB128 offset
+    DW_OP_breg25 = 0x89, // Operands: 1, SLEB128 offset
+    DW_OP_breg26 = 0x8a, // Operands: 1, SLEB128 offset
+    DW_OP_breg27 = 0x8b, // Operands: 1, SLEB128 offset
+    DW_OP_breg28 = 0x8c, // Operands: 1, SLEB128 offset
+    DW_OP_breg29 = 0x8d, // Operands: 1, SLEB128 offset
+    DW_OP_breg30 = 0x8e, // Operands: 1, SLEB128 offset
+    DW_OP_breg31 = 0x8f, // Operands: 1, SLEB128 offset
+    DW_OP_regx = 0x90, // Operands: 1, ULEB128 register
+    DW_OP_fbreg = 0x91, // Operands: 1, SLEB128 offset
+    DW_OP_bregx = 0x92, // Operands: 2 ULEB128 register, SLEB128 offset
+    DW_OP_piece = 0x93, // Operands: 1, ULEB128 size of piece
+    DW_OP_deref_size = 0x94, // Operands: 1, 1-byte size of data retrieved
+    DW_OP_xderef_size = 0x95, // Operands: 1, 1-byte size of data retrieved
+    DW_OP_nop = 0x96, // Operands: 0
+    DW_OP_push_object_address = 0x97, // Operands: 0
+    DW_OP_call2 = 0x98, // Operands: 1, 2-byte offset of DIE
+    DW_OP_call4 = 0x99, // Operands: 1, 4-byte offset of DIE
+    DW_OP_call_ref = 0x9a, // Operands: 1, 4- or 8-byte offset of DIE
+    DW_OP_form_tls_address = 0x9b, // Operands: 0
+    DW_OP_call_frame_cfa = 0x9c, // Operands: 0
+    DW_OP_bit_piece = 0x9d, // Operands: 2, ULEB128 size, ULEB128 offset
+    DW_OP_implicit_value = 0x9e, // Operands: 2, ULEB128 size, block of that size
+    DW_OP_stack_value = 0x9f, // Operands: 0
+    DW_OP_implicit_pointer = 0xa0, // Operands: 2, 4- or 8-byte offset of DIE, SLEB128 constant offset
+    DW_OP_addrx = 0xa1, // Operands: 1, ULEB128 indirect address
+    DW_OP_constx = 0xa2, // Operands: 1, ULEB128 indirect constant
+    DW_OP_entry_value = 0xa3, // Operands: 2, ULEB128 size, block of that size
+    DW_OP_const_type = 0xa4, // Operands: 3, ULEB128 type entry offset, 1-byte size, constant value
+    DW_OP_regval_type = 0xa5, // Operands: 2, ULEB128 register number, ULEB128 constant offset
+    DW_OP_deref_type = 0xa6, // Operands: 2, 1-byte size, ULEB128 type entry offset
+    DW_OP_xderef_type = 0xa7, // Operands: 2, 1-byte size, ULEB128 type entry offset
+    DW_OP_convert = 0xa8, // Operands: 1, ULEB128 type entry offset
+    DW_OP_reinterpret = 0xa9, // Operands: 1,  ULEB128 type entry offset
+    DW_OP_lo_user = 0xe0,
+    DW_OP_hi_user = 0xff,
+} DwarfOperation;
+
+String dwarf_operation_to_string(DwarfOperation operation)
+{
+    switch (operation)
+    {
+        case_to_name(DW_OP_, addr);
+        case_to_name(DW_OP_, deref);
+        case_to_name(DW_OP_, const1u);
+        case_to_name(DW_OP_, const1s);
+        case_to_name(DW_OP_, const2u);
+        case_to_name(DW_OP_, const2s);
+        case_to_name(DW_OP_, const4u);
+        case_to_name(DW_OP_, const4s);
+        case_to_name(DW_OP_, const8u);
+        case_to_name(DW_OP_, const8s);
+        case_to_name(DW_OP_, constu);
+        case_to_name(DW_OP_, consts);
+        case_to_name(DW_OP_, dup);
+        case_to_name(DW_OP_, drop);
+        case_to_name(DW_OP_, over);
+        case_to_name(DW_OP_, pick);
+        case_to_name(DW_OP_, swap);
+        case_to_name(DW_OP_, rot);
+        case_to_name(DW_OP_, xderef);
+        case_to_name(DW_OP_, abs);
+        case_to_name(DW_OP_, and);
+        case_to_name(DW_OP_, div);
+        case_to_name(DW_OP_, minus);
+        case_to_name(DW_OP_, mod);
+        case_to_name(DW_OP_, mul);
+        case_to_name(DW_OP_, neg);
+        case_to_name(DW_OP_, not);
+        case_to_name(DW_OP_, or);
+        case_to_name(DW_OP_, plus);
+        case_to_name(DW_OP_, plus_uconst);
+        case_to_name(DW_OP_, shl);
+        case_to_name(DW_OP_, shr);
+        case_to_name(DW_OP_, shra);
+        case_to_name(DW_OP_, xor);
+        case_to_name(DW_OP_, bra);
+        case_to_name(DW_OP_, eq);
+        case_to_name(DW_OP_, ge);
+        case_to_name(DW_OP_, gt);
+        case_to_name(DW_OP_, le);
+        case_to_name(DW_OP_, lt);
+        case_to_name(DW_OP_, ne);
+        case_to_name(DW_OP_, skip);
+        case_to_name(DW_OP_, lit0);
+        case_to_name(DW_OP_, lit1);
+        case_to_name(DW_OP_, lit2);
+        case_to_name(DW_OP_, lit3);
+        case_to_name(DW_OP_, lit4);
+        case_to_name(DW_OP_, lit5);
+        case_to_name(DW_OP_, lit6);
+        case_to_name(DW_OP_, lit7);
+        case_to_name(DW_OP_, lit8);
+        case_to_name(DW_OP_, lit9);
+        case_to_name(DW_OP_, lit10);
+        case_to_name(DW_OP_, lit11);
+        case_to_name(DW_OP_, lit12);
+        case_to_name(DW_OP_, lit13);
+        case_to_name(DW_OP_, lit14);
+        case_to_name(DW_OP_, lit15);
+        case_to_name(DW_OP_, lit16);
+        case_to_name(DW_OP_, lit17);
+        case_to_name(DW_OP_, lit18);
+        case_to_name(DW_OP_, lit19);
+        case_to_name(DW_OP_, lit20);
+        case_to_name(DW_OP_, lit21);
+        case_to_name(DW_OP_, lit22);
+        case_to_name(DW_OP_, lit23);
+        case_to_name(DW_OP_, lit24);
+        case_to_name(DW_OP_, lit25);
+        case_to_name(DW_OP_, lit26);
+        case_to_name(DW_OP_, lit27);
+        case_to_name(DW_OP_, lit28);
+        case_to_name(DW_OP_, lit29);
+        case_to_name(DW_OP_, lit30);
+        case_to_name(DW_OP_, lit31);
+        case_to_name(DW_OP_, reg0);
+        case_to_name(DW_OP_, reg1);
+        case_to_name(DW_OP_, reg2);
+        case_to_name(DW_OP_, reg3);
+        case_to_name(DW_OP_, reg4);
+        case_to_name(DW_OP_, reg5);
+        case_to_name(DW_OP_, reg6);
+        case_to_name(DW_OP_, reg7);
+        case_to_name(DW_OP_, reg8);
+        case_to_name(DW_OP_, reg9);
+        case_to_name(DW_OP_, reg10);
+        case_to_name(DW_OP_, reg11);
+        case_to_name(DW_OP_, reg12);
+        case_to_name(DW_OP_, reg13);
+        case_to_name(DW_OP_, reg14);
+        case_to_name(DW_OP_, reg15);
+        case_to_name(DW_OP_, reg16);
+        case_to_name(DW_OP_, reg17);
+        case_to_name(DW_OP_, reg18);
+        case_to_name(DW_OP_, reg19);
+        case_to_name(DW_OP_, reg20);
+        case_to_name(DW_OP_, reg21);
+        case_to_name(DW_OP_, reg22);
+        case_to_name(DW_OP_, reg23);
+        case_to_name(DW_OP_, reg24);
+        case_to_name(DW_OP_, reg25);
+        case_to_name(DW_OP_, reg26);
+        case_to_name(DW_OP_, reg27);
+        case_to_name(DW_OP_, reg28);
+        case_to_name(DW_OP_, reg29);
+        case_to_name(DW_OP_, reg30);
+        case_to_name(DW_OP_, reg31);
+        case_to_name(DW_OP_, breg0);
+        case_to_name(DW_OP_, breg1);
+        case_to_name(DW_OP_, breg2);
+        case_to_name(DW_OP_, breg3);
+        case_to_name(DW_OP_, breg4);
+        case_to_name(DW_OP_, breg5);
+        case_to_name(DW_OP_, breg6);
+        case_to_name(DW_OP_, breg7);
+        case_to_name(DW_OP_, breg8);
+        case_to_name(DW_OP_, breg9);
+        case_to_name(DW_OP_, breg10);
+        case_to_name(DW_OP_, breg11);
+        case_to_name(DW_OP_, breg12);
+        case_to_name(DW_OP_, breg13);
+        case_to_name(DW_OP_, breg14);
+        case_to_name(DW_OP_, breg15);
+        case_to_name(DW_OP_, breg16);
+        case_to_name(DW_OP_, breg17);
+        case_to_name(DW_OP_, breg18);
+        case_to_name(DW_OP_, breg19);
+        case_to_name(DW_OP_, breg20);
+        case_to_name(DW_OP_, breg21);
+        case_to_name(DW_OP_, breg22);
+        case_to_name(DW_OP_, breg23);
+        case_to_name(DW_OP_, breg24);
+        case_to_name(DW_OP_, breg25);
+        case_to_name(DW_OP_, breg26);
+        case_to_name(DW_OP_, breg27);
+        case_to_name(DW_OP_, breg28);
+        case_to_name(DW_OP_, breg29);
+        case_to_name(DW_OP_, breg30);
+        case_to_name(DW_OP_, breg31);
+        case_to_name(DW_OP_, regx);
+        case_to_name(DW_OP_, fbreg);
+        case_to_name(DW_OP_, bregx);
+        case_to_name(DW_OP_, piece);
+        case_to_name(DW_OP_, deref_size);
+        case_to_name(DW_OP_, xderef_size);
+        case_to_name(DW_OP_, nop);
+        case_to_name(DW_OP_, push_object_address);
+        case_to_name(DW_OP_, call2);
+        case_to_name(DW_OP_, call4);
+        case_to_name(DW_OP_, call_ref);
+        case_to_name(DW_OP_, form_tls_address);
+        case_to_name(DW_OP_, call_frame_cfa);
+        case_to_name(DW_OP_, bit_piece);
+        case_to_name(DW_OP_, implicit_value);
+        case_to_name(DW_OP_, stack_value);
+        case_to_name(DW_OP_, implicit_pointer);
+        case_to_name(DW_OP_, addrx);
+        case_to_name(DW_OP_, constx);
+        case_to_name(DW_OP_, entry_value);
+        case_to_name(DW_OP_, const_type);
+        case_to_name(DW_OP_, regval_type);
+        case_to_name(DW_OP_, deref_type);
+        case_to_name(DW_OP_, xderef_type);
+        case_to_name(DW_OP_, convert);
+        case_to_name(DW_OP_, reinterpret);
+        case_to_name(DW_OP_, lo_user);
+        case_to_name(DW_OP_, hi_user);
+    }
+}
+
+STRUCT(DwarfLineHeader)
+{
+    u32 unit_length;
+    u16 version;
+    u8 address_size;
+    u8 segment_selector_size;
+    u32 header_length;
+    u8 minimum_instruction_length;
+    u8 maximum_operations_per_instruction;
+    u8 default_is_stmt;
+    s8 line_base;
+    u8 line_range;
+    u8 opcode_base;
+    // TODO: add dynamic fields
+};
+
+STRUCT(DwarfCompilationUnit)
 {
     u32 length;
     u16 version;
-    u8 type;
+    DwarfUnitType type;
     u8 address_size;
     u32 debug_abbreviation_offset;
 };
-typedef struct DwarfCompilationUnit DwarfCompilationUnit;
 
-struct StringReference
+STRUCT(DwarfStringOffsetsTableHeader)
 {
-    u32 offset;
-    u32 length;
+    u32 unit_length;
+    u16 version;
+    u16 reserved;
 };
 
-typedef struct NameReference NameReference;
-
-typedef struct Thread Thread;
+STRUCT(DwarfAddressTableHeader)
+{
+    u32 unit_length;
+    u16 version;
+    u8 address_size;
+    u8 segment_selector_size;
+};
 
 typedef enum TypeId : u32
 {
@@ -482,17 +1479,16 @@ typedef enum TypeId : u32
     TYPE_COUNT,
 } TypeId;
 
-struct TypeIndex
+STRUCT(TypeIndex)
 {
     u32 index;
 };
 
-typedef struct TypeIndex TypeIndex;
 #define index_equal(a, b) (a.index == b.index)
 static_assert(sizeof(TypeIndex) == sizeof(u32));
 declare_slice(TypeIndex);
 
-struct TypeInteger
+STRUCT(TypeInteger)
 {
     u64 constant;
     u8 bit_count;
@@ -501,16 +1497,14 @@ struct TypeInteger
     u8 padding1;
     u32 padding;
 };
-typedef struct TypeInteger TypeInteger;
 static_assert(sizeof(TypeInteger) == 16);
 
-struct TypeTuple
+STRUCT(TypeTuple)
 {
     Slice(TypeIndex) types;
 };
-typedef struct TypeTuple TypeTuple;
 
-struct Type
+STRUCT(Type)
 {
     Hash64 hash;
     union
@@ -520,23 +1514,19 @@ struct Type
     };
     TypeId id;
 };
-typedef struct Type Type;
 static_assert(offsetof(Type, hash) == 0);
 decl_vb(Type);
 
-struct DebugTypeIndex
+STRUCT(DebugTypeIndex)
 {
     u32 index;
 };
-typedef struct DebugTypeIndex DebugTypeIndex;
 
-struct DebugTypeInteger
+STRUCT(DebugTypeInteger)
 {
     u8 bit_count:7;
     u8 signedness:1;
 };
-
-typedef struct DebugTypeInteger DebugTypeInteger;
 
 typedef enum DebugTypeId : u8
 {
@@ -544,7 +1534,7 @@ typedef enum DebugTypeId : u8
     DEBUG_TYPE_INTEGER,
 } DebugTypeId;
 
-struct DebugType
+STRUCT(DebugType)
 {
     union
     {
@@ -552,7 +1542,6 @@ struct DebugType
     };
     DebugTypeId id;
 };
-typedef struct DebugType DebugType;
 decl_vb(DebugType);
 declare_ip(DebugType);
 
@@ -571,11 +1560,10 @@ typedef enum BackendTypeId
     BACKEND_TYPE_REGION,
 } BackendTypeId;
 
-struct TypePair
+STRUCT(TypePair)
 {
     u32 raw;
 };
-typedef struct TypePair TypePair;
 decl_vb(TypePair);
 global const TypePair type_pair_invalid;
 
@@ -604,21 +1592,21 @@ fn BackendTypeId type_pair_get_backend(TypePair type_pair)
     return type_pair.raw >> 24;
 }
 
-struct NodeIndex
+STRUCT(NodeIndex)
 {
     u32 index;
 };
-typedef struct NodeIndex NodeIndex;
 declare_slice(NodeIndex);
 decl_vb(NodeIndex);
 
-struct Function
+STRUCT(Function)
 {
     String name;
     NodeIndex root;
     TypePair return_type;
+    u32 line;
+    u32 column;
 };
-typedef struct Function Function;
 decl_vb(Function);
 
 typedef enum NodeId : u8
@@ -726,49 +1714,40 @@ typedef enum NodeId : u8
 //     // NodeCFG cfg;
 // };
 // typedef struct NodeDeadControl NodeDeadControl;
-struct NodeProjection
+STRUCT(NodeProjection)
 {
     u32 index;
 };
-typedef struct NodeProjection NodeProjection;
 
-struct NodeRoot
+STRUCT(NodeRoot)
 {
     u32 function_index;
 };
 
-typedef struct NodeRoot NodeRoot;
-
-struct NodeRegion
+STRUCT(NodeRegion)
 {
     NodeIndex in_mem;
 };
 
-typedef struct NodeRegion NodeRegion;
-
-union NodeIntegerConstant
+UNION(NodeIntegerConstant)
 {
     s64 signed_value;
     u64 unsigned_value;
 };
 
-typedef union NodeIntegerConstant NodeIntegerConstant;
-
-struct RegisterMaskIndex
+STRUCT(RegisterMaskIndex)
 {
     u32 index;
 };
-typedef struct RegisterMaskIndex RegisterMaskIndex;
 declare_slice(RegisterMaskIndex);
 
-struct NodeMachineCopy
+STRUCT(NodeMachineCopy)
 {
     RegisterMaskIndex use_mask;
     RegisterMaskIndex def_mask;
 };
-typedef struct NodeMachineCopy NodeMachineCopy;
 
-struct Node
+STRUCT(Node)
 {
     u32 input_offset;
     u32 output_offset;
@@ -802,7 +1781,6 @@ struct Node
     //     NodeDeadControl dead_control;
     // };
 };
-typedef struct Node Node;
 // See above bitset
 static_assert(sizeof(NodeId) == 1);
 
@@ -848,48 +1826,37 @@ fn u8 node_is_cfg_fork(Node* restrict node)
     }
 }
 
-struct ArrayReference
+STRUCT(ArrayReference)
 {
     u32 offset;
     u32 length;
 };
-typedef struct ArrayReference ArrayReference;
 decl_vb(ArrayReference);
 
-struct File
+STRUCT(File)
 {
     String path;
     String source;
-    StringMap values;
-    StringMap types;
+    // StringMap values;
+    // StringMap types;
 };
-typedef struct File File;
 
-struct FunctionBuilder
+STRUCT(FunctionBuilder)
 {
     Function* function;
     File* file;
     NodeIndex current;
 };
-typedef struct FunctionBuilder FunctionBuilder;
-
-// struct InternPool
-// {
-//     u32* pointer;
-//     u32 length;
-//     u32 capacity;
-// };
-// typedef struct InternPool InternPool;
 
 typedef u64 BitsetElement;
 decl_vb(BitsetElement);
 declare_slice(BitsetElement);
-struct Bitset
+
+STRUCT(Bitset)
 {
     VirtualBuffer(BitsetElement) arr;
     u32 length;
 };
-typedef struct Bitset Bitset;
 const u64 element_bitsize = sizeof(u64) * 8;
 
 fn u8 bitset_get(Bitset* bitset, u64 index)
@@ -943,14 +1910,13 @@ fn void bitset_clear(Bitset* bitset)
     bitset->length = 0;
 }
 
-struct WorkList
+STRUCT(WorkList)
 {
     VirtualBuffer(NodeIndex) nodes;
     Bitset visited;
     Bitset bitset;
     u32 mid_assert:1;
 };
-typedef struct WorkList WorkList;
 
 enum
 {
@@ -1001,18 +1967,17 @@ typedef enum RegisterMask_x86_64: u8
 } RegisterMask_x86_64;
 const global auto empty_register_mask = Index(RegisterMask, REGISTER_MASK_EMPTY);
 
-struct RegisterMask
+STRUCT(RegisterMask)
 {
     u32 mask;
     u32 class:3;
     u32 may_spill:1;
     u32 reserved:28;
 };
-typedef struct RegisterMask RegisterMask;
 decl_vb(RegisterMask);
 declare_ip(RegisterMask);
 
-struct Thread
+STRUCT(Thread)
 {
     Arena* arena;
     struct
@@ -1080,16 +2045,13 @@ struct Thread
     u64 worklist_bitset:3;
     u64 reserved:61;
 };
-typedef struct Thread Thread;
 
-struct WorkListHandle
+STRUCT(WorkListHandle)
 {
     u8 index:3;
     u8 is_valid:1;
     u8 reserved:4;
 };
-
-typedef struct WorkListHandle WorkListHandle;
 
 fn WorkListHandle thread_worklist_acquire(Thread* thread)
 {
@@ -1333,14 +2295,11 @@ fn void thread_node_set_use(Thread* thread, u32 offset, u16 index, NodeIndex new
 //     return result;
 // }
 
-typedef struct NodeDualReference NodeDualReference;
-
-struct UseReference
+STRUCT(UseReference)
 {
     NodeIndex* pointer;
     u32 index;
 };
-typedef struct UseReference UseReference;
 
 fn UseReference thread_get_node_reference_array(Thread* thread, u16 count)
 {
@@ -1650,13 +2609,12 @@ fn NodeIndex node_add_input(Thread* thread, NodeIndex node_index, NodeIndex inpu
     return input_index;
 }
 
-struct NodeCreate
+STRUCT(NodeCreate)
 {
     Slice(NodeIndex) inputs;
     TypePair type_pair;
     NodeId id;
 };
-typedef struct NodeCreate NodeCreate;
 
 fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
 {
@@ -2011,38 +2969,35 @@ fn Hash32 debug_type_hash_index(Thread* thread, DebugTypeIndex type_index)
 }
 
 global const u64 intern_pool_min_capacity = 64;
-struct GenericInternPool
+STRUCT(GenericInternPool)
 {
     u32* pointer;
     u32 length;
     u32 capacity;
 };
-typedef struct GenericInternPool GenericInternPool;
 
-struct GenericInternPoolBufferResult
+STRUCT(GenericInternPoolBufferResult)
 {
     void* pointer;
     u32 index;
 };
-typedef struct GenericInternPoolBufferResult GenericInternPoolBufferResult;
 
-struct GenericGetOrPut
+STRUCT(GenericGetOrPut)
 {
     u32 index;
     u8 existing;
 };
-typedef struct GenericGetOrPut GenericGetOrPut;
 
 typedef s64 FindSlotCallback(GenericInternPool* pool, Thread* thread, Hash32 hash, u32 raw_item_index, u32 saved_index, u32 slots_ahead);
 typedef GenericInternPoolBufferResult AddToBufferCallback(Thread* thread);
 // typedef s64 Find
 
-struct InternPoolInterface
+STRUCT(InternPoolInterface)
 {
     FindSlotCallback * const find_slot; 
     AddToBufferCallback* const add_to_buffer;
 };
-typedef struct InternPoolInterface InternPoolInterface;
+
 fn s64 ip_find_slot_debug_type(GenericInternPool* generic_pool, Thread* thread, Hash32 hash, u32 raw_item_index, u32 saved_index, u32 slots_ahead)
 {
     auto* pool = (InternPool(DebugType)*)generic_pool;
@@ -2465,13 +3420,11 @@ may_be_unused fn T ## Index ip_ ## T ## _remove(InternPool(T)* pool, Thread* thr
     }\
 }
 
-struct TypeGetOrPut
+STRUCT(TypeGetOrPut)
 {
     TypeIndex index;
     u8 existing;
 };
-
-typedef struct TypeGetOrPut TypeGetOrPut;
 
 // fn TypeGetOrPut intern_pool_get_or_put_new_type(Thread* thread, Type* type);
 
@@ -2529,19 +3482,17 @@ fn NodeIndex peephole(Thread* thread, Function* function, NodeIndex node_index);
 //     return constant_int;
 // }
 
-struct NodeVirtualTable
+STRUCT(NodeVirtualTable)
 {
     NodeComputeType* const compute_type;
     NodeIdealize* const idealize;
     NodeGetHash* const get_hash;
 };
-typedef struct NodeVirtualTable NodeVirtualTable;
 
-struct TypeVirtualTable
+STRUCT(TypeVirtualTable)
 {
     TypeGetHash* const get_hash;
 };
-typedef struct TypeVirtualTable TypeVirtualTable;
 fn Hash64 hash_type(Thread* thread, Type* type);
 
 // fn NodeIndex idealize_null(Thread* thread, NodeIndex node_index)
@@ -3778,13 +4729,12 @@ fn Hash64 hash_type(Thread* thread, Type* type)
 //     }
 // }
 
-struct Parser
+STRUCT(Parser)
 {
     u64 i;
     u32 line;
     u32 column;
 };
-typedef struct Parser Parser;
 
 [[gnu::hot]] fn void skip_space(Parser* parser, String src)
 {
@@ -3898,8 +4848,6 @@ typedef struct Parser Parser;
         fail();
     }
 }
-
-typedef struct Parser Parser;
 
 #define array_start '['
 #define array_end ']'
@@ -4964,7 +5912,7 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
 fn void analyze_file(Thread* thread, File* file)
 {
     Parser p = {};
-    Parser* parser = &p;
+    Parser* restrict parser = &p;
     String src = file->source;
 
     while (1)
@@ -4978,6 +5926,8 @@ fn void analyze_file(Thread* thread, File* file)
 
         // Parse top level declaration
         u64 start_ch_index = parser->i;
+        auto start_line = parser->line;
+        auto start_column = parser->column;
         u8 start_ch = s_get(src, start_ch_index);
 
         u64 is_identifier = is_identifier_start(start_ch);
@@ -5001,11 +5951,12 @@ fn void analyze_file(Thread* thread, File* file)
                 auto function_index = cast(u32, s64, function - thread->buffer.functions.pointer);
                 memset(function, 0, sizeof(Function));
                 builder->function = function;
-
+                function->line = start_line;
+                function->column = start_column;
                 function->name = parse_identifier(parser, src);
                 if (s_equal(function->name, strlit("main")))
                 {
-                    thread->main_function = thread->buffer.functions.length - 1;
+                    thread->main_function = function_index;
                 }
 
                 skip_space(parser, src);
@@ -6086,48 +7037,50 @@ typedef enum CompilerBackend : u8
     COMPILER_BACKEND_MACHINE = 'm',
 } CompilerBackend;
 
-struct Interpreter
-{
-    Function* function;
-    Slice(String) arguments;
-};
-typedef struct Interpreter Interpreter;
-
-struct ELFOptions
+STRUCT(ObjectOptions)
 {
     char* object_path;
     char* exe_path;
     Slice(u8) code;
+    u64 dynamic:1;
+    u64 reserved:63;
 };
-typedef struct ELFOptions ELFOptions;
 
-struct ELFBuilder
+STRUCT(ELFBuilder)
 {
+    VirtualBuffer(ELFSectionHeader) section_headers;
+    VirtualBuffer(u8) section_string_table;
     VirtualBuffer(u8) file;
-    VirtualBuffer(u8) string_table;
-    VirtualBuffer(ELFSymbol) symbol_table;
-    VirtualBuffer(ELFSectionHeader) section_table;
+    Slice(ElfProgramHeader) program_headers;
+    u16 program_header_i;
+    SymbolTable static_st;
+    SymbolTable dynamic_st;
 };
-typedef struct ELFBuilder ELFBuilder;
 
-fn u32 elf_builder_add_string(ELFBuilder* builder, String string)
+fn void elf_ph_init(ELFBuilder* restrict builder)
 {
-    u32 name_offset = 0;
-    if (string.length)
-    {
-        name_offset = builder->string_table.length;
-        vb_append_bytes(&builder->string_table, string);
-        *vb_add(&builder->string_table, 1) = 0;
-    }
-
-    return name_offset;
+    builder->program_headers.length = 6;
+    auto program_header_size = sizeof(ElfProgramHeader) * builder->program_headers.length;
+    builder->program_headers.pointer = (ElfProgramHeader*)vb_add(&builder->file, program_header_size);
+    builder->program_header_i = 0;
 }
 
-fn void elf_builder_add_symbol(ELFBuilder* builder, ELFSymbol symbol, String string)
+fn void elf_ph_end(ELFBuilder* restrict builder)
 {
-    symbol.name_offset = elf_builder_add_string(builder, string);
-    *vb_add(&builder->symbol_table, 1) = symbol;
+    assert(builder->program_header_i == builder->program_headers.length);
 }
+
+STRUCT(ELFSectionCreate)
+{
+    String name;
+    ELFSectionType type;
+    ELFSectionHeaderFlags flags;
+    u32 link;
+    u32 info;
+    u64 size;
+    u64 alignment;
+    u64 entry_size;
+};
 
 fn void vb_align(VirtualBuffer(u8)* buffer, u64 alignment)
 {
@@ -6138,25 +7091,218 @@ fn void vb_align(VirtualBuffer(u8)* buffer, u64 alignment)
     memset(pointer, 0, count);
 }
 
-fn ELFSectionHeader* elf_builder_add_section(ELFBuilder* builder, ELFSectionHeader section, String section_name, Slice(u8) content)
+fn void elf_add_program_header_raw(ELFBuilder* restrict builder, ElfProgramHeader ph)
 {
-    section.name_offset = elf_builder_add_string(builder, section_name);
-    section.offset = builder->file.length;
-    section.size = content.length;
-    if (content.length)
-    {
-        vb_align(&builder->file, section.alignment);
-        section.offset = builder->file.length;
-        vb_append_bytes(&builder->file, content);
-    }
-    auto* section_header = vb_add(&builder->section_table, 1);
-    *section_header = section;
-    return section_header;
+    assert(builder->program_header_i < builder->program_headers.length);
+    auto* program_header = &builder->program_headers.pointer[builder->program_header_i];
+    *program_header = ph;
+    builder->program_header_i += 1;
 }
 
-may_be_unused fn void write_elf(Thread* thread, char** envp, const ELFOptions* const options)
+fn u64 elf_add_section_no_copy_raw(ELFBuilder* restrict builder, ELFSectionCreate create)
 {
-    unused(thread);
+    assert(create.size > 0);
+    assert(create.name.pointer);
+    assert(create.name.length);
+    assert((builder->file.length & (create.alignment - 1)) == 0);
+
+    auto name_offset = builder->section_string_table.length;
+    {
+        memcpy(vb_add(&builder->section_string_table, create.name.length), create.name.pointer, create.name.length);
+        *vb_add(&builder->section_string_table, 1) = 0;
+    }
+
+    auto offset = builder->file.length;
+
+    auto sh = (ELFSectionHeader) {
+        .name_offset = name_offset,
+        .type = create.type,
+        .flags = create.flags,
+        .address = offset,
+        .offset = offset,
+        .size = create.size,
+        .link = create.link,
+        .info = create.info,
+        .alignment = create.alignment,
+        .entry_size = create.entry_size,
+    };
+
+    *vb_add(&builder->section_headers, 1) = sh;
+
+    return offset;
+}
+
+fn u64 elf_add_section_no_copy(ELFBuilder* restrict builder, ELFSectionCreate create)
+{
+    assert(create.size > 0);
+    vb_align(&builder->file, create.alignment);
+    return elf_add_section_no_copy_raw(builder, create);
+}
+
+fn u64 elf_add_section_copy(ELFBuilder* restrict builder, ELFSectionCreate create, String content)
+{
+    assert(create.size == 0);
+    assert(content.length > 0);
+    create.size = content.length;
+    auto result = elf_add_section_no_copy(builder, create);
+
+    memcpy(vb_add(&builder->file, content.length), content.pointer, content.length);
+
+    return result;
+}
+
+STRUCT(ELFSegmentCreate)
+{
+    ElfProgramHeaderType type;
+    ElfProgramHeaderFlags flags;
+    u64 size;
+    u64 alignment;
+    u64 offset;
+};
+
+fn void elf_add_program_segment_no_copy_raw(ELFBuilder* restrict builder, ELFSegmentCreate create)
+{
+    assert((create.offset & (create.alignment - 1)) == 0);
+
+    elf_add_program_header_raw(builder, (ElfProgramHeader){
+        .type = create.type,
+        .flags = create.flags,
+        .offset = create.offset,
+        .virtual_address = create.offset,
+        .physical_address = create.offset,
+        .file_size = create.size,
+        .memory_size = create.size,
+        .alignment = create.alignment,
+    });
+}
+
+fn void elf_fill_program_header(ElfProgramHeader* restrict ph, ELFSegmentCreate create)
+{
+    assert((create.offset & (create.alignment - 1)) == 0);
+    *ph = (ElfProgramHeader){
+        .type = create.type,
+        .flags = create.flags,
+        .offset = create.offset,
+        .virtual_address = create.offset,
+        .physical_address = create.offset,
+        .file_size = create.size,
+        .memory_size = create.size,
+        .alignment = create.alignment,
+    };
+}
+
+STRUCT(ELFSegmentSectionCreate)
+{
+    ELFSectionCreate section;
+    ElfProgramHeaderType ph_type;
+    ElfProgramHeaderFlags ph_flags;
+    String content;
+};
+
+fn u64 elf_add_both_segment_and_section(ELFBuilder* restrict builder, ELFSegmentSectionCreate create)
+{
+    assert(create.section.size == 0);
+    assert(create.content.length > 0);
+    create.section.size = create.content.length;
+    vb_align(&builder->file, create.section.alignment);
+    auto offset = elf_add_section_no_copy_raw(builder, create.section);
+    ELFSegmentCreate segment = {
+        .type = create.ph_type,
+        .flags = create.ph_flags,
+        .size = create.section.size,
+        .alignment = create.section.alignment, 
+        .offset = offset,
+    };
+    elf_add_program_segment_no_copy_raw(builder, segment);
+    memcpy(vb_add(&builder->file, create.content.length), create.content.pointer, create.content.length);
+
+    return offset;
+}
+
+typedef enum SymbolKind : u8
+{
+    SYMBOL_TABLE_STATIC,
+    SYMBOL_TABLE_DYNAMIC,
+} SymbolKind;
+
+fn u32 st_add_string(SymbolTable* restrict section, String string)
+{
+    u32 offset = 0;
+    if (string.length)
+    {
+        offset = section->string_table.length;
+        vb_append_bytes(&section->string_table, string);
+        *vb_add(&section->string_table, 1) = 0;
+    }
+
+    return offset;
+}
+
+fn void st_add_symbol_raw(SymbolTable* restrict st, ELFSymbol symbol)
+{
+    *vb_add(&st->symbol_table, 1) = symbol;
+}
+
+fn void st_add_symbol(SymbolTable* restrict st, ELFSymbol symbol, String name)
+{
+    symbol.name_offset = st_add_string(st, name);
+
+    st_add_symbol_raw(st, symbol);
+}
+
+fn void st_init(SymbolTable* restrict section)
+{
+    *vb_add(&section->string_table, 1) = 0;
+    st_add_symbol(section, (ELFSymbol){}, (String){});
+}
+
+// fn u32 elf_builder_add_string(ELFBuilder* builder, SymbolType symbol_type, String string)
+// {
+//     u32 name_offset = 0;
+//     if (string.length)
+//     {
+//         switch (symbol_type)
+//         {
+//             case SYMBOL_TABLE_STATIC:
+//                 {
+//                     name_offset = builder->string_table.length;
+//                     vb_append_bytes(&builder->string_table, string);
+//                     *vb_add(&builder->string_table, 1) = 0;
+//                 } break;
+//             case SYMBOL_TABLE_DYNAMIC:
+//                 {
+//                     name_offset = builder->dynamic_string_table.length;
+//                     vb_append_bytes(&builder->dynamic_string_table, string);
+//                     *vb_add(&builder->dynamic_string_table, 1) = 0;
+//                 } break;
+//         }
+//     }
+//
+//     return name_offset;
+// }
+
+// fn void elf_builder_add_symbol(ELFBuilder* builder, ELFSymbol symbol, SymbolType symbol_type, String string)
+// {
+//     symbol.name_offset = elf_builder_add_string(builder, symbol_type, string);
+//     switch (symbol_type)
+//     {
+//         case SYMBOL_TABLE_STATIC:
+//             {
+//                 *vb_add(&builder->symbol_table, 1) = symbol;
+//             } break;
+//         case SYMBOL_TABLE_DYNAMIC:
+//             {
+//                 *vb_add(&builder->dynamic_symbol_table, 1) = symbol;
+//             } break;
+//     }
+// }
+
+
+// fn ELFSectionHeader* elf_builder_add_section(ELFBuilder* builder, ELFSectionHeader section, String section_name, Slice(u8) content)
+// {
+// }
+
+// TODO: delete this. This was used in order to learn about ELF
     // {
     //     auto main_c_content = strlit("int main()\n{\n    return 0;\n}");
     //     int fd = syscall_open("main.c", O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -6208,75 +7354,1742 @@ may_be_unused fn void write_elf(Thread* thread, char** envp, const ELFOptions* c
     //     assert(!r3);
     // }
 
+typedef enum SymbolTableKind
+{
+    SYMBOL_TABLE_KIND_STATIC,
+    SYMBOL_TABLE_KIND_DYNAMIC,
+} SymbolTableKind;
+
+STRUCT(SymbolTableOutput)
+{
+    u64 symbol_table_offset;
+    u64 string_table_offset;
+};
+
+fn SymbolTableOutput emit_symbol_table(ELFBuilder* restrict builder, SymbolTable* st, SymbolTableKind kind)
+{
+    SymbolTableOutput result = {};
+
+    if (st->symbol_table.length > 0)
+    {
+        String symbol_table_name;
+        String string_table_name;
+        ELFSectionType type;
+
+        switch (kind)
+        {
+            case SYMBOL_TABLE_KIND_STATIC:
+                symbol_table_name = strlit(".symtab");
+                string_table_name = strlit(".strtab");
+                type = ELF_SECTION_SYMBOL_TABLE;
+                break;
+            case SYMBOL_TABLE_KIND_DYNAMIC:
+                symbol_table_name = strlit(".dynsym");
+                string_table_name = strlit(".dynstr");
+                type = ELF_SECTION_DYNAMIC_SYMBOL_TABLE;
+                break;
+        }
+
+        result.symbol_table_offset = elf_add_section_copy(builder, (ELFSectionCreate){
+            .name = symbol_table_name,
+            .type = type,
+            .flags = {},
+            .link = builder->section_headers.length + 1, // TODO: figure out
+            .info = 4, // TODO: figure out
+            .alignment = alignof(ELFSymbol),
+            .entry_size = sizeof(ELFSymbol),
+        }, (String) { .pointer = (u8*)st->symbol_table.pointer, .length = sizeof(*st->symbol_table.pointer) * st->symbol_table.length, });
+
+        result.string_table_offset = elf_add_section_copy(builder, (ELFSectionCreate){
+            .name = string_table_name,
+            .type = ELF_SECTION_STRING_TABLE,
+            .flags = {},
+            .link = 0,
+            .info = 0,
+            .alignment = 1,
+            .entry_size = 0,
+        }, (String) { .pointer = st->string_table.pointer, .length = sizeof(*st->string_table.pointer) * st->string_table.length, });
+    }
+
+    return result;
+}
+
+fn u32 elf_get_string(VirtualBuffer(u8)* restrict buffer, String string)
+{
+    assert(buffer->length > 0);
+
+    if (string.length == 0)
+    {
+        return 0;
+    }
+
+    u32 i = 0;
+
+    while (i < buffer->length)
+    {
+        auto* ptr = &buffer->pointer[i];
+        auto length = strlen((char*)ptr);
+        auto existing = (String) {
+            .pointer = ptr,
+            .length = length,
+        };
+
+        while (existing.length)
+        {
+            if (s_equal(existing, string))
+            {
+                return cast(u32, s64, existing.pointer - buffer->pointer);
+            }
+
+            existing.pointer += 1;
+            existing.length -= 1;
+        }
+
+        i += length + 1;
+    }
+
+    auto length = buffer->length;
+    auto* ptr = vb_add(buffer, string.length + 1);
+    memcpy(ptr, string.pointer, string.length);
+    *(ptr + string.length) = 0;
+
+    return length;
+}
+
+fn u32 elf_get_section_name(ELFBuilder* builder, String name)
+{
+    return elf_get_string(&builder->section_string_table, name);
+}
+
+typedef enum ELFNoteType : u32
+{
+    NT_GNU_ABI_TAG = 1,
+    NT_GNU_HWCAP = 2,
+    NT_GNU_BUILD_ID = 3,
+    NT_GNU_GOLD_VERSION = 4,
+    NT_GNU_PROPERTY_TYPE_0 = 5,
+} ELFNoteType;
+
+STRUCT(ELFNoteHeader)
+{
+    u32 name_size;
+    u32 descriptor_size;
+    ELFNoteType type;
+};
+static_assert(sizeof(ELFNoteHeader) == 12);
+
+STRUCT(ELFVersionDefinition)
+{
+    u16 version;
+    u16 flags;
+    u16 index;
+    u16 count;
+    u32 hash;
+    u32 aux;
+    u32 next;
+};
+static_assert(sizeof(ELFVersionDefinition) == 20);
+
+#define elf_eh_frame_absptr 0x00
+#define elf_eh_frame_udata4 0x03
+#define elf_eh_frame_sdata4 0x0b
+#define elf_eh_frame_pcrel 0x10
+#define elf_eh_frame_datarel 0x30
+
+STRUCT(EhFrameHeader)
+{
+    u8 version;
+    u8 pointer_encoding;
+    u8 count_encoding;
+    u8 table_encoding;
+    u32 frame_start;
+    u32 entry_count;
+};
+
+STRUCT(EhFrameHeaderEntry)
+{
+    u32 pc;
+    u32 fde;
+};
+
+
+STRUCT(Uleb128)
+{
+    u64 number;
+    u64 i;
+};
+
+fn Uleb128 uleb128_decode(String input)
+{
+    assert(input.length);
+    Uleb128 result = {};
+    u16 shift = 0;
+
+    while (result.i < input.length)
+    {
+        auto byte = input.pointer[result.i];
+        assert(shift < 64);
+        result.number |= (u64)(byte & 0b01111111) << shift;
+        shift += 7;
+        result.i += 1;
+
+        if ((byte & 0b10000000) == 0)
+        {
+            break;
+        }
+    }
+
+    return result;
+}
+
+
+fn void sleb128_encode(VirtualBuffer(u8)* buffer, s32 value)
+{
+    auto extra_bits = (u32)(value ^ (value >> 31)) >> 6;
+    u8 out = value & 0b01111111;
+    while (extra_bits)
+    {
+        *vb_add(buffer, 1) = out | 0x80;
+        value >>= 7;
+        out = value & 0b01111111;
+        extra_bits >>= 7;
+    }
+    *vb_add(buffer, 1) = out;
+}
+
+fn void uleb128_encode(VirtualBuffer(u8)* buffer, u32 value)
+{
+    u8 out = value & 0b01111111;
+    value >>= 7;
+    while (value)
+    {
+        *vb_add(buffer, 1) = out | 0x80;
+        out = value & 0b01111111;
+        value >>= 7;
+    }
+    *vb_add(buffer, 1) = out;
+}
+
+
+may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restrict options, char** envp)
+{
+    unused(thread);
+
     ELFBuilder builder_stack = {};
-    ELFBuilder* builder = &builder_stack;
-    auto* elf_header = (ELFHeader*)(vb_add(&builder->file, sizeof(ELFHeader)));
-    // vb_append_bytes(&file, struct_to_bytes(elf_header));
-    
-    // .symtab
-    // Null symbol
-    *vb_add(&builder->string_table, 1) = 0;
-    elf_builder_add_symbol(builder, (ELFSymbol){}, (String){});
-    elf_builder_add_section(builder, (ELFSectionHeader) {}, (String){}, (Slice(u8)){});
+    ELFBuilder* restrict builder = &builder_stack;
+    // Initialization
+    {
+        if (options->dynamic)
+        {
+            st_init(&builder->dynamic_st);
+        }
 
-    assert(builder->string_table.length == 1);
-    elf_builder_add_symbol(builder, (ELFSymbol){
-        .type = ELF_SYMBOL_TYPE_FILE,
-        .binding = LOCAL,
-        .section_index = (u16)ABSOLUTE,
-        .value = 0,
-        .size = 0,
-    }, strlit("main.c"));
+        st_init(&builder->static_st);
+        // Init section table
+        *vb_add(&builder->section_string_table, 1) = 0;
+        *vb_add(&builder->section_headers, 1) = (ELFSectionHeader){};
+    }
 
-    assert(builder->string_table.length == 8);
-    elf_builder_add_symbol(builder, (ELFSymbol) {
-        .type = ELF_SYMBOL_TYPE_FUNCTION,
-        .binding = GLOBAL,
-        .section_index = 1,
-        .value = 0,
-        .size = 3,
-    }, strlit("main"));
+    auto symtab_section_name = elf_get_section_name(builder, strlit(".symtab"));
+    auto strtab_section_name = elf_get_section_name(builder, strlit(".strtab"));
+    auto shstrtab_section_name = elf_get_section_name(builder, strlit(".shstrtab"));
 
-    elf_builder_add_section(builder, (ELFSectionHeader) {
-        .type = ELF_SECTION_PROGRAM,
-        .flags = {
-            .alloc = 1,
-            .executable = 1,
-        },
-        .address = 0,
-        .size = options->code.length,
-        .link = 0,
-        .info = 0,
-        .alignment = 4,
-        .entry_size = 0,
-    }, strlit(".text"), options->code);
+    auto* elf_header = vb_add_struct(&builder->file, ELFHeader);
+    u16 program_header_count = 13;
+    // u64 section_header_offset = 13904;
 
-    elf_builder_add_section(builder, (ELFSectionHeader) {
-        .type = ELF_SECTION_SYMBOL_TABLE,
-        .link = builder->section_table.length + 1,
-        // TODO: One greater than the symbol table index of the last local symbol (binding STB_LOCAL).
-        .info = builder->symbol_table.length - 1,
-        .alignment = alignof(ELFSymbol),
-        .entry_size = sizeof(ELFSymbol),
-    }, strlit(".symtab"), vb_to_bytes(builder->symbol_table));
-
-    auto strtab_name_offset = elf_builder_add_string(builder, strlit(".strtab"));
-    auto strtab_bytes = vb_to_bytes(builder->string_table);
-    auto strtab_offset = builder->file.length;
-    vb_append_bytes(&builder->file, strtab_bytes);
-
-    auto* strtab_section_header = vb_add(&builder->section_table, 1);
-    *strtab_section_header = (ELFSectionHeader) {
-        .name_offset = strtab_name_offset,
-        .type = ELF_SECTION_STRING_TABLE,
-        .offset = strtab_offset,
-        .size = strtab_bytes.length,
-        .alignment = 1,
+    ElfProgramHeader expected_program_headers[] = {
+        { .type = PT_PHDR, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 64, .virtual_address = 64, .physical_address = 64, .file_size = 728, .memory_size = 728, .alignment = 8},
+        { .type = PT_INTERP, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 792, .virtual_address = 792, .physical_address = 792, .file_size = 28, .memory_size = 28, .alignment = 1},
+        { .type = PT_LOAD, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 0, .virtual_address = 0, .physical_address = 0, .file_size = 1496, .memory_size = 1496, .alignment = 4096},
+        { .type = PT_LOAD, .flags = { .executable = 1, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 4096, .virtual_address = 4096, .physical_address = 4096, .file_size = 301, .memory_size = 301, .alignment = 4096},
+        { .type = PT_LOAD, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 8192, .virtual_address = 8192, .physical_address = 8192, .file_size = 104, .memory_size = 104, .alignment = 4096},
+        { .type = PT_LOAD, .flags = {.executable = 0, .writeable = 1, .readable = 1, .reserved = 0}, .offset = 11792, .virtual_address = 15888, .physical_address = 15888, .file_size = 512, .memory_size = 520, .alignment = 4096},
+        { .type = PT_DYNAMIC, .flags = {.executable = 0, .writeable = 1, .readable = 1, .reserved = 0}, .offset = 11808, .virtual_address = 15904, .physical_address = 15904, .file_size = 416, .memory_size = 416, .alignment = 8},
+        { .type = PT_NOTE, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 824, .virtual_address = 824, .physical_address = 824, .file_size = 32, .memory_size = 32, .alignment = 8},
+        { .type = PT_NOTE, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 856, .virtual_address = 856, .physical_address = 856, .file_size = 68, .memory_size = 68, .alignment = 4},
+        { .type = PT_GNU_PROPERTY, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 824, .virtual_address = 824, .physical_address = 824, .file_size = 32, .memory_size = 32, .alignment = 8},
+        { .type = PT_GNU_EH_FRAME, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 8196, .virtual_address = 8196, .physical_address = 8196, .file_size = 28, .memory_size = 28, .alignment = 4},
+        { .type = PT_GNU_STACK, .flags = {.executable = 0, .writeable = 1, .readable = 1, .reserved = 0}, .offset = 0, .virtual_address = 0, .physical_address = 0, .file_size = 0, .memory_size = 0, .alignment = 16},
+        { .type = PT_GNU_RELRO, .flags = { .executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 11792, .virtual_address = 15888, .physical_address = 15888, .file_size = 496, .memory_size = 496, .alignment = 1}
     };
+
+    auto* program_headers = vb_add_struct(&builder->file, typeof(expected_program_headers));
+    memcpy(program_headers, expected_program_headers, sizeof(expected_program_headers));
+
+    // auto* ptr = (u8*)(program_headers + array_length(expected_program_headers));
+    {
+        // .interp
+        // Section #1
+        u64 interp_alignment = 1;
+        vb_align(&builder->file, interp_alignment);
+        auto interp = strlit("/lib64/ld-linux-x86-64.so.2");
+        auto* interp_section_header = vb_add(&builder->section_headers, 1);
+        auto interp_size = interp.length + 1;
+        auto interp_offset = builder->file.length;
+        memcpy(vb_add(&builder->file, interp_size), interp.pointer, interp_size);
+
+        auto interp_section_name = elf_get_section_name(builder, strlit(".interp"));
+
+        *interp_section_header = (ELFSectionHeader)
+        {
+            .name_offset = interp_section_name,
+                .type = ELF_SECTION_PROGRAM,
+                .flags = {
+                    .alloc = 1,
+                },
+                .address = interp_offset,
+                .offset = interp_offset,
+                .size = interp_size,
+                .link = 0,
+                .info = 0,
+                .alignment = 1,
+                .entry_size = 0,
+        };
+    }
+
+    {
+        // .note.gnu.property
+        // Section #2
+        auto* gnu_property_section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+        auto gnu_property_section_name = elf_get_section_name(builder, strlit(".note.gnu.property"));
+
+        auto gnu_string = strlit("GNU");
+        auto gnu_string_size = gnu_string.length + 1;
+        auto* ptr = vb_add_struct(&builder->file, ELFNoteHeader);
+        *ptr = (ELFNoteHeader)
+        {
+            .name_size = gnu_string_size,
+            .descriptor_size = 16,
+            .type = NT_GNU_PROPERTY_TYPE_0,
+        };
+        memcpy(vb_add(&builder->file, gnu_string_size), gnu_string.pointer, gnu_string_size);
+        u8 gnu_property_blob[] = { 0x02, 0x80, 0x00, 0xC0, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        static_assert(array_length(gnu_property_blob) == 16);
+
+        memcpy(vb_add(&builder->file, sizeof(gnu_property_blob)), gnu_property_blob, sizeof(gnu_property_blob));
+
+        auto gnu_property_size = builder->file.length - offset;
+
+        *gnu_property_section_header = (ELFSectionHeader)
+        {
+            .name_offset = gnu_property_section_name,
+            .type = ELF_SECTION_NOTE,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = gnu_property_size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .note.gnu.build-id
+        // Section #3
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 4;
+        auto name = elf_get_section_name(builder, strlit(".note.gnu.build-id"));
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto gnu_string = strlit("GNU");
+        auto gnu_string_size = gnu_string.length + 1;
+
+        u8 blob[] = { 0xF0, 0xDE, 0x30, 0xDB, 0x5A, 0x9F, 0xE2, 0x4E, 0x0A, 0xCF, 0x93, 0xA4, 0x4C, 0x11, 0x60, 0xB5, 0x0C, 0xD9, 0xAF, 0x50, };
+        static_assert(sizeof(blob) == 20);
+
+        *(vb_add_struct(&builder->file, ELFNoteHeader)) = (ELFNoteHeader)
+        {
+            .name_size = gnu_string_size,
+            .descriptor_size = sizeof(blob),
+            .type = NT_GNU_BUILD_ID,
+        };
+        memcpy(vb_add(&builder->file, gnu_string_size), gnu_string.pointer, gnu_string_size);
+        memcpy(vb_add(&builder->file, sizeof(blob)), blob, sizeof(blob));
+
+        auto size = builder->file.length - offset;
+
+        *section_header = (ELFSectionHeader)
+        {
+            .name_offset = name,
+            .type = ELF_SECTION_NOTE,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .note.ABI-tag
+        // Section #4
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 4;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".note.ABI-tag"));
+
+        auto gnu_string = strlit("GNU");
+        auto gnu_string_size = gnu_string.length + 1;
+        *vb_add_struct(&builder->file, ELFNoteHeader) = (ELFNoteHeader) {
+            .name_size = gnu_string_size,
+            .descriptor_size = 16,
+            .type = NT_GNU_ABI_TAG,
+        };
+        memcpy(vb_add(&builder->file, gnu_string_size), gnu_string.pointer, gnu_string_size);
+
+        u32 abi = ELF_ABI_SYSTEM_V;
+        u32 major = 4;
+        u32 minor = 4;
+        u32 patch = 0;
+        u32 abi_content[] = { abi, major, minor, patch };
+
+        memcpy(vb_add(&builder->file, sizeof(abi_content)), abi_content, sizeof(abi_content));
+
+        auto size = builder->file.length - offset;
+
+        *section_header = (ELFSectionHeader)
+        {
+            .name_offset = name,
+            .type = ELF_SECTION_NOTE,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    u16 preliminar_section_count = builder->section_headers.length + 1;
+    auto dynamic_symbol_table_index = preliminar_section_count;
+    auto dynamic_string_table_index = dynamic_symbol_table_index + 1;
+
+    {
+        // .gnu.hash
+        // Section #5
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".gnu.hash"));
+
+
+        *vb_add_struct(&builder->file, ElfGnuHashHeader) = (ElfGnuHashHeader) {
+            .bucket_count = 1,
+            .symbol_offset = 1,
+            .bloom_size = 1,
+            .bloom_shift = 0,
+        };
+
+        u64 bloom_filters[] = {0};
+        memcpy(vb_add(&builder->file, sizeof(bloom_filters)), bloom_filters, sizeof(bloom_filters));
+
+        u32 buckets[] = {0};
+        memcpy(vb_add(&builder->file, sizeof(buckets)), buckets, sizeof(buckets));
+
+        // u32 hash_chains[] = {0};
+        // memcpy(vb_add(&builder->file, sizeof(hash_chains)), hash_chains, sizeof(hash_chains));
+
+        auto size = builder->file.length - offset;
+
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_GNU_HASH,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = dynamic_symbol_table_index,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    auto libc_start_main = st_add_string(&builder->dynamic_st, strlit("__libc_start_main"));
+    auto cxa_finalize = st_add_string(&builder->dynamic_st, strlit("__cxa_finalize"));
+    auto libcso6 = st_add_string(&builder->dynamic_st, strlit("libc.so.6"));
+    auto glibc_225 = st_add_string(&builder->dynamic_st, strlit("GLIBC_2.2.5"));
+    auto glibc_234 = st_add_string(&builder->dynamic_st, strlit("GLIBC_2.34"));
+    auto itm_deregister = st_add_string(&builder->dynamic_st, strlit("_ITM_deregisterTMCloneTable"));
+    auto gmon_start = st_add_string(&builder->dynamic_st, strlit("__gmon_start__"));
+    auto itm_register = st_add_string(&builder->dynamic_st, strlit("_ITM_registerTMCloneTable"));
+
+    {
+        // .dynsym
+        // Section #6
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = alignof(ELFSymbol);
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".dynsym"));
+
+        ELFSymbol expected_symbols[] = {
+            // 1
+            {
+                .name_offset = libc_start_main,
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .other = 0,
+                .section_index = 0,
+                .value = 0,
+                .size = 0,
+            },
+            // 2
+            {
+                .name_offset = itm_deregister,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .other = 0,
+                .section_index = 0,
+                .value = 0,
+                .size = 0,
+            },
+            // 3
+            {
+                .name_offset = gmon_start,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .other = 0,
+                .section_index = 0,
+                .value = 0,
+                .size = 0,
+            },
+            // 4
+            {
+                .name_offset = itm_register,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .other = 0,
+                .section_index = 0,
+                .value = 0,
+                .size = 0,
+            },
+            // 5
+            {
+                .name_offset = cxa_finalize,
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .other = 0,
+                .section_index = 0,
+                .value = 0,
+                .size = 0,
+            },
+        };
+        memcpy(vb_add(&builder->dynamic_st.symbol_table, array_length(expected_symbols)), expected_symbols, sizeof(expected_symbols));
+        u64 size = builder->dynamic_st.symbol_table.length * sizeof(ELFSymbol);
+
+        memcpy(vb_add(&builder->file, size), builder->dynamic_st.symbol_table.pointer, size);
+
+        u64 entry_size = sizeof(ELFSymbol);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_DYNAMIC_SYMBOL_TABLE,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = dynamic_string_table_index,
+            .info = 1, // TODO: figure out
+            .alignment = alignment,
+            .entry_size = entry_size,
+        };
+    }
+
+    {
+        // .dynstr
+        // Section #7
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".dynstr"));
+
+        auto size = builder->dynamic_st.string_table.length;
+        memcpy(vb_add(&builder->file, size), builder->dynamic_st.string_table.pointer, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_STRING_TABLE,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .gnu.version
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = alignof(u16);
+        assert(alignment == 2);
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".gnu.version"));
+
+        // 0: means local symbol (not versioned)
+        // 1: indicates base version (nothing specific)
+        // >1: refers to an index into the .gnu.version_r
+        u16 symbol_versions[] = {
+            0,
+            2, // .gnu.version_r
+            1,
+            1,
+            1,
+            3 // .gnu.version_r
+        };
+
+        auto size = sizeof(symbol_versions);
+
+        memcpy(vb_add(&builder->file, size), symbol_versions, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_GNU_VERSYM,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = dynamic_symbol_table_index,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = sizeof(u16),
+        };
+    }
+
+    {
+        // .gnu.version_r
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".gnu.version_r"));
+
+        // TODO: figure out
+        u8 blob[] = {
+            0x01, 0x00, 0x02, 0x00, 0x22, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x75, 0x1A, 0x69, 0x09, 0x00, 0x00, 0x03, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 
+            0xB4, 0x91, 0x96, 0x06, 0x00, 0x00, 0x02, 0x00, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        };
+
+        auto size = sizeof(blob);
+
+        memcpy(vb_add(&builder->file, size), blob, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_GNU_VERNEED,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = dynamic_string_table_index,
+            .info = 1, // TODO: figure out
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    ElfRelocationWithAddend* dynamic_relocations = {};
+    {
+        // .rela.dyn
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = alignof(ElfRelocationWithAddend);
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".rela.dyn"));
+
+        // * The symbol indices make mention to the .dynsym table (where 0 means a special case: none)
+        // * The addend is related to the (virtual) address
+        ElfRelocationWithAddend relocations[] = {
+            { .offset = 15888, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4368 }, // .fini_array
+            { .offset = 15896, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4288 }, // .init_array
+            { .offset = 16392, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 16392 }, // .bss_start
+            { .offset = 16320, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 1}, .addend = 0 }, // libc_start_main
+            { .offset = 16328, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 2}, .addend = 0 }, // itm_deregister
+            { .offset = 16336, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 3}, .addend = 0 }, // gmon_start
+            { .offset = 16344, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 4}, .addend = 0 }, // itm_register
+            { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
+        };
+
+        auto size = sizeof(relocations);
+
+        dynamic_relocations = (ElfRelocationWithAddend*)vb_add(&builder->file, size);
+        memcpy(dynamic_relocations, relocations, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_RELOCATION_WITH_ADDENDS,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = dynamic_symbol_table_index,
+            .info = 0, // TODO: figure out
+            .alignment = alignment,
+            .entry_size = sizeof(ElfRelocationWithAddend),
+        };
+    }
+
+    vb_align(&builder->file, 0x1000);
+
+    {
+        // .init
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 4;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".init"));
+
+        u8 data[] = {
+            0xF3, 0x0F, 0x1E, 0xFA, 0x48, 0x83, 0xEC, 0x08, 0x48, 0x8B, 0x05, 0xC1, 0x2F, 0x00, 0x00, 0x48, 
+            0x85, 0xC0, 0x74, 0x02, 0xFF, 0xD0, 0x48, 0x83, 0xC4, 0x08, 0xC3, 
+        };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+                .executable = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        //.text
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 16;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".text"));
+
+        u8 data[] = {
+            0xF3, 0x0F, 0x1E, 0xFA, 0x31, 0xED, 0x49, 0x89, 0xD1, 0x5E, 0x48, 0x89, 0xE2, 0x48, 0x83, 0xE4, 
+            0xF0, 0x50, 0x54, 0x45, 0x31, 0xC0, 0x31, 0xC9, 0x48, 0x8D, 0x3D, 0xDD, 0x00, 0x00, 0x00, 0xFF, 
+            0x15, 0x7B, 0x2F, 0x00, 0x00, 0xF4, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x48, 0x8D, 0x3D, 0xB9, 0x2F, 0x00, 0x00, 0x48, 0x8D, 0x05, 0xB2, 0x2F, 0x00, 0x00, 0x48, 0x39, 
+            0xF8, 0x74, 0x15, 0x48, 0x8B, 0x05, 0x5E, 0x2F, 0x00, 0x00, 0x48, 0x85, 0xC0, 0x74, 0x09, 0xFF, 
+            0xE0, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 0xC3, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 
+            0x48, 0x8D, 0x3D, 0x89, 0x2F, 0x00, 0x00, 0x48, 0x8D, 0x35, 0x82, 0x2F, 0x00, 0x00, 0x48, 0x29, 
+            0xFE, 0x48, 0x89, 0xF0, 0x48, 0xC1, 0xEE, 0x3F, 0x48, 0xC1, 0xF8, 0x03, 0x48, 0x01, 0xC6, 0x48, 
+            0xD1, 0xFE, 0x74, 0x14, 0x48, 0x8B, 0x05, 0x2D, 0x2F, 0x00, 0x00, 0x48, 0x85, 0xC0, 0x74, 0x08, 
+            0xFF, 0xE0, 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0xC3, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 
+            0xF3, 0x0F, 0x1E, 0xFA, 0x80, 0x3D, 0x45, 0x2F, 0x00, 0x00, 0x00, 0x75, 0x33, 0x55, 0x48, 0x83, 
+            0x3D, 0x0A, 0x2F, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE5, 0x74, 0x0D, 0x48, 0x8B, 0x3D, 0x26, 0x2F, 
+            0x00, 0x00, 0xFF, 0x15, 0xF8, 0x2E, 0x00, 0x00, 0xE8, 0x63, 0xFF, 0xFF, 0xFF, 0xC6, 0x05, 0x1C, 
+            0x2F, 0x00, 0x00, 0x01, 0x5D, 0xC3, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0xC3, 0x66, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x1F, 0x40, 0x00, 
+            0xF3, 0x0F, 0x1E, 0xFA, 0xE9, 0x67, 0xFF, 0xFF, 0xFF, 0x0F, 0x1F, 0x00,
+        };
+
+        memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+
+        memcpy(vb_add(&builder->file, options->code.length), options->code.pointer, options->code.length);
+
+        auto size = builder->file.length - offset;
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+                .executable = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .fini
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 4;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".fini"));
+
+        u8 data[] = { 0xF3, 0x0F, 0x1E, 0xFA, 0x48, 0x83, 0xEC, 0x08, 0x48, 0x83, 0xC4, 0x08, 0xC3, };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+                .executable = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    vb_align(&builder->file, 0x1000);
+
+    {
+        // .rodata
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 4;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".rodata"));
+
+        u32 data = 0x20001;
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), &data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+                .merge = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = sizeof(u32),
+        };
+    }
+
+    {
+        // .eh_frame_hdr
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 4;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".eh_frame_hdr"));
+
+        EhFrameHeaderEntry entries[] = {
+            { .pc = 0xfffff01c, .fde = 0x34 },
+            { .pc = 0xfffff118, .fde = 0x4c },
+        };
+
+        EhFrameHeader eh_frame_hdr = {
+            .version = 1,
+            .pointer_encoding = elf_eh_frame_sdata4 | elf_eh_frame_pcrel,
+            .count_encoding = elf_eh_frame_udata4 | elf_eh_frame_absptr,
+            .table_encoding = elf_eh_frame_sdata4 | elf_eh_frame_datarel,
+            .frame_start = 0x18,
+            .entry_count = array_length(entries),
+        };
+
+        auto size = sizeof(eh_frame_hdr) + sizeof(entries);
+        auto* dst = vb_add(&builder->file, size);
+
+        memcpy(dst, &eh_frame_hdr, sizeof(eh_frame_hdr));
+        memcpy(dst + sizeof(eh_frame_hdr), entries, sizeof(entries));
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .eh_frame
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".eh_frame"));
+
+        u32 length = 0x14;
+        *(u32*)vb_add(&builder->file, sizeof(u32)) = length;
+        u32 id = 0;
+        *(u32*)vb_add(&builder->file, sizeof(u32)) = id;
+        u8 version = 1;
+        *vb_add(&builder->file, 1) = version;
+        
+        auto augmentation = strlit("zR");
+        memcpy(vb_add(&builder->file, augmentation.length + 1), augmentation.pointer, augmentation.length + 1);
+        u32 code_alignment_factor = 1;
+        s32 data_alignment_factor = -8;
+        u32 return_address_coumn = 0x10;
+        
+        uleb128_encode(&builder->file, code_alignment_factor);
+        sleb128_encode(&builder->file, data_alignment_factor);
+        uleb128_encode(&builder->file, return_address_coumn);
+
+        // TODO: figure out what this is
+        *vb_add(&builder->file, 1) = 0x01;
+        *vb_add(&builder->file, 1) = 0x1b;
+
+        // Bunch of dwarf stuff
+        u8 data[] = {
+            0x0C, 0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 
+            0xE0, 0xEF, 0xFF, 0xFF, 0x26, 0x00, 0x00, 0x00, 0x00, 0x44, 0x07, 0x10, 0x00, 0x00, 0x00, 0x00, 
+            0x10, 0x00, 0x00, 0x00, 0x34, 0x00, 0x00, 0x00, 0xC4, 0xF0, 0xFF, 0xFF, 0x03, 0x00, 0x00, 0x00, 
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        };
+
+        memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+
+        auto size = builder->file.length - offset;
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+            },
+            .address = offset,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    u64 init_array_size = 8;
+    u64 fini_array_size = 8;
+    u64 dynamic_size = 416;
+    u64 got_size = 40;
+    u64 got_plt_size = 24;
+
+    auto total_size = init_array_size + fini_array_size + dynamic_size + got_size + got_plt_size;
+
+    auto old_length = builder->file.length;
+    vb_align(&builder->file, 0x1000);
+    builder->file.length -= total_size;
+    assert(old_length < builder->file.length);
+
+    auto virtual_address_offset = 0x1000;
+
+    {
+        // .init_array
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto virtual_address = offset + virtual_address_offset;
+
+        assert((virtual_address - offset) % 0x1000 == 0);
+
+        auto name = elf_get_section_name(builder, strlit(".init_array"));
+
+        u8 data[] = { 0x10, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+
+        auto size = sizeof(data);
+        assert(init_array_size == size);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_INIT_ARRAY,
+            .flags = {
+                .alloc = 1,
+                .write = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 8,
+        };
+    }
+
+    {
+        // .fini_array
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+        auto virtual_address = offset + virtual_address_offset;
+
+        assert((virtual_address - offset) % 0x1000 == 0);
+
+        auto name = elf_get_section_name(builder, strlit(".fini_array"));
+
+        u8 data[] = { 0xC0, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_FINI_ARRAY,
+            .flags = {
+                .alloc = 1,
+                .write = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 8,
+        };
+    }
+
+    {
+        // .dynamic
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = alignof(ElfDynamicEntry);
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+        auto virtual_address = offset + virtual_address_offset;
+
+        auto name = elf_get_section_name(builder, strlit(".dynamic"));
+
+        ElfDynamicEntry dynamic_entries[] = {
+            { .tag = DT_NEEDED, { .address = 34}},
+            { .tag = DT_INIT, { .address = 4096}},
+            { .tag = DT_FINI, { .address = 4384}},
+            { .tag = DT_INIT_ARRAY, { .address = 15888}},
+            { .tag = DT_INIT_ARRAYSZ, { .address = 8}},
+            { .tag = DT_FINI_ARRAY, { .address = 15896}},
+            { .tag = DT_FINI_ARRAYSZ, { .address = 8}},
+            { .tag = DT_GNU_HASH, { .address = 928}},
+            { .tag = DT_STRTAB, { .address = 1104}},
+            { .tag = DT_SYMTAB, { .address = 960}},
+            { .tag = DT_STRSZ, { .address = 136}},
+            { .tag = DT_SYMENT, { .address = 24}},
+            { .tag = DT_DEBUG, { .address = 0}},
+            { .tag = DT_RELA, { .address = 1304}},
+            { .tag = DT_RELASZ, { .address = 192}},
+            { .tag = DT_RELAENT, { .address = 24}},
+            { .tag = DT_FLAGS_1, { .address = 134217728}},
+            { .tag = DT_VERNEED, { .address = 1256}},
+            { .tag = DT_VERNEEDNUM, { .address = 1}},
+            { .tag = DT_VERSYM, { .address = 1240}},
+            { .tag = DT_RELACOUNT, { .address = 3}},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+        };
+
+        auto size = sizeof(dynamic_entries);
+
+        memcpy(vb_add(&builder->file, size), dynamic_entries, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_DYNAMIC,
+            .flags = {
+                .alloc = 1,
+                .write = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = dynamic_string_table_index,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = sizeof(ElfDynamicEntry),
+        };
+    }
+
+    {
+        // .got
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+        auto virtual_address = offset + virtual_address_offset;
+
+        auto name = elf_get_section_name(builder, strlit(".got"));
+
+        u64 entries[] = { 0, 0, 0, 0, 0 };
+
+        auto size = sizeof(entries);
+
+        memcpy(vb_add(&builder->file, size), entries, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+                .write = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 8,
+        };
+    }
+
+    {
+        // .got.plt
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 8;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+        auto virtual_address = offset + virtual_address_offset;
+
+        auto name = elf_get_section_name(builder, strlit(".got.plt"));
+
+        u64 entries[] = { 0x3e20, 0, 0 };
+
+        auto size = sizeof(entries);
+
+        memcpy(vb_add(&builder->file, size), entries, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+                .write = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 8,
+        };
+    }
+
+    vb_align(&builder->file, 0x1000);
+
+    {
+        // .data
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 entries[] = { 0, 0x4008 };
+        u64 alignment = alignof(u64);
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+        auto virtual_address = offset + virtual_address_offset;
+
+        auto name = elf_get_section_name(builder, strlit(".data"));
+
+        auto size = sizeof(entries);
+        memcpy(vb_add(&builder->file, size), entries, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .alloc = 1,
+                .write = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .bss
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+        auto virtual_address = offset + virtual_address_offset;
+
+        auto name = elf_get_section_name(builder, strlit(".bss"));
+
+        auto size = 8;
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_BSS,
+            .flags = {
+                .alloc = 1,
+                .write = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    u64 virtual_address = 0;
+
+    {
+        // .comment
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".comment"));
+
+        String strings[] = {
+            strlit("GCC: (GNU) 14.2.1 20240805"),
+            strlit("GCC: (GNU) 14.2.1 20240910"),
+            strlit("clang version 18.1.8"),
+        };
+
+        for (u32 i = 0; i < array_length(strings); i += 1)
+        {
+            String string = strings[i];
+            // Copy also null-terminated byte
+            auto string_size = string.length + 1;
+            memcpy(vb_add(&builder->file, string_size), string.pointer, string_size);
+        }
+
+        auto size = builder->file.length - offset;
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .merge = 1,
+                .strings = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 1,
+        };
+    }
+
+    {
+        // .debug_info
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".debug_info"));
+
+        u8 data[] = {
+            0x33, 0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x1D, 0x00, 
+            0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00, 0x00, 0x08, 
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x57, 0x03, 0x00, 0x01, 0x32, 0x00, 
+            0x00, 0x00, 0x03, 0x04, 0x05, 0x04, 0x00, 
+        };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .debug_abbrev
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".debug_abbrev"));
+
+        u8 data[] = {
+            0x01, 0x11, 0x01, 0x25, 0x25, 0x13, 0x05, 0x03, 0x25, 0x72, 0x17, 0x10, 0x17, 0x1B, 0x25, 0x11, 
+            0x1B, 0x12, 0x06, 0x73, 0x17, 0x00, 0x00, 0x02, 0x2E, 0x00, 0x11, 0x1B, 0x12, 0x06, 0x40, 0x18, 
+            0x7A, 0x19, 0x03, 0x25, 0x3A, 0x0B, 0x3B, 0x0B, 0x49, 0x13, 0x3F, 0x19, 0x00, 0x00, 0x03, 0x24, 
+            0x00, 0x03, 0x25, 0x3E, 0x0B, 0x0B, 0x0B, 0x00, 0x00, 0x00, 
+        };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .debug_line
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".debug_line"));
+
+        u8 data[] = {
+            0x55, 0x00, 0x00, 0x00, 0x05, 0x00, 0x08, 0x00, 0x37, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0xFB, 
+            0x0E, 0x0D, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x01, 0x01, 
+            0x1F, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x01, 0x1F, 0x02, 0x0F, 0x05, 0x1E, 0x01, 0x14, 0x00, 
+            0x00, 0x00, 0x00, 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 
+            0x41, 0xE9, 0x19, 0x04, 0x00, 0x05, 0x05, 0x0A, 0x00, 0x09, 0x02, 0x1C, 0x11, 0x00, 0x00, 0x00, 
+            0x00, 0x00, 0x00, 0x14, 0x02, 0x03, 0x00, 0x01, 0x01, 
+        };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    // {
+    //     // .debug_frame
+    //     auto* section_header = vb_add(&builder->section_headers, 1);
+    //     u64 alignment = 8;
+    //
+    //     vb_align(&builder->file, alignment);
+    //     auto offset = builder->file.length;
+    //
+    //     auto name = elf_get_section_name(builder, strlit(".debug_frame"));
+    //
+    //     u8 data[] = {
+    //         0x14, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x04, 0x00, 0x08, 0x00, 0x01, 0x78, 0x10, 0x0C, 
+    //         0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    //         0x1C, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    //     };
+    //
+    //     auto size = sizeof(data);
+    //
+    //     memcpy(vb_add(&builder->file, size), data, size);
+    //
+    //     *section_header = (ELFSectionHeader) {
+    //         .name_offset = name,
+    //         .type = ELF_SECTION_PROGRAM,
+    //         .flags = {},
+    //         .address = virtual_address,
+    //         .offset = offset,
+    //         .size = size,
+    //         .link = 0,
+    //         .info = 0,
+    //         .alignment = alignment,
+    //         .entry_size = 0,
+    //     };
+    // }
+
+    {
+        // .debug_str
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".debug_str"));
+
+        u8 data[] = {
+            0x63, 0x6C, 0x61, 0x6E, 0x67, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x20, 0x31, 0x38, 
+            0x2E, 0x31, 0x2E, 0x38, 0x00, 0x6D, 0x61, 0x69, 0x6E, 0x2E, 0x63, 0x00, 0x2F, 0x68, 0x6F, 0x6D, 
+            0x65, 0x2F, 0x64, 0x61, 0x76, 0x69, 0x64, 0x2F, 0x6D, 0x69, 0x6E, 0x69, 0x6D, 0x61, 0x6C, 0x00, 
+            0x6D, 0x61, 0x69, 0x6E, 0x00, 0x69, 0x6E, 0x74, 0x00, 
+        };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .merge = 1,
+                .strings = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 1,
+        };
+    }
+
+    {
+        // .debug_addr
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".debug_addr"));
+
+        u8 data[] = { 0x0C, 0x00, 0x00, 0x00, 0x05, 0x00, 0x08, 0x00, 0x1C, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .debug_line_str
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".debug_line_str"));
+
+        u8 data[] = {
+            0x2F, 0x68, 0x6F, 0x6D, 0x65, 0x2F, 0x64, 0x61, 0x76, 0x69, 0x64, 0x2F, 0x6D, 0x69, 0x6E, 0x69, 
+            0x6D, 0x61, 0x6C, 0x00, 0x6D, 0x61, 0x69, 0x6E, 0x2E, 0x63, 0x00, 
+        };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {
+                .merge = 1,
+                .strings = 1,
+            },
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 1,
+        };
+    }
+
+    {
+        // .debug_str_offsets
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".debug_str_offsets"));
+
+        u8 data[] = {
+            0x18, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x15, 0x00, 0x00, 0x00, 
+            0x1C, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x35, 0x00, 0x00, 0x00, 
+        };
+
+        auto size = sizeof(data);
+
+        memcpy(vb_add(&builder->file, size), data, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_PROGRAM,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .symtab
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = alignof(ELFSymbol);
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".symtab"));
+
+        ELFSymbol symbols[] = {
+            { .name_offset = 0, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 0, .value = 0, .size = 0},
+            { .name_offset = 1, .type = ELF_SYMBOL_TYPE_FILE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 65521, .value = 0, .size = 0},
+            { .name_offset = 0, .type = ELF_SYMBOL_TYPE_FILE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 65521, .value = 0, .size = 0},
+            { .name_offset = 8, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 19, .value = 15904, .size = 0},
+            { .name_offset = 17, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 15, .value = 8196, .size = 0},
+            { .name_offset = 36, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 21, .value = 16360, .size = 0},
+            { .name_offset = 58, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 0, .value = 0, .size = 0},
+            { .name_offset = 87, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
+            { .name_offset = 130, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 22, .value = 16384, .size = 0},
+            { .name_offset = 115, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 22, .value = 16400, .size = 0},
+            { .name_offset = 122, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 13, .value = 4384, .size = 0},
+            { .name_offset = 128, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 22, .value = 16384, .size = 0},
+            { .name_offset = 141, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
+            { .name_offset = 156, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 22, .value = 16392, .size = 0},
+            { .name_offset = 169, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 14, .value = 8192, .size = 4},
+            { .name_offset = 184, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 23, .value = 16408, .size = 0},
+            { .name_offset = 134, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 12, .value = 4128, .size = 38},
+            { .name_offset = 189, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 23, .value = 16400, .size = 0},
+            { .name_offset = 201, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 12, .value = 4380, .size = 3},
+            { .name_offset = 206, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 22, .value = 16400, .size = 0},
+            { .name_offset = 218, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
+            { .name_offset = 244, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
+            { .name_offset = 271, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 11, .value = 4096, .size = 0}
+        };
+
+        auto size = sizeof(symbols);
+        memcpy(vb_add(&builder->file, size), symbols, size);
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_SYMBOL_TABLE,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = builder->section_headers.length, // Symtab is already added, so the length is actually the index of the .strtab section
+            .info = 6, // TODO: figure out
+            .alignment = alignment,
+            .entry_size = sizeof(ELFSymbol),
+        };
+    }
+
+    {
+        // .strtab
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".strtab"));
+
+        String strings[] = {
+            strlit(""),
+            strlit("main.c"),
+            strlit("_DYNAMIC"),
+            strlit("__GNU_EH_FRAME_HDR"),
+            strlit("_GLOBAL_OFFSET_TABLE_"),
+            strlit("__libc_start_main@GLIBC_2.34"),
+            strlit("_ITM_deregisterTMCloneTable"),
+            strlit("_edata"),
+            strlit("_fini"),
+            strlit("__data_start"),
+            strlit("__gmon_start__"),
+            strlit("__dso_handle"),
+            strlit("_IO_stdin_used"),
+            strlit("_end"),
+            strlit("__bss_start"),
+            strlit("main"),
+            strlit("__TMC_END__"),
+            strlit("_ITM_registerTMCloneTable"),
+            strlit("__cxa_finalize@GLIBC_2.2.5"),
+            strlit("_init"),
+        };
+
+        for (u32 i = 0; i < array_length(strings); i += 1)
+        {
+            String string = strings[i];
+            auto string_size = string.length + 1;
+            memcpy(vb_add(&builder->file, string_size), string.pointer, string_size);
+        }
+
+        auto size = builder->file.length - offset;
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_STRING_TABLE,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
+
+    {
+        // .shstrtab
+        auto* section_header = vb_add(&builder->section_headers, 1);
+        u64 alignment = 1;
+
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto name = elf_get_section_name(builder, strlit(".shstrtab"));
+
+        memcpy(vb_add(&builder->file, builder->section_string_table.length), builder->section_string_table.pointer, builder->section_string_table.length);
+
+        auto size = builder->file.length - offset;
+
+        *section_header = (ELFSectionHeader) {
+            .name_offset = name,
+            .type = ELF_SECTION_STRING_TABLE,
+            .flags = {},
+            .address = virtual_address,
+            .offset = offset,
+            .size = size,
+            .link = 0,
+            .info = 0,
+            .alignment = alignment,
+            .entry_size = 0,
+        };
+    }
 
     vb_align(&builder->file, alignof(ELFSectionHeader));
     auto section_header_offset = builder->file.length;
-    vb_append_bytes(&builder->file, vb_to_bytes(builder->section_table));
+    auto section_header_count = builder->section_headers.length;
+    memcpy(vb_add(&builder->file, sizeof(ELFSectionHeader) * section_header_count), builder->section_headers.pointer, builder->section_headers.length * sizeof(ELFSectionHeader));
 
     *elf_header = (ELFHeader)
     {
@@ -6284,41 +9097,52 @@ may_be_unused fn void write_elf(Thread* thread, char** envp, const ELFOptions* c
         .bit_count = bits64,
         .endianness = little,
         .format_version = 1,
-        .abi = system_v_abi,
+        .abi = ELF_ABI_SYSTEM_V,
         .abi_version = 0,
         .padding = {},
-        .type = relocatable,
+        .type = shared,
         .machine = x86_64,
         .version = 1,
-        .entry_point = 0,
-        .program_header_offset = 0,
+        .entry_point = 4128,
+        .program_header_offset = sizeof(ELFHeader),
         .section_header_offset = section_header_offset,
         .flags = 0,
         .elf_header_size = sizeof(ELFHeader),
-        .program_header_size = 0,
-        .program_header_count = 0,
+        .program_header_size = sizeof(ElfProgramHeader),
+        .program_header_count = program_header_count,
         .section_header_size = sizeof(ELFSectionHeader),
-        .section_header_count = cast(u16, u64, builder->section_table.length),
-        .section_header_string_table_index = cast(u16, u64, builder->section_table.length - 1),
+        .section_header_count = section_header_count,
+        .section_header_string_table_index = section_header_count - 1,
     };
 
-    auto object_path_z = options->object_path;
+    // Check if the file matches
+    // {
+    //     auto s = file_read(thread->arena, strlit("/home/david/minimal/main"));
+    //
+    //     if (s.length != builder->file.length)
+    //     {
+    //         fail();
+    //     }
+    //
+    //     for (u32 i = 0; i < s.length; i += 1)
+    //     {
+    //         auto mine = builder->file.pointer[i];
+    //         auto correct = s.pointer[i];
+    //         if (mine != correct)
+    //         {
+    //             fail();
+    //         }
+    //     }
+    // }
+
+    auto exe_path_z = options->exe_path;
     {
-        int fd = syscall_open(object_path_z, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        int fd = syscall_open(exe_path_z, O_WRONLY | O_CREAT | O_TRUNC, 0755);
         assert(fd != -1);
         syscall_write(fd, builder->file.pointer, builder->file.length);
 
         syscall_close(fd);
     }
-
-    char* command[] = {
-        clang_path,
-        object_path_z,
-        "-o",
-        options->exe_path,
-        0,
-    };
-    run_command((CStringSlice) array_to_slice(command), envp);
 }
 
 void subsume_node_without_killing(Thread* thread, NodeIndex old_node_index, NodeIndex new_node_index)
@@ -6453,7 +9277,7 @@ fn NodeIndex basic_block_end(Thread* thread, NodeIndex start_index)
     return node_index;
 }
 
-struct Block
+STRUCT(Block)
 {
     NodeIndex start;
     NodeIndex end;
@@ -6461,7 +9285,6 @@ struct Block
     u32 successor_count;
     struct Block* parent;
 };
-typedef struct Block Block;
 
 fn NodeIndex cfg_next_control(Thread* thread, NodeIndex node_index)
 {
@@ -6623,14 +9446,13 @@ fn NodeIndex node_select_instruction(Thread* thread, NodeIndex node_index)
     }
 }
 
-struct BasicBlockIndex
+STRUCT(BasicBlockIndex)
 {
     u32 index;
 };
-typedef struct BasicBlockIndex BasicBlockIndex;
 decl_vb(BasicBlockIndex);
 
-struct BasicBlock
+STRUCT(BasicBlock)
 {
     VirtualBuffer(NodeIndex) items;
     Bitset gen;
@@ -6643,7 +9465,6 @@ struct BasicBlock
     BasicBlockIndex dominator;
     s32 forward;
 };
-typedef struct BasicBlock BasicBlock;
 decl_vb(BasicBlock);
 decl_vbp(BasicBlock);
 
@@ -6869,31 +9690,28 @@ fn u64 node_get_unit_mask(Thread* thread, Node* node)
     return 1;
 }
 
-struct ReadyNode
+STRUCT(ReadyNode)
 {
     u64 unit_mask;
     NodeIndex node_index;
     s32 priority;
 };
-typedef struct ReadyNode ReadyNode;
 decl_vb(ReadyNode);
 
-struct InFlightNode
+STRUCT(InFlightNode)
 {
     NodeIndex node_index;
     u32 end;
     s32 unit_i;
 };
-typedef struct InFlightNode InFlightNode;
 decl_vb(InFlightNode);
 
-struct Scheduler
+STRUCT(Scheduler)
 {
     Bitset ready_set;
     VirtualBuffer(ReadyNode) ready;
     NodeIndex cmp;
 };
-typedef struct Scheduler Scheduler;
 
 fn s32 node_best_ready(Scheduler* restrict scheduler, u64 in_use_mask)
 {
@@ -7109,7 +9927,7 @@ fn u32 node_tmp_count(Node* node)
     }
 }
 
-struct VirtualRegister
+STRUCT(VirtualRegister)
 {
     RegisterMaskIndex mask;
     NodeIndex node_index;
@@ -7119,7 +9937,6 @@ struct VirtualRegister
     s16 assigned;
     s32 hint_vreg;
 };
-typedef struct VirtualRegister VirtualRegister;
 decl_vb(VirtualRegister);
 
 
@@ -7575,9 +10392,9 @@ fn u8 register_allocate(Thread* thread, VirtualBuffer(VirtualRegister) virtual_r
     }
 
     auto mask_value = mask->mask;
-	auto old_in_use = in_use;
+    auto old_in_use = in_use;
     in_use |= ~mask_value;
-	print("Vreg mask: {u32:x}. Complement: {u32:x}. In use before: {u32:x}. In use after: {u32:x}\n", mask_value, ~mask_value, old_in_use, in_use);
+    print("Vreg mask: {u32:x}. Complement: {u32:x}. In use before: {u32:x}. In use after: {u32:x}\n", mask_value, ~mask_value, old_in_use, in_use);
 
     spills->length = 0;
 
@@ -7666,12 +10483,11 @@ typedef enum MachineOperandId : u8
     MACHINE_OPERAND_XMM,
 } MachineOperandId;
 
-struct MachineOperand
+STRUCT(MachineOperand)
 {
     MachineOperandId id;
     s16 register_value;
 };
-typedef struct MachineOperand MachineOperand;
 
 fn MachineOperand operand_from_node(VirtualBuffer(VirtualRegister) virtual_registers, u32* virtual_register_map, NodeIndex node_index)
 {
@@ -7743,12 +10559,11 @@ fn void node_ready_up(Thread* thread, Scheduler* scheduler, NodeIndex node_index
     };
 }
 
-struct FixedBlockMap
+STRUCT(FixedBlockMap)
 {
     NodeIndex* keys;
     u32 count;
 };
-typedef struct FixedBlockMap FixedBlockMap;
 
 fn FixedBlockMap fixed_block_map_create(Thread* restrict thread, u32 count)
 {
@@ -7797,7 +10612,7 @@ fn BasicBlockIndex fixed_block_map_get(FixedBlockMap* restrict map, NodeIndex ke
     return invalidi(BasicBlock);
 }
 
-struct CFGBuilder
+STRUCT(CFGBuilder)
 {
     VirtualBuffer(NodeIndex) pinned;
     VirtualBuffer(BasicBlock) basic_blocks;
@@ -7806,8 +10621,6 @@ struct CFGBuilder
     WorkListHandle walker;
     WorkListHandle worker;
 };
-
-typedef struct CFGBuilder CFGBuilder;
 
 fn CFGBuilder cfg_builder_init(Thread* restrict thread)
 {
@@ -7828,12 +10641,11 @@ fn void cfg_builder_clear(CFGBuilder* restrict builder, Thread* restrict thread)
     builder->scheduled.length = 0;
 }
 
-struct CodegenOptions
+STRUCT(CodegenOptions)
 {
     String test_name;
     CompilerBackend backend;
 };
-typedef struct CodegenOptions CodegenOptions;
 
 fn BasicBlockIndex cfg_get_predicate_basic_block(Thread* restrict thread, FixedBlockMap* map, NodeIndex arg_node_index, u16 i)
 {
@@ -8100,12 +10912,10 @@ fn void cfg_build(CFGBuilder* restrict builder, Thread* restrict thread, Functio
     }
 }
 
-struct GlobalScheduleOptions
+STRUCT(GlobalScheduleOptions)
 {
     u8 dataflow:1;
 };
-
-typedef struct GlobalScheduleOptions GlobalScheduleOptions;
 
 fn void basic_block_add_node(Thread* restrict thread, BasicBlock* restrict basic_block, NodeIndex node_index, u32 place)
 {
@@ -8221,13 +11031,12 @@ fn void cfg_global_schedule(CFGBuilder* restrict builder, Thread* restrict threa
         auto pin_node_index = pins.pointer[i];
         auto* pin = thread_node_get(thread, pin_node_index);
 
-        struct Elem
+        STRUCT(Elem)
         {
             struct Elem* parent;
             NodeIndex node;
             u32 i;
         };
-        typedef struct Elem Elem;
 
         auto* top = arena_allocate(thread->arena, Elem, 1);
         *top = (Elem)
@@ -8382,7 +11191,7 @@ fn void cfg_build_and_global_schedule(CFGBuilder* restrict builder, Thread* rest
 
 fn void cfg_list_schedule(Thread* restrict thread, CFGBuilder* restrict builder, Function* restrict function, BasicBlockIndex basic_block_index)
 {
-	// print("=================================\nLIST SCHEDULER START\n=================================\n");
+    // print("=================================\nLIST SCHEDULER START\n=================================\n");
     thread_worklist_clear(thread, builder->worker);
 
     auto* restrict basic_block = &builder->basic_blocks.pointer[geti(basic_block_index)];
@@ -8526,7 +11335,7 @@ fn void cfg_list_schedule(Thread* restrict thread, CFGBuilder* restrict builder,
     {
         thread_worklist_push(thread, builder->worker, end_index);
     }
-	// print("=================================\nLIST SCHEDULER END\n=================================\n");
+    // print("=================================\nLIST SCHEDULER END\n=================================\n");
 }
 
 fn u8 operand_equal(MachineOperand a, MachineOperand b)
@@ -8542,6 +11351,11 @@ fn u8 operand_equal(MachineOperand a, MachineOperand b)
     }
 
     return (a.id == MACHINE_OPERAND_GPR || a.id == MACHINE_OPERAND_XMM) ? a.register_value == b.register_value : 0;
+}
+
+fn void write_macho(Thread* restrict thread, const ObjectOptions * const restrict options, char** envp)
+{
+    todo();
 }
 
 fn void code_generation(Thread* restrict thread, CodegenOptions options, char** envp)
@@ -9326,11 +12140,19 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
     case COMPILER_BACKEND_MACHINE:
         {
             auto code_slice = (Slice(u8)) { .pointer = code.pointer, .length = code.length, };
-            write_elf(thread, envp, &(ELFOptions) {
+            auto object_options = (ObjectOptions) {
                 .object_path = string_to_c(object_path),
                 .exe_path = exe_path,
                 .code = code_slice,
-            });
+                .dynamic = 1,
+            };
+#if defined(__APPLE__)
+            write_macho(thread, &object_options, envp);
+#elif defined(__linux__)
+            write_elf(thread, &object_options, envp);
+#else
+            todo();
+#endif
         } break;
     }
 }
@@ -9350,12 +12172,11 @@ fn u8 node_is_empty_control_projection(Thread* restrict thread, CFGBuilder* rest
     return result;
 }
 
-struct SchedPhi
+STRUCT(SchedPhi)
 {
     NodeIndex phi;
     NodeIndex node;
 };
-typedef struct SchedPhi SchedPhi;
 decl_vb(SchedPhi);
 
 fn void fill_phis(Thread* restrict thread, VirtualBuffer(SchedPhi)* sched_phis, Node* restrict successor_node, NodeIndex original_index)
@@ -9390,8 +12211,7 @@ fn void fill_phis(Thread* restrict thread, VirtualBuffer(SchedPhi)* sched_phis, 
     }
 }
 
-typedef struct SchedNode SchedNode;
-struct SchedNode
+STRUCT(SchedNode)
 {
     SchedNode* parent;
     NodeIndex node_index;
@@ -9718,6 +12538,285 @@ fn void print_ir(Thread* restrict thread)
     }
 }
 
+#if LINK_LIBC == 0
+[[gnu::naked]] [[noreturn]] void _start()
+{
+    __asm__ __volatile__(
+            "\nxor %ebp, %ebp"
+            "\npopq %rdi"
+            "\nmov %rsp, %rsi"
+            "\nand $~0xf, %rsp"
+            "\npushq %rsp"
+            "\npushq $0"
+            "\ncallq entry_point"
+            "\nud2\n"
+       );
+}
+#endif
+
+fn void dwarf_playground(Thread* thread)
+{
+    auto file = file_read(thread->arena,
+#ifdef __APPLE__
+            strlit("/Users/david/dwarf/main.o")
+#else
+            strlit("/home/david/dwarf/main.o")
+#endif
+    );
+    auto* elf_header = (ELFHeader*)file.pointer;
+    auto section_count = elf_header->section_header_count;
+    auto section_header_offset = elf_header->section_header_offset;
+    auto string_table_section_index = elf_header->section_header_string_table_index;
+
+    auto debug_abbrev_section_index = -1;
+    auto debug_info_section_index = -1;
+    auto debug_addr_section_index = -1;
+    auto debug_str_section_index = -1;
+    auto debug_str_offsets_section_index = -1;
+    auto rela_debug_str_offsets_section_index = -1;
+    auto rela_debug_addr_section_index = -1;
+
+    auto section_headers = (ELFSectionHeader*)(file.pointer + section_header_offset);
+    auto* string_table_section_header = (ELFSectionHeader*)(file.pointer + section_header_offset) + string_table_section_index;
+    auto string_table_offset = string_table_section_header->offset;
+
+    for (u16 i = 0; i < section_count; i += 1)
+    {
+        auto* section_header = section_headers + i;
+        auto name_offset = string_table_offset + section_header->name_offset;
+        auto* name = file.pointer + name_offset;
+        print("Section #{u32}\t\"{cstr}\". Size: {u64}\n", i, name, section_header->size);
+
+        if (strcmp(".debug_abbrev", (char*)name) == 0)
+        {
+            debug_abbrev_section_index = i;
+        }
+        else if (strcmp(".debug_info", (char*)name) == 0)
+        {
+            debug_info_section_index = i;
+        }
+        else if (strcmp(".debug_addr", (char*)name) == 0)
+        {
+            debug_addr_section_index = i;
+        }
+        else if (strcmp(".debug_str", (char*)name) == 0)
+        {
+            debug_str_section_index = i;
+        }
+        else if (strcmp(".debug_str_offsets", (char*)name) == 0)
+        {
+            debug_str_offsets_section_index = i;
+        }
+        else if (strcmp(".rela.debug_addr", (char*)name) == 0)
+        {
+            rela_debug_addr_section_index = i;
+        }
+        else if (strcmp(".rela.debug_str_offsets", (char*)name) == 0)
+        {
+            rela_debug_str_offsets_section_index = i;
+        }
+    }
+
+    assert(debug_info_section_index != -1);
+    assert(debug_abbrev_section_index != -1);
+    assert(debug_addr_section_index != -1);
+    assert(debug_str_section_index != -1);
+    assert(debug_str_offsets_section_index != -1);
+    assert(rela_debug_addr_section_index != -1);
+    assert(rela_debug_str_offsets_section_index != -1);
+
+    auto* debug_abbrev_section_header = section_headers + debug_abbrev_section_index;
+    auto* debug_info_section_header = section_headers + debug_info_section_index;
+    auto* debug_addr_section_header = section_headers + debug_addr_section_index;
+    auto* debug_str_section_header = section_headers + debug_str_section_index;
+    auto* debug_str_offsets_section_header = section_headers + debug_str_offsets_section_index;
+    auto* rela_debug_str_offsets_section_header = section_headers + rela_debug_str_offsets_section_index;
+    auto* rela_debug_addr_section_header = section_headers + rela_debug_addr_section_index;
+
+    auto* rela_debug_str_offsets = (ElfRelocation*)(file.pointer + rela_debug_str_offsets_section_header->offset);
+    auto* rela_debug_addresses = (ElfRelocation*)(file.pointer + rela_debug_addr_section_header->offset);
+
+    auto debug_info_bytes = (String) {
+        .pointer = file.pointer + debug_info_section_header->offset,
+        .length = debug_info_section_header->size,
+    };
+
+    auto* compile_unit_header = (DwarfCompilationUnit*)debug_info_bytes.pointer;
+    debug_info_bytes.pointer += sizeof(DwarfCompilationUnit);
+    debug_info_bytes.length -= sizeof(DwarfCompilationUnit);
+
+    auto debug_abbrev_bytes = (String) {
+        .pointer = file.pointer + debug_abbrev_section_header->offset,
+        .length = debug_abbrev_section_header->size,
+    };
+    auto* debug_addr_header = (DwarfAddressTableHeader*)(file.pointer + debug_addr_section_header->offset);
+    assert(debug_addr_header->unit_length == debug_addr_section_header->size - sizeof(debug_addr_header->unit_length));
+    assert(debug_addr_header->version == 5);
+    assert(debug_addr_header->address_size == 8);
+    auto* debug_addresses = (u64*)debug_addr_header + 1;
+    auto* debug_str_offsets_header = (DwarfStringOffsetsTableHeader*)(file.pointer + debug_str_offsets_section_header->offset);
+    assert(debug_str_offsets_header->unit_length == debug_str_offsets_section_header->size - sizeof(debug_str_offsets_header->unit_length));
+    auto string_count = (debug_str_offsets_section_header->size - sizeof(DwarfStringOffsetsTableHeader)) / sizeof(u32);
+    auto* string_index_offset_map = (u32*)(debug_str_offsets_header + 1);
+    auto* string_table = file.pointer + debug_str_section_header->offset;
+
+    auto debug_str_offset_base_guess = 8;
+
+    auto top = 0;
+    while (debug_abbrev_bytes.length > 0)
+    {
+        auto first = uleb128_decode(debug_abbrev_bytes);
+        debug_abbrev_bytes.pointer += first.i;
+        debug_abbrev_bytes.length -= first.i;
+
+        if (first.number != 0)
+        {
+            auto second = uleb128_decode(debug_abbrev_bytes);
+            debug_abbrev_bytes.pointer += second.i;
+            debug_abbrev_bytes.length -= second.i;
+            auto children = debug_abbrev_bytes.pointer[0];
+            debug_abbrev_bytes.pointer += 1;
+            debug_abbrev_bytes.length -= 1;
+
+            auto di_abbrev_code = uleb128_decode(debug_info_bytes);
+            debug_info_bytes.pointer += di_abbrev_code.i;
+            debug_info_bytes.length -= di_abbrev_code.i;
+            assert(di_abbrev_code.number == first.number);
+
+            print("Abbreviation entry #{u64}: \"{s}\", (0x{u64:x})\n", first.number, dwarf_tag_to_string((DwarfTag)second.number), second.number);
+
+            while (1)
+            {
+                auto first = uleb128_decode(debug_abbrev_bytes);
+                debug_abbrev_bytes.pointer += first.i;
+                debug_abbrev_bytes.length -= first.i;
+                auto second = uleb128_decode(debug_abbrev_bytes);
+                debug_abbrev_bytes.pointer += second.i;
+                debug_abbrev_bytes.length -= second.i;
+
+                if (first.number == 0 && second.number == 0)
+                {
+                    break;
+                }
+
+                auto attribute = (DwarfAttribute)first.number;
+                auto form = (DwarfForm)second.number;
+                print("Attribute: \"{s}\" (0x{u64:x}). Form: \"{s}\" (0x{u64:x})\n", dwarf_attribute_to_string(attribute), (u64)attribute, dwarf_form_to_string(form), (u64)form);
+
+                switch (form)
+                {
+                    // .debug_str_offsets
+                    case DW_FORM_strx1:
+                        {
+                            auto index = debug_info_bytes.pointer[0];
+                            debug_info_bytes.pointer += 1;
+                            debug_info_bytes.length -= 1;
+                            auto* relocation = &rela_debug_str_offsets[index];
+                            auto offset = relocation->addend;
+                            auto* c_string = &string_table[offset];
+                            print("Index: {u32}. Offset: {u32}. String: \"{cstr}\"\n", (u32)index, offset, c_string);
+                        } break;
+                    case DW_FORM_data1:
+                        {
+                            auto data = *debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += 1;
+                            debug_info_bytes.length -= 1;
+                            print("Data1: 0x{u32:x}\n", (u32)data);
+                        } break;
+                    case DW_FORM_data2:
+                        {
+                            auto data = *(u16*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u16);
+                            debug_info_bytes.length -= sizeof(u16);
+                            print("Data2: 0x{u32:x}\n", (u32)data);
+                        } break;
+                    case DW_FORM_data4:
+                        {
+                            auto data = *(u32*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u32);
+                            debug_info_bytes.length -= sizeof(u32);
+                            print("Data4: 0x{u32:x}\n", data);
+                        } break;
+                    case DW_FORM_sec_offset:
+                        {
+                            auto sec_offset = *(u32*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u32);
+                            debug_info_bytes.length -= sizeof(u32);
+                            print("Sec offset: 0x{u32:x}\n", sec_offset);
+                        } break;
+                    case DW_FORM_addrx:
+                        {
+                            auto addrx = uleb128_decode(debug_info_bytes);
+                            debug_info_bytes.pointer += addrx.i;
+                            debug_info_bytes.length -= addrx.i;
+                            auto relocation_index = addrx.number;
+
+                            auto* relocation = &rela_debug_addresses[relocation_index];
+                            auto index = relocation->addend;
+
+                            switch (attribute)
+                            {
+                                case DW_AT_low_pc:
+                                    {
+                                        auto address = debug_addresses[index];
+                                        print("Address: 0x{u64:x}\n", address);
+                                    } break;
+                                default:
+                                    todo();
+                            }
+                        } break;
+                    case DW_FORM_exprloc:
+                        {
+                            auto length = uleb128_decode(debug_info_bytes);
+                            debug_info_bytes.pointer += length.i;
+                            debug_info_bytes.length -= length.i;
+
+                            switch (length.number)
+                            {
+                                case 1:
+                                    {
+                                        switch (attribute)
+                                        {
+                                            case DW_AT_frame_base:
+                                                {
+                                                    auto b = *debug_info_bytes.pointer;
+                                                    debug_info_bytes.pointer += 1;
+                                                    debug_info_bytes.length -= 1;
+                                                    auto operation = (DwarfOperation)b;
+
+                                                    print("Operation: {s}\n", dwarf_operation_to_string(operation));
+                                                } break;
+                                            default:
+                                                todo();
+                                        }
+                                    } break;
+                                default:
+                                    todo();
+                            }
+                        } break;
+                    case DW_FORM_flag_present:
+                        {
+                            print("Flag present\n");
+                        } break;
+                    case DW_FORM_ref4:
+                        {
+                            auto ref4 = *(u32*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u32);
+                            debug_info_bytes.length -= sizeof(u32);
+                            print("Ref4: {u32:x}\n", ref4);
+                        } break;
+                    default:
+                        todo();
+                }
+            }
+        }
+    }
+
+    assert(debug_abbrev_bytes.length == 0);
+    assert(debug_info_bytes.length == 1);
+    assert(*debug_info_bytes.pointer == 0);
+}
+
 #if LINK_LIBC
 int main(int argc, const char* argv[], char* envp[])
 {
@@ -9733,12 +12832,9 @@ void entry_point(int argc, const char* argv[])
 
     // calibrate_cpu_timer();
 
-    if (argc < 3)
-    {
-        fail();
-    }
 
     Arena* global_arena = arena_init(MB(2), KB(64), KB(64));
+
     {
         arguments.length = cast(u64, s32, argc);
         arguments.pointer = arena_allocate(global_arena, String, arguments.length);
@@ -9753,12 +12849,20 @@ void entry_point(int argc, const char* argv[])
         }
     }
 
+    Thread* thread = arena_allocate(global_arena, Thread, 1);
+    thread_init(thread);
+
+    // clang -c main.c -o main.o -g -Oz -fno-exceptions -fno-asynchronous-unwind-tables -fno-addrsig -fno-stack-protector -fno-ident
+    // dwarf_playground(thread);
+
+    if (argc < 3)
+    {
+        fail();
+    }
+
     String source_file_path = arguments.pointer[1];
     CompilerBackend compiler_backend = arguments.pointer[2].pointer[0];
     u8 emit_ir = arguments.length >= 4 && arguments.pointer[3].pointer[0] == 'y';
-
-    Thread* thread = arena_allocate(global_arena, Thread, 1);
-    thread_init(thread);
 
     dir_make("nest");
 
@@ -9796,19 +12900,3 @@ void entry_point(int argc, const char* argv[])
     syscall_exit(0);
 #endif
 }
-
-#if LINK_LIBC == 0
-[[gnu::naked]] [[noreturn]] void _start()
-{
-    __asm__ __volatile__(
-            "\nxor %ebp, %ebp"
-            "\npopq %rdi"
-            "\nmov %rsp, %rsi"
-            "\nand $~0xf, %rsp"
-            "\npushq %rsp"
-            "\npushq $0"
-            "\ncallq entry_point"
-            "\nud2\n"
-       );
-}
-#endif
