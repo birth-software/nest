@@ -1,3 +1,5 @@
+// This license belongs to https://github.com/RealNeGate/Cuik
+
 MIT License
 
 Copyright (c) 2021 Yasser Arguelles Snape
