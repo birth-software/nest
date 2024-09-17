@@ -1515,6 +1515,7 @@ may_be_unused fn u64 os_timer_get()
 
 may_be_unused fn void calibrate_cpu_timer()
 {
+#ifndef SILENT
 #if LINK_LIBC
     // clock_getres(CLOCK_MONOTONIC, &cpu_resolution);
 #else
@@ -1534,6 +1535,7 @@ may_be_unused fn void calibrate_cpu_timer()
     u64 cpu_end = timestamp();
     u64 cpu_elapsed = cpu_end - cpu_start;
     cpu_frequency = os_frequency * cpu_elapsed / os_elapsed;
+#endif
 #endif
 }
 
