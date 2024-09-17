@@ -97,14 +97,33 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
         b = temp;\
     } while (0)
 
-fn u64 timestamp()
+fn 
+#if LINK_LIBC
+struct timespec
+#else
+u64 
+#endif
+timestamp()
 {
+#if LINK_LIBC
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts;
+#else
 #if defined(__x86_64__)
     return __rdtsc();
 #else
     return 0;
 #endif
+#endif
 }
+
+#if LINK_LIBC
+global struct timespec cpu_resolution;
+#else
+global u64 cpu_frequency;
+#endif
+
 
 may_be_unused fn void print(const char* format, ...);
 
@@ -435,6 +454,75 @@ may_be_unused fn s32 cast_s64_to_s32(s64 source, const char* name, int line)
     const global u64 page_size = KB(4);
 #endif
 
+typedef enum TimeUnit
+{
+    TIME_UNIT_NANOSECONDS,
+    TIME_UNIT_MICROSECONDS,
+    TIME_UNIT_MILLISECONDS,
+    TIME_UNIT_SECONDS,
+} TimeUnit;
+
+fn f64 resolve_timestamp(
+#if LINK_LIBC
+        struct timespec start, struct timespec end,
+#else
+        u64 start, u64 end,
+#endif
+        TimeUnit time_unit)
+{
+#if LINK_LIBC
+    assert(end.tv_sec >= start.tv_sec);
+    struct timespec result = {
+        .tv_sec = end.tv_sec - start.tv_sec,
+        .tv_nsec = end.tv_nsec - start.tv_nsec,
+    };
+
+    auto ns_in_a_sec = 1000000000;
+    if (result.tv_nsec < 0)
+    {
+        result.tv_sec -= 1;
+        result.tv_nsec += ns_in_a_sec;
+    }
+
+    auto ns = result.tv_sec * ns_in_a_sec + result.tv_nsec;
+    switch (time_unit)
+    {
+    case TIME_UNIT_NANOSECONDS:
+        return (f64)ns;
+    case TIME_UNIT_MICROSECONDS:
+        return ns / 1000.0;
+    case TIME_UNIT_MILLISECONDS:
+        return ns / 1000000.0;
+    case TIME_UNIT_SECONDS:
+        return ns / 1000000000.0;
+    }
+#else
+    assert(end >= start);
+    auto ticks = end - start;
+    f64 s = (f64)(end - start);
+    if (cpu_frequency)
+    {
+        s = s / (f64)cpu_frequency;
+
+        switch (time_unit)
+        {
+            case TIME_UNIT_NANOSECONDS:
+                return s / 1000000000.0;
+            case TIME_UNIT_MICROSECONDS:
+                return s / 1000000.0;
+            case TIME_UNIT_MILLISECONDS:
+                return s / 1000.0;
+            case TIME_UNIT_SECONDS:
+                return s;
+        }
+    }
+    else
+    {
+        // warning: rdtsc frequency not queried (returning ticks as are)
+        return s;
+    }
+#endif
+}
 
 const may_be_unused global u8 brace_open = '{';
 const may_be_unused global u8 brace_close = '}';
@@ -1425,10 +1513,11 @@ may_be_unused fn u64 os_timer_get()
     return result;
 }
 
-global u64 cpu_frequency;
-
 may_be_unused fn void calibrate_cpu_timer()
 {
+#if LINK_LIBC
+    // clock_getres(CLOCK_MONOTONIC, &cpu_resolution);
+#else
     u64 miliseconds_to_wait = 100;
     u64 cpu_start = timestamp();
     u64 os_frequency = os_timer_freq();
@@ -1445,6 +1534,7 @@ may_be_unused fn void calibrate_cpu_timer()
     u64 cpu_end = timestamp();
     u64 cpu_elapsed = cpu_end - cpu_start;
     cpu_frequency = os_frequency * cpu_elapsed / os_elapsed;
+#endif
 }
 
 fn u8* reserve(u64 size)
@@ -1538,7 +1628,6 @@ fn u32 format_decimal(String buffer, u64 decimal)
     }
 }
 
-#define SILENT (0)
 STRUCT(SmallIntResult)
 {
     u64 mantissa;
@@ -2210,7 +2299,7 @@ fn void write_float_decimal(String buffer, u64* value, u64 count)
 
 may_be_unused fn void print(const char* format, ...)
 {
-#if SILENT == 0
+#ifndef SILENT
         u8 stack_buffer[4096];
         va_list args;
         va_start(args, format);
@@ -2463,7 +2552,24 @@ may_be_unused fn void print(const char* format, ...)
                                                 }
                                                 else
                                                 {
-                                                    __builtin_trap();
+                                                    auto dp_uoffset = (u64)dp_offset;
+                                                    if (dp_uoffset >= olength)
+                                                    {
+                                                        write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, olength);
+                                                        buffer_i += olength;
+                                                        auto length = dp_uoffset - olength;
+                                                        auto memset_slice = s_get_slice(u8, buffer, buffer_i, buffer_i + length);
+                                                        memset(memset_slice.pointer, 0, length);
+                                                        buffer_i += length;
+                                                    }
+                                                    else
+                                                    {
+                                                        write_float_decimal(s_get_slice(u8, buffer, buffer_i + dp_uoffset + 1, buffer.length), &output, olength - dp_uoffset);
+                                                        buffer.pointer[buffer_i + dp_uoffset] = '.';
+                                                        auto dp_index = buffer_i + dp_uoffset + 1;
+                                                        write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, dp_uoffset);
+                                                        buffer_i += olength + 1;
+                                                    }
                                                 }
                                             } break;
                                     }
@@ -2692,7 +2798,7 @@ fn void run_command(CStringSlice arguments, char* envp[])
         trap();
     }
 
-    u64 start_ns = timestamp();
+    auto start_timestamp = timestamp();
 
     if (pid == 0)
     {
@@ -2712,7 +2818,7 @@ fn void run_command(CStringSlice arguments, char* envp[])
         int status = 0;
         int options = 0;
         pid_t result = syscall_waitpid(pid, &status, options);
-        u64 end_ns = timestamp();
+        auto end_timestamp = timestamp();
         int success = 0;
         if (result == pid)
         {
@@ -2736,14 +2842,15 @@ fn void run_command(CStringSlice arguments, char* envp[])
             fail();
         }
 
-        if (cpu_frequency)
-        {
-            auto ticks = end_ns - start_ns;
-            auto ticks_f = (f64)ticks;
-            auto time_frequency_f = (f64)cpu_frequency;
-            auto s = ticks_f / time_frequency_f;
-            print("Command run successfully in {f64} s\n", s);
-        }
+        auto ms = resolve_timestamp(start_timestamp, end_timestamp, TIME_UNIT_MILLISECONDS);
+        auto ticks =
+#if LINK_LIBC
+            0
+#else
+            cpu_frequency != 0
+#endif
+            ;
+        print("Command run successfully in {f64} {cstr}\n", ms, ticks ? "ticks" : "ms");
     }
 }
 
@@ -2840,3 +2947,36 @@ may_be_unused fn Hash32 hash64_fib_end(Hash64 hash)
     auto result = truncate(Hash32, (hash * 11400714819323198485ull) >> 32);
     return result;
 }
+
+fn void entry_point(int argc, char* argv[], char* envp[]);
+
+#if LINK_LIBC
+int main(int argc, char* argv[], char* envp[])
+{
+    entry_point(argc, argv, envp);
+    return 0;
+}
+#else
+[[gnu::naked]] [[noreturn]] void _start()
+{
+    __asm__ __volatile__(
+            "\nxor %ebp, %ebp"
+            "\npopq %rdi"
+            "\nmov %rsp, %rsi"
+            "\nand $~0xf, %rsp"
+            "\npushq %rsp"
+            "\npushq $0"
+            "\ncallq static_entry_point"
+            "\nud2\n"
+       );
+}
+
+void static_entry_point(int argc, char* argv[])
+{
+    char** envp = (char**)&argv[argc + 1];
+    calibrate_cpu_timer();
+    entry_point(argc, argv, envp);
+    syscall_exit(0);
+}
+
+#endif
