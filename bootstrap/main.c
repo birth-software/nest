@@ -7807,6 +7807,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto dynamic_symbol_table_index = preliminar_section_count;
     auto dynamic_string_table_index = dynamic_symbol_table_index + 1;
 
+    u32 gnu_hash_offset = 0;
     {
         // .gnu.hash
         // Section #5
@@ -7815,9 +7816,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        gnu_hash_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".gnu.hash"));
-
 
         *vb_add_struct(&builder->file, ElfGnuHashHeader) = (ElfGnuHashHeader) {
             .bucket_count = 1,
@@ -7863,6 +7864,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto gmon_start = st_add_string(&builder->dynamic_st, strlit("__gmon_start__"));
     auto itm_register = st_add_string(&builder->dynamic_st, strlit("_ITM_registerTMCloneTable"));
 
+    u32 dynsym_offset = 0;
     {
         // .dynsym
         // Section #6
@@ -7871,6 +7873,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        dynsym_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".dynsym"));
 
@@ -7949,6 +7952,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    u32 dynstr_offset = 0;
+    u32 dynstr_size = 0;
     {
         // .dynstr
         // Section #7
@@ -7957,10 +7962,12 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        dynstr_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".dynstr"));
 
         auto size = builder->dynamic_st.string_table.length;
+        dynstr_size = size;
         memcpy(vb_add(&builder->file, size), builder->dynamic_st.string_table.pointer, size);
 
         *section_header = (ELFSectionHeader) {
@@ -7979,6 +7986,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    u32 gnu_version_offset = 0;
     {
         // .gnu.version
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -7987,6 +7995,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        gnu_version_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".gnu.version"));
 
@@ -8022,6 +8031,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    u32 gnu_version_r_offset = 0;
     {
         // .gnu.version_r
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8029,6 +8039,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        gnu_version_r_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".gnu.version_r"));
 
@@ -8060,6 +8071,25 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     }
 
     ElfRelocationWithAddend* dynamic_relocations = {};
+    // * The symbol indices make mention to the .dynsym table (where 0 means a special case: none)
+    // * The addend is related to the (virtual) address
+    ElfRelocationWithAddend expected_relocations[] = {
+        { .offset = 15888, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4368 }, // .fini_array content in .text
+        { .offset = 15896, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4288 }, // .init_array content in .text
+        { .offset = 16392, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 16392 }, // .bss_start (.bss)
+
+        { .offset = 16320, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 1}, .addend = 0 }, // libc_start_main
+        { .offset = 16328, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 2}, .addend = 0 }, // itm_deregister
+        { .offset = 16336, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 3}, .addend = 0 }, // gmon_start
+        { .offset = 16344, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 4}, .addend = 0 }, // itm_register
+        { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
+    };
+
+    auto expected_relocation_count = 8;
+    auto relocation_index = 0;
+    auto rela_count = 3;
+    u32 rela_dyn_offset = 0;
+    u32 rela_dyn_size = 0;
     {
         // .rela.dyn
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8067,26 +8097,13 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        rela_dyn_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".rela.dyn"));
 
-        // * The symbol indices make mention to the .dynsym table (where 0 means a special case: none)
-        // * The addend is related to the (virtual) address
-        ElfRelocationWithAddend relocations[] = {
-            { .offset = 15888, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4368 }, // .fini_array
-            { .offset = 15896, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4288 }, // .init_array
-            { .offset = 16392, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 16392 }, // .bss_start
-            { .offset = 16320, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 1}, .addend = 0 }, // libc_start_main
-            { .offset = 16328, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 2}, .addend = 0 }, // itm_deregister
-            { .offset = 16336, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 3}, .addend = 0 }, // gmon_start
-            { .offset = 16344, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 4}, .addend = 0 }, // itm_register
-            { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
-        };
-
-        auto size = sizeof(relocations);
-
+        auto size = sizeof(ElfRelocationWithAddend) * expected_relocation_count;
+        rela_dyn_size = size;
         dynamic_relocations = (ElfRelocationWithAddend*)vb_add(&builder->file, size);
-        memcpy(dynamic_relocations, relocations, size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8125,7 +8142,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     vb_align(&builder->file, 0x1000);
 
     auto code_offset = builder->file.length;
-
+    auto init_offset = code_offset;
     {
         // .init
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8162,6 +8179,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    u32 text_init_array_offset = 0;
+    u32 text_fini_array_offset = 0;
+    u32 _start_offset = 0;
     {
         //.text
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8172,26 +8192,61 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".text"));
 
-        u8 data[] = {
-            0xF3, 0x0F, 0x1E, 0xFA, 0x31, 0xED, 0x49, 0x89, 0xD1, 0x5E, 0x48, 0x89, 0xE2, 0x48, 0x83, 0xE4, 
-            0xF0, 0x50, 0x54, 0x45, 0x31, 0xC0, 0x31, 0xC9, 0x48, 0x8D, 0x3D, 0xDD, 0x00, 0x00, 0x00, 0xFF, 
-            0x15, 0x7B, 0x2F, 0x00, 0x00, 0xF4, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
-            0x48, 0x8D, 0x3D, 0xB9, 0x2F, 0x00, 0x00, 0x48, 0x8D, 0x05, 0xB2, 0x2F, 0x00, 0x00, 0x48, 0x39, 
-            0xF8, 0x74, 0x15, 0x48, 0x8B, 0x05, 0x5E, 0x2F, 0x00, 0x00, 0x48, 0x85, 0xC0, 0x74, 0x09, 0xFF, 
-            0xE0, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 0xC3, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 
-            0x48, 0x8D, 0x3D, 0x89, 0x2F, 0x00, 0x00, 0x48, 0x8D, 0x35, 0x82, 0x2F, 0x00, 0x00, 0x48, 0x29, 
-            0xFE, 0x48, 0x89, 0xF0, 0x48, 0xC1, 0xEE, 0x3F, 0x48, 0xC1, 0xF8, 0x03, 0x48, 0x01, 0xC6, 0x48, 
-            0xD1, 0xFE, 0x74, 0x14, 0x48, 0x8B, 0x05, 0x2D, 0x2F, 0x00, 0x00, 0x48, 0x85, 0xC0, 0x74, 0x08, 
-            0xFF, 0xE0, 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0xC3, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 
-            0xF3, 0x0F, 0x1E, 0xFA, 0x80, 0x3D, 0x45, 0x2F, 0x00, 0x00, 0x00, 0x75, 0x33, 0x55, 0x48, 0x83, 
-            0x3D, 0x0A, 0x2F, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE5, 0x74, 0x0D, 0x48, 0x8B, 0x3D, 0x26, 0x2F, 
-            0x00, 0x00, 0xFF, 0x15, 0xF8, 0x2E, 0x00, 0x00, 0xE8, 0x63, 0xFF, 0xFF, 0xFF, 0xC6, 0x05, 0x1C, 
-            0x2F, 0x00, 0x00, 0x01, 0x5D, 0xC3, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
-            0xC3, 0x66, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x1F, 0x40, 0x00, 
-            0xF3, 0x0F, 0x1E, 0xFA, 0xE9, 0x67, 0xFF, 0xFF, 0xFF, 0x0F, 0x1F, 0x00,
-        };
+        _start_offset = builder->file.length;
+        {
+            u8 data[] = {
+                0xF3, 0x0F, 0x1E, 0xFA, 0x31, 0xED, 0x49, 0x89, 0xD1, 0x5E, 0x48, 0x89, 0xE2, 0x48, 0x83, 0xE4, 
+                0xF0, 0x50, 0x54, 0x45, 0x31, 0xC0, 0x31, 0xC9, 0x48, 0x8D, 0x3D, 0xDD, 0x00, 0x00, 0x00, 0xFF, 
+                0x15, 0x7B, 0x2F, 0x00, 0x00, 0xF4, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
 
-        memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        auto uk0_offset = builder->file.length;
+        {
+            u8 data[] = {
+                0x48, 0x8D, 0x3D, 0xB9, 0x2F, 0x00, 0x00, 0x48, 0x8D, 0x05, 0xB2, 0x2F, 0x00, 0x00, 0x48, 0x39, 
+                0xF8, 0x74, 0x15, 0x48, 0x8B, 0x05, 0x5E, 0x2F, 0x00, 0x00, 0x48, 0x85, 0xC0, 0x74, 0x09, 0xFF, 
+                0xE0, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 0xC3, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 
+            };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
+
+        auto uk1_offset = builder->file.length;
+        {
+            u8 data[] = {
+                0x48, 0x8D, 0x3D, 0x89, 0x2F, 0x00, 0x00, 0x48, 0x8D, 0x35, 0x82, 0x2F, 0x00, 0x00, 0x48, 0x29, 
+                0xFE, 0x48, 0x89, 0xF0, 0x48, 0xC1, 0xEE, 0x3F, 0x48, 0xC1, 0xF8, 0x03, 0x48, 0x01, 0xC6, 0x48, 
+                0xD1, 0xFE, 0x74, 0x14, 0x48, 0x8B, 0x05, 0x2D, 0x2F, 0x00, 0x00, 0x48, 0x85, 0xC0, 0x74, 0x08, 
+                0xFF, 0xE0, 0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00, 0xC3, 0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00, 
+            };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
+
+        text_fini_array_offset = builder->file.length;
+        {
+            u8 data[] = {
+                0xF3, 0x0F, 0x1E, 0xFA, 0x80, 0x3D, 0x45, 0x2F, 0x00, 0x00, 0x00, 0x75, 0x33, 0x55, 0x48, 0x83, 
+                0x3D, 0x0A, 0x2F, 0x00, 0x00, 0x00, 0x48, 0x89, 0xE5, 0x74, 0x0D, 0x48, 0x8B, 0x3D, 0x26, 0x2F, 
+                0x00, 0x00, 0xFF, 0x15, 0xF8, 0x2E, 0x00, 0x00, 0xE8, 0x63, 0xFF, 0xFF, 0xFF, 0xC6, 0x05, 0x1C, 
+                0x2F, 0x00, 0x00, 0x01, 0x5D, 0xC3, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
+        auto uk3_offset = builder->file.length;
+        {
+            u8 data[] = {
+                0xC3, 0x66, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x1F, 0x40, 0x00, 
+            };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
+        text_init_array_offset = builder->file.length;
+        {
+            u8 data[] = {
+                0xF3, 0x0F, 0x1E, 0xFA, 0xE9, 0x67, 0xFF, 0xFF, 0xFF, 0x0F, 0x1F, 0x00,
+            };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
 
         memcpy(vb_add(&builder->file, options->code.length), options->code.pointer, options->code.length);
 
@@ -8214,6 +8269,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    u32 fini_offset = 0; 
     {
         // .fini
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8221,6 +8277,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        fini_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".fini"));
 
@@ -8445,26 +8502,28 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto* data_program_header = vb_add(&builder->program_headers, 1);
     auto data_offset = builder->file.length;
 
+    u32 init_array_va = 0;
     {
         // .init_array
         auto* section_header = vb_add(&builder->section_headers, 1);
-        u64 alignment = 8;
+        u64 alignment = alignof(u64);
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
 
         auto virtual_address = offset + virtual_address_offset;
+        init_array_va = virtual_address;
 
         assert((virtual_address - offset) % 0x1000 == 0);
 
         auto name = elf_get_section_name(builder, strlit(".init_array"));
 
-        u8 data[] = { 0x10, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        u64 content[] = { text_init_array_offset };
 
-        auto size = sizeof(data);
+        auto size = sizeof(content);
         assert(init_array_size == size);
 
-        memcpy(vb_add(&builder->file, size), data, size);
+        memcpy(vb_add(&builder->file, size), content, size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8479,28 +8538,36 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .link = 0,
             .info = 0,
             .alignment = alignment,
-            .entry_size = 8,
+            .entry_size = sizeof(content[0]),
         };
+
+        dynamic_relocations[relocation_index] = (ElfRelocationWithAddend) {
+            .offset = virtual_address,
+            .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0},
+            .addend = text_init_array_offset,
+        };
+        relocation_index += 1;
     }
 
+    u32 fini_array_va = 0;
     {
         // .fini_array
         auto* section_header = vb_add(&builder->section_headers, 1);
-        u64 alignment = 8;
+        u64 alignment = alignof(u64);
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
         auto virtual_address = offset + virtual_address_offset;
+        fini_array_va = virtual_address;
 
         assert((virtual_address - offset) % 0x1000 == 0);
 
         auto name = elf_get_section_name(builder, strlit(".fini_array"));
 
-        u8 data[] = { 0xC0, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-
-        auto size = sizeof(data);
-
-        memcpy(vb_add(&builder->file, size), data, size);
+        u64 content[] = { text_fini_array_offset };
+        auto size = sizeof(content);
+        assert(size == fini_array_size);
+        memcpy(vb_add(&builder->file, size), content, size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8515,10 +8582,21 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .link = 0,
             .info = 0,
             .alignment = alignment,
-            .entry_size = 8,
+            .entry_size = sizeof(content[0]),
         };
+
+        dynamic_relocations[relocation_index] = (ElfRelocationWithAddend) {
+            .offset = virtual_address,
+            .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0},
+            .addend = text_fini_array_offset,
+        };
+        relocation_index += 1;
     }
 
+    auto* self_start_relocation = &dynamic_relocations[relocation_index];
+    relocation_index += 1;
+
+    u32 dynamic_va = 0;
     {
         // .dynamic
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8527,11 +8605,44 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
         auto virtual_address = offset + virtual_address_offset;
+        dynamic_va = virtual_address;
 
         auto name = elf_get_section_name(builder, strlit(".dynamic"));
 
         ElfDynamicEntry dynamic_entries[] = {
-            { .tag = DT_NEEDED, { .address = 34}},
+            // TODO
+            { .tag = DT_NEEDED, { .address = libcso6 }},
+            { .tag = DT_INIT, { .address = init_offset }},
+            { .tag = DT_FINI, { .address = fini_offset }},
+            { .tag = DT_INIT_ARRAY, { .address = init_array_va }},
+            { .tag = DT_INIT_ARRAYSZ, { .address = init_array_size }},
+            { .tag = DT_FINI_ARRAY, { .address = fini_array_va }},
+            { .tag = DT_FINI_ARRAYSZ, { .address = fini_array_size }},
+            { .tag = DT_GNU_HASH, { .address = gnu_hash_offset }},
+            { .tag = DT_STRTAB, { .address = dynstr_offset }},
+            { .tag = DT_SYMTAB, { .address = dynsym_offset }},
+            { .tag = DT_STRSZ, { .address = dynstr_size }},
+            { .tag = DT_SYMENT, { .address = sizeof(ELFSymbol) }},
+            { .tag = DT_DEBUG, { .address = 0}},
+            { .tag = DT_RELA, { .address = rela_dyn_offset }},
+            { .tag = DT_RELASZ, { .address = rela_dyn_size }},
+            { .tag = DT_RELAENT, { .address = sizeof(ElfRelocationWithAddend) }},
+            // TODO
+            { .tag = DT_FLAGS_1, { .address = 134217728}},
+            { .tag = DT_VERNEED, { .address = gnu_version_r_offset }},
+            // TODO:
+            { .tag = DT_VERNEEDNUM, { .address = 1 }},
+            { .tag = DT_VERSYM, { .address = gnu_version_offset }},
+            { .tag = DT_RELACOUNT, { .address = rela_count }},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+            { .tag = DT_NULL, { .address = 0}},
+        };
+
+        ElfDynamicEntry old_dynamic_entries[] = {
+             { .tag = DT_NEEDED, { .address = 34}},
             { .tag = DT_INIT, { .address = 4096}},
             { .tag = DT_FINI, { .address = 4384}},
             { .tag = DT_INIT_ARRAY, { .address = 15888}},
@@ -8552,11 +8663,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             { .tag = DT_VERNEEDNUM, { .address = 1}},
             { .tag = DT_VERSYM, { .address = 1240}},
             { .tag = DT_RELACOUNT, { .address = 3}},
-            { .tag = DT_NULL, { .address = 0}},
-            { .tag = DT_NULL, { .address = 0}},
-            { .tag = DT_NULL, { .address = 0}},
-            { .tag = DT_NULL, { .address = 0}},
-            { .tag = DT_NULL, { .address = 0}},
+             { .tag = DT_NULL, { .address = 0}},
+             { .tag = DT_NULL, { .address = 0}},
+             { .tag = DT_NULL, { .address = 0}},
         };
 
         auto size = sizeof(dynamic_entries);
@@ -8604,8 +8713,26 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto virtual_address = offset + virtual_address_offset;
 
         auto name = elf_get_section_name(builder, strlit(".got"));
+        // { .offset = 16320, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 1}, .addend = 0 }, // libc_start_main
+        // { .offset = 16328, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 2}, .addend = 0 }, // itm_deregister
+        // { .offset = 16336, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 3}, .addend = 0 }, // gmon_start
+        // { .offset = 16344, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 4}, .addend = 0 }, // itm_register
+        // { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
 
         u64 entries[] = { 0, 0, 0, 0, 0 };
+        for (u32 i = 0; i < array_length(entries); i += 1)
+        {
+            auto* relocation = &dynamic_relocations[relocation_index];
+            relocation_index += 1;
+            *relocation = (ElfRelocationWithAddend) {
+                .offset = virtual_address + (i * sizeof(u64)),
+                .info = {
+                    .type = { .x86_64 = R_X86_64_GLOB_DAT },
+                    .symbol = i + 1,
+                },
+                .addend = 0,
+            };
+        }
 
         auto size = sizeof(entries);
 
@@ -8639,7 +8766,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".got.plt"));
 
-        u64 entries[] = { 0x3e20, 0, 0 };
+        u64 entries[] = { dynamic_va, 0, 0 };
 
         auto size = sizeof(entries);
 
@@ -8738,7 +8865,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     {
         // .data
         auto* section_header = vb_add(&builder->section_headers, 1);
-        u64 entries[] = { 0, 0x4008 };
         u64 alignment = alignof(u64);
 
         vb_align(&builder->file, alignment);
@@ -8747,6 +8873,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".data"));
 
+        u32 self_start_va = virtual_address + sizeof(u64);
+        u64 entries[] = { 0, self_start_va };
         auto size = sizeof(entries);
         memcpy(vb_add(&builder->file, size), entries, size);
 
@@ -8764,6 +8892,12 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .info = 0,
             .alignment = alignment,
             .entry_size = 0,
+        };
+
+        *self_start_relocation = (ElfRelocationWithAddend) {
+            .offset = self_start_va,
+            .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0 },
+            .addend = self_start_va,
         };
     }
 
@@ -9258,7 +9392,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         .type = shared,
         .machine = x86_64,
         .version = 1,
-        .entry_point = 4128,
+        .entry_point = _start_offset,
         .program_header_offset = sizeof(ELFHeader),
         .section_header_offset = section_header_offset,
         .flags = 0,
@@ -9272,6 +9406,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     assert(builder->program_headers.length == program_header_count);
     memcpy(program_headers, builder->program_headers.pointer, sizeof(ElfProgramHeader) * builder->program_headers.length);
+
+    assert(relocation_index == expected_relocation_count);
 
     // Check if the file matches
     
