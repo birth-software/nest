@@ -7857,6 +7857,28 @@ fn void dwarf_playground(Thread* thread)
     assert(*debug_info_bytes.pointer == 0);
 }
 
+STRUCT(DwarfAttributeFormPair)
+{
+    DwarfAttribute attribute;
+    DwarfForm form;
+};
+declare_slice(DwarfAttributeFormPair);
+
+fn void encode_attribute_abbreviations(ELFBuilder* restrict builder, Slice(DwarfAttributeFormPair) attributes)
+{
+    auto* restrict buffer = &builder->file;
+
+    for (u64 i = 0; i < attributes.length; i += 1)
+    {
+        auto pair = attributes.pointer[i];
+        uleb128_encode(buffer, pair.attribute);
+        uleb128_encode(buffer, pair.form);
+    }
+
+    uleb128_encode(buffer, 0);
+    uleb128_encode(buffer, 0);
+}
+
 may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restrict options, char** envp)
 {
     unused(thread);
@@ -9437,16 +9459,64 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_abbrev"));
 
-        u8 data[] = {
-            0x01, 0x11, 0x01, 0x25, 0x25, 0x13, 0x05, 0x03, 0x25, 0x72, 0x17, 0x10, 0x17, 0x1B, 0x25, 0x11, 
-            0x1B, 0x12, 0x06, 0x73, 0x17, 0x00, 0x00, 0x02, 0x2E, 0x00, 0x11, 0x1B, 0x12, 0x06, 0x40, 0x18, 
-            0x7A, 0x19, 0x03, 0x25, 0x3A, 0x0B, 0x3B, 0x0B, 0x49, 0x13, 0x3F, 0x19, 0x00, 0x00, 0x03, 0x24, 
-            0x00, 0x03, 0x25, 0x3E, 0x0B, 0x0B, 0x0B, 0x00, 0x00, 0x00, 
+        // Abbreviation entry
+        uleb128_encode(&builder->file, 1);
+        // Abbreviation kind
+        uleb128_encode(&builder->file, DW_TAG_compile_unit);
+        // Has children
+        *vb_add(&builder->file, 1) = 1;
+
+        DwarfAttributeFormPair compile_unit[] = {
+            { DW_AT_producer, DW_FORM_strx1, },
+            { DW_AT_language, DW_FORM_data2, },
+            { DW_AT_name, DW_FORM_strx1, },
+            { DW_AT_str_offsets_base, DW_FORM_sec_offset, },
+            { DW_AT_stmt_list, DW_FORM_sec_offset, },
+            { DW_AT_comp_dir, DW_FORM_strx1, },
+            { DW_AT_low_pc, DW_FORM_addrx, },
+            { DW_AT_high_pc, DW_FORM_data4, },
+            { DW_AT_addr_base, DW_FORM_sec_offset, },
         };
+        encode_attribute_abbreviations(builder, (Slice(DwarfAttributeFormPair)) array_to_slice(compile_unit));
+        
+        // Abbreviation entry
+        uleb128_encode(&builder->file, 2);
+        // Abbreviation kind
+        uleb128_encode(&builder->file, DW_TAG_subprogram);
+        // Has children
+        *vb_add(&builder->file, 1) = 0;
 
-        auto size = sizeof(data);
+        DwarfAttributeFormPair subprogram[] = {
+            { DW_AT_low_pc, DW_FORM_addrx, },
+            { DW_AT_high_pc, DW_FORM_data4, },
+            { DW_AT_frame_base, DW_FORM_exprloc, },
+            { DW_AT_call_all_calls, DW_FORM_flag_present, },
+            { DW_AT_name, DW_FORM_strx1, },
+            { DW_AT_decl_file, DW_FORM_data1, },
+            { DW_AT_decl_line, DW_FORM_data1, },
+            { DW_AT_type, DW_FORM_ref4, },
+            { DW_AT_external, DW_FORM_flag_present, },
+        };
+        encode_attribute_abbreviations(builder, (Slice(DwarfAttributeFormPair)) array_to_slice(subprogram));
+        
+        // Abbreviation entry
+        uleb128_encode(&builder->file, 3);
+        // Abbreviation kind
+        uleb128_encode(&builder->file, DW_TAG_base_type);
+        // Has children
+        *vb_add(&builder->file, 1) = 0; // has children
 
-        memcpy(vb_add(&builder->file, size), data, size);
+        DwarfAttributeFormPair base_type[] = {
+            { DW_AT_name, DW_FORM_strx1, },
+            { DW_AT_encoding, DW_FORM_data1, },
+            { DW_AT_byte_size, DW_FORM_data1, },
+        };
+        encode_attribute_abbreviations(builder, (Slice(DwarfAttributeFormPair)) array_to_slice(base_type));
+
+        // End with a null entry
+        *vb_add(&builder->file, 1) = 0;
+
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
