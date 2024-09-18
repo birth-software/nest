@@ -8610,7 +8610,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto name = elf_get_section_name(builder, strlit(".dynamic"));
 
         ElfDynamicEntry dynamic_entries[] = {
-            // TODO
             { .tag = DT_NEEDED, { .address = libcso6 }},
             { .tag = DT_INIT, { .address = init_offset }},
             { .tag = DT_FINI, { .address = fini_offset }},
@@ -8623,6 +8622,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             { .tag = DT_SYMTAB, { .address = dynsym_offset }},
             { .tag = DT_STRSZ, { .address = dynstr_size }},
             { .tag = DT_SYMENT, { .address = sizeof(ELFSymbol) }},
+            // TODO
             { .tag = DT_DEBUG, { .address = 0}},
             { .tag = DT_RELA, { .address = rela_dyn_offset }},
             { .tag = DT_RELASZ, { .address = rela_dyn_size }},
@@ -8634,38 +8634,12 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             { .tag = DT_VERNEEDNUM, { .address = 1 }},
             { .tag = DT_VERSYM, { .address = gnu_version_offset }},
             { .tag = DT_RELACOUNT, { .address = rela_count }},
+            // TODO: figure out if these are needed
             { .tag = DT_NULL, { .address = 0}},
             { .tag = DT_NULL, { .address = 0}},
             { .tag = DT_NULL, { .address = 0}},
             { .tag = DT_NULL, { .address = 0}},
             { .tag = DT_NULL, { .address = 0}},
-        };
-
-        ElfDynamicEntry old_dynamic_entries[] = {
-             { .tag = DT_NEEDED, { .address = 34}},
-            { .tag = DT_INIT, { .address = 4096}},
-            { .tag = DT_FINI, { .address = 4384}},
-            { .tag = DT_INIT_ARRAY, { .address = 15888}},
-            { .tag = DT_INIT_ARRAYSZ, { .address = 8}},
-            { .tag = DT_FINI_ARRAY, { .address = 15896}},
-            { .tag = DT_FINI_ARRAYSZ, { .address = 8}},
-            { .tag = DT_GNU_HASH, { .address = 928}},
-            { .tag = DT_STRTAB, { .address = 1104}},
-            { .tag = DT_SYMTAB, { .address = 960}},
-            { .tag = DT_STRSZ, { .address = 136}},
-            { .tag = DT_SYMENT, { .address = 24}},
-            { .tag = DT_DEBUG, { .address = 0}},
-            { .tag = DT_RELA, { .address = 1304}},
-            { .tag = DT_RELASZ, { .address = 192}},
-            { .tag = DT_RELAENT, { .address = 24}},
-            { .tag = DT_FLAGS_1, { .address = 134217728}},
-            { .tag = DT_VERNEED, { .address = 1256}},
-            { .tag = DT_VERNEEDNUM, { .address = 1}},
-            { .tag = DT_VERSYM, { .address = 1240}},
-            { .tag = DT_RELACOUNT, { .address = 3}},
-             { .tag = DT_NULL, { .address = 0}},
-             { .tag = DT_NULL, { .address = 0}},
-             { .tag = DT_NULL, { .address = 0}},
         };
 
         auto size = sizeof(dynamic_entries);
