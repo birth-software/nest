@@ -471,12 +471,20 @@ typedef enum ELFSymbolType : u8
     ELF_SYMBOL_TYPE_TLS = 6,
 } ELFSymbolType;
 
+typedef enum ELFSymbolVisibility : u8
+{
+    ELF_SYMBOL_VISIBILITY_DEFAULT = 0,
+    ELF_SYMBOL_VISIBILITY_INTERNAL = 1,
+    ELF_SYMBOL_VISIBILITY_HIDDEN = 2,
+    ELF_SYMBOL_VISIBILITY_PROTECTED = 3,
+} ELFSymbolVisibility;
+
 STRUCT(ELFSymbol)
 {
     u32 name_offset;
     ELFSymbolType type:4;
     ELFSymbolBinding binding:4;
-    u8 other;
+    ELFSymbolVisibility visibility;
     u16 section_index; // In the section header table
     u64 value;
     u64 size;
@@ -7225,35 +7233,22 @@ typedef enum SymbolKind : u8
     SYMBOL_TABLE_DYNAMIC,
 } SymbolKind;
 
-fn u32 st_add_string(SymbolTable* restrict section, String string)
-{
-    u32 offset = 0;
-    if (string.length)
-    {
-        offset = section->string_table.length;
-        vb_append_bytes(&section->string_table, string);
-        *vb_add(&section->string_table, 1) = 0;
-    }
-
-    return offset;
-}
-
-fn void st_add_symbol_raw(SymbolTable* restrict st, ELFSymbol symbol)
-{
-    *vb_add(&st->symbol_table, 1) = symbol;
-}
-
-fn void st_add_symbol(SymbolTable* restrict st, ELFSymbol symbol, String name)
-{
-    symbol.name_offset = st_add_string(st, name);
-
-    st_add_symbol_raw(st, symbol);
-}
+// fn void st_add_symbol_raw(SymbolTable* restrict st, ELFSymbol symbol)
+// {
+//     *vb_add(&st->symbol_table, 1) = symbol;
+// }
+//
+// fn void st_add_symbol(SymbolTable* restrict st, ELFSymbol symbol, String name)
+// {
+//     symbol.name_offset = st_add_string(st, name);
+//
+//     st_add_symbol_raw(st, symbol);
+// }
 
 fn void st_init(SymbolTable* restrict section)
 {
     *vb_add(&section->string_table, 1) = 0;
-    st_add_symbol(section, (ELFSymbol){}, (String){});
+    *vb_add(&section->symbol_table, 1) = (ELFSymbol) {};
 }
 
 // fn u32 elf_builder_add_string(ELFBuilder* builder, SymbolType symbol_type, String string)
@@ -7454,6 +7449,11 @@ fn u32 elf_get_string(VirtualBuffer(u8)* restrict buffer, String string)
     *(ptr + string.length) = 0;
 
     return length;
+}
+
+fn u32 st_get_string(SymbolTable* restrict section, String string)
+{
+    return elf_get_string(&section->string_table, string);
 }
 
 fn u32 elf_get_section_name(ELFBuilder* builder, String name)
@@ -7855,14 +7855,14 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
-    auto libc_start_main = st_add_string(&builder->dynamic_st, strlit("__libc_start_main"));
-    auto cxa_finalize = st_add_string(&builder->dynamic_st, strlit("__cxa_finalize"));
-    auto libcso6 = st_add_string(&builder->dynamic_st, strlit("libc.so.6"));
-    auto glibc_225 = st_add_string(&builder->dynamic_st, strlit("GLIBC_2.2.5"));
-    auto glibc_234 = st_add_string(&builder->dynamic_st, strlit("GLIBC_2.34"));
-    auto itm_deregister = st_add_string(&builder->dynamic_st, strlit("_ITM_deregisterTMCloneTable"));
-    auto gmon_start = st_add_string(&builder->dynamic_st, strlit("__gmon_start__"));
-    auto itm_register = st_add_string(&builder->dynamic_st, strlit("_ITM_registerTMCloneTable"));
+    auto libc_start_main = st_get_string(&builder->dynamic_st, strlit("__libc_start_main"));
+    auto cxa_finalize = st_get_string(&builder->dynamic_st, strlit("__cxa_finalize"));
+    auto libcso6 = st_get_string(&builder->dynamic_st, strlit("libc.so.6"));
+    auto glibc_225 = st_get_string(&builder->dynamic_st, strlit("GLIBC_2.2.5"));
+    auto glibc_234 = st_get_string(&builder->dynamic_st, strlit("GLIBC_2.34"));
+    auto itm_deregister = st_get_string(&builder->dynamic_st, strlit("_ITM_deregisterTMCloneTable"));
+    auto gmon_start = st_get_string(&builder->dynamic_st, strlit("__gmon_start__"));
+    auto itm_register = st_get_string(&builder->dynamic_st, strlit("_ITM_registerTMCloneTable"));
 
     u32 dynsym_offset = 0;
     {
@@ -7883,7 +7883,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .name_offset = libc_start_main,
                 .type = ELF_SYMBOL_TYPE_FUNCTION,
                 .binding = ELF_SYMBOL_BINDING_GLOBAL,
-                .other = 0,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
                 .section_index = 0,
                 .value = 0,
                 .size = 0,
@@ -7893,7 +7893,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .name_offset = itm_deregister,
                 .type = ELF_SYMBOL_TYPE_NONE,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
-                .other = 0,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
                 .section_index = 0,
                 .value = 0,
                 .size = 0,
@@ -7903,7 +7903,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .name_offset = gmon_start,
                 .type = ELF_SYMBOL_TYPE_NONE,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
-                .other = 0,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
                 .section_index = 0,
                 .value = 0,
                 .size = 0,
@@ -7913,7 +7913,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .name_offset = itm_register,
                 .type = ELF_SYMBOL_TYPE_NONE,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
-                .other = 0,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
                 .section_index = 0,
                 .value = 0,
                 .size = 0,
@@ -7923,7 +7923,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .name_offset = cxa_finalize,
                 .type = ELF_SYMBOL_TYPE_FUNCTION,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
-                .other = 0,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
                 .section_index = 0,
                 .value = 0,
                 .size = 0,
@@ -8073,17 +8073,17 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     ElfRelocationWithAddend* dynamic_relocations = {};
     // * The symbol indices make mention to the .dynsym table (where 0 means a special case: none)
     // * The addend is related to the (virtual) address
-    ElfRelocationWithAddend expected_relocations[] = {
-        { .offset = 15888, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4368 }, // .fini_array content in .text
-        { .offset = 15896, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4288 }, // .init_array content in .text
-        { .offset = 16392, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 16392 }, // .bss_start (.bss)
-
-        { .offset = 16320, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 1}, .addend = 0 }, // libc_start_main
-        { .offset = 16328, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 2}, .addend = 0 }, // itm_deregister
-        { .offset = 16336, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 3}, .addend = 0 }, // gmon_start
-        { .offset = 16344, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 4}, .addend = 0 }, // itm_register
-        { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
-    };
+    // ElfRelocationWithAddend expected_relocations[] = {
+    //     { .offset = 15888, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4368 }, // .fini_array content in .text
+    //     { .offset = 15896, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 4288 }, // .init_array content in .text
+    //     { .offset = 16392, .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0}, .addend = 16392 }, // something in .data
+    //
+    //     { .offset = 16320, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 1}, .addend = 0 }, // libc_start_main
+    //     { .offset = 16328, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 2}, .addend = 0 }, // itm_deregister
+    //     { .offset = 16336, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 3}, .addend = 0 }, // gmon_start
+    //     { .offset = 16344, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 4}, .addend = 0 }, // itm_register
+    //     { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
+    // };
 
     auto expected_relocation_count = 8;
     auto relocation_index = 0;
@@ -8115,7 +8115,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .offset = offset,
             .size = size,
             .link = dynamic_symbol_table_index,
-            .info = 0, // TODO: figure out
+            .info = 0,
             .alignment = alignment,
             .entry_size = sizeof(ElfRelocationWithAddend),
         };
@@ -8143,6 +8143,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     auto code_offset = builder->file.length;
     auto init_offset = code_offset;
+    auto init_section_index = builder->section_headers.length;
     {
         // .init
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8182,6 +8183,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     u32 text_init_array_offset = 0;
     u32 text_fini_array_offset = 0;
     u32 _start_offset = 0;
+    u32 _start_size = 0;
+    u32 main_offset = 0;
+    u32 main_size = 0;
+    auto text_section_index = builder->section_headers.length;
     {
         //.text
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8194,12 +8199,24 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         _start_offset = builder->file.length;
         {
-            u8 data[] = {
-                0xF3, 0x0F, 0x1E, 0xFA, 0x31, 0xED, 0x49, 0x89, 0xD1, 0x5E, 0x48, 0x89, 0xE2, 0x48, 0x83, 0xE4, 
-                0xF0, 0x50, 0x54, 0x45, 0x31, 0xC0, 0x31, 0xC9, 0x48, 0x8D, 0x3D, 0xDD, 0x00, 0x00, 0x00, 0xFF, 
-                0x15, 0x7B, 0x2F, 0x00, 0x00, 0xF4, 0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
-            };
-            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+            {
+                {
+                    u8 data[] = {
+                        0xF3, 0x0F, 0x1E, 0xFA, 0x31, 0xED, 0x49, 0x89, 0xD1, 0x5E, 0x48, 0x89, 0xE2, 0x48, 0x83, 0xE4, 
+                        0xF0, 0x50, 0x54, 0x45, 0x31, 0xC0, 0x31, 0xC9, 0x48, 0x8D, 0x3D, 0xDD, 0x00, 0x00, 0x00, 0xFF, 
+                        0x15, 0x7B, 0x2F, 0x00, 0x00, 0xF4,
+                    };
+                    _start_size = sizeof(data);
+                    memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+                }
+                // padding after _start (not counting for _start size)
+                {
+                    u8 data[] = {
+                        0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                    };
+                    memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+                }
+            }
         }
 
         auto uk0_offset = builder->file.length;
@@ -8248,6 +8265,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
         }
 
+        // TODO: fix this
+        main_offset = builder->file.length;
+        main_size = options->code.length;
+
         memcpy(vb_add(&builder->file, options->code.length), options->code.pointer, options->code.length);
 
         auto size = builder->file.length - offset;
@@ -8270,6 +8291,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     }
 
     u32 fini_offset = 0; 
+    u32 fini_section_index = builder->section_headers.length;
     {
         // .fini
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8325,6 +8347,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     auto read_only_offset = builder->file.length;
 
+    auto rodata_section_index = builder->section_headers.length;
+    u32 _IO_stdin_used_size = 0;
+    u32 rodata_va = 0;
     {
         // .rodata
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8332,13 +8357,16 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        rodata_va = offset;
 
         auto name = elf_get_section_name(builder, strlit(".rodata"));
 
-        u32 data = 0x20001;
+        u32 _IO_stdin_used = 0x20001;
+        u32 data[] = {0x20001};
+        _IO_stdin_used_size = sizeof(_IO_stdin_used);
         auto size = sizeof(data);
 
-        memcpy(vb_add(&builder->file, size), &data, size);
+        memcpy(vb_add(&builder->file, size), data, size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8353,13 +8381,14 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .link = 0,
             .info = 0,
             .alignment = alignment,
-            .entry_size = sizeof(u32),
+            .entry_size = sizeof(data[0]),
         };
     }
 
     u32 eh_frame_offset = 0;
     u32 eh_frame_size = 0;
     u32 eh_frame_alignment = 0;
+    u32 eh_frame_hdr_section_index = builder->section_headers.length;
     {
         // .eh_frame_hdr
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8372,6 +8401,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".eh_frame_hdr"));
 
+        // TODO: figure out a link between this and the code
         EhFrameHeaderEntry entries[] = {
             { .pc = 0xfffff01c, .fde = 0x34 },
             { .pc = 0xfffff118, .fde = 0x4c },
@@ -8440,7 +8470,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         *vb_add(&builder->file, 1) = 0x01;
         *vb_add(&builder->file, 1) = 0x1b;
 
-        // Bunch of dwarf stuff
+        // TODO: figure out this bunch of dwarf stuff
         u8 data[] = {
             0x0C, 0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 
             0xE0, 0xEF, 0xFF, 0xFF, 0x26, 0x00, 0x00, 0x00, 0x00, 0x44, 0x07, 0x10, 0x00, 0x00, 0x00, 0x00, 
@@ -8484,6 +8514,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    // TODO: do a more thorough precomputation
     u64 init_array_size = 8;
     u64 fini_array_size = 8;
     u64 dynamic_size = 416;
@@ -8497,6 +8528,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     builder->file.length -= total_size;
     assert(old_length < builder->file.length);
 
+    // TODO: figure out why a virtual address offset is needed here
     auto virtual_address_offset = 0x1000;
 
     auto* data_program_header = vb_add(&builder->program_headers, 1);
@@ -8593,9 +8625,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         relocation_index += 1;
     }
 
-    auto* self_start_relocation = &dynamic_relocations[relocation_index];
+    auto* __dso_handle_relocation = &dynamic_relocations[relocation_index];
     relocation_index += 1;
 
+    auto dynamic_section_index = builder->section_headers.length;
     u32 dynamic_va = 0;
     {
         // .dynamic
@@ -8693,6 +8726,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         // { .offset = 16344, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 4}, .addend = 0 }, // itm_register
         // { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
 
+        // TODO: unify these entries with code before
         u64 entries[] = { 0, 0, 0, 0, 0 };
         for (u32 i = 0; i < array_length(entries); i += 1)
         {
@@ -8725,21 +8759,25 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .link = 0,
             .info = 0,
             .alignment = alignment,
-            .entry_size = 8,
+            .entry_size = alignof(u64),
         };
     }
 
+    auto got_plt_section_index = builder->section_headers.length;
+    u32 got_plt_va = 0;
     {
         // .got.plt
         auto* section_header = vb_add(&builder->section_headers, 1);
-        u64 alignment = 8;
+        u64 alignment = alignof(u64);
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
         auto virtual_address = offset + virtual_address_offset;
+        got_plt_va = virtual_address;
 
         auto name = elf_get_section_name(builder, strlit(".got.plt"));
 
+        // TODO: figure out why there are three entries here
         u64 entries[] = { dynamic_va, 0, 0 };
 
         auto size = sizeof(entries);
@@ -8836,6 +8874,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     vb_align(&builder->file, 0x1000);
 
+    u32 data_va_start = 0;
+    u32 data_va_end = 0;
+    u32 data_section_index = builder->section_headers.length;
+    u32 __dso_handle_va;
     {
         // .data
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8844,13 +8886,16 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
         auto virtual_address = offset + virtual_address_offset;
+        data_va_start = virtual_address;
 
         auto name = elf_get_section_name(builder, strlit(".data"));
 
-        u32 self_start_va = virtual_address + sizeof(u64);
-        u64 entries[] = { 0, self_start_va };
+        // TODO: figure out what's this
+        __dso_handle_va = virtual_address + sizeof(u64);
+        u64 entries[] = { 0, __dso_handle_va };
         auto size = sizeof(entries);
         memcpy(vb_add(&builder->file, size), entries, size);
+        data_va_end = data_va_start + size;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8868,14 +8913,17 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .entry_size = 0,
         };
 
-        *self_start_relocation = (ElfRelocationWithAddend) {
-            .offset = self_start_va,
+        *__dso_handle_relocation = (ElfRelocationWithAddend) {
+            .offset = __dso_handle_va,
             .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0 },
-            .addend = self_start_va,
+            .addend = __dso_handle_va,
         };
     }
 
     auto bss_size = 0;
+    auto bss_section_index = builder->section_headers.length;
+    auto bss_end = 0;
+    auto bss_start = 0;
     {
         // .bss
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8884,10 +8932,12 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
         auto virtual_address = offset + virtual_address_offset;
+        bss_start = virtual_address;
 
         auto name = elf_get_section_name(builder, strlit(".bss"));
 
         bss_size = 8;
+        bss_end = virtual_address + bss_size;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9222,34 +9272,225 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".symtab"));
 
-        ELFSymbol symbols[] = {
-            { .name_offset = 0, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 0, .value = 0, .size = 0},
-            { .name_offset = 1, .type = ELF_SYMBOL_TYPE_FILE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 65521, .value = 0, .size = 0},
-            { .name_offset = 0, .type = ELF_SYMBOL_TYPE_FILE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 65521, .value = 0, .size = 0},
-            { .name_offset = 8, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 19, .value = 15904, .size = 0},
-            { .name_offset = 17, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 15, .value = 8196, .size = 0},
-            { .name_offset = 36, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_LOCAL, .other = 0, .section_index = 21, .value = 16360, .size = 0},
-            { .name_offset = 58, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 0, .value = 0, .size = 0},
-            { .name_offset = 87, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
-            { .name_offset = 130, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 22, .value = 16384, .size = 0},
-            { .name_offset = 115, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 22, .value = 16400, .size = 0},
-            { .name_offset = 122, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 13, .value = 4384, .size = 0},
-            { .name_offset = 128, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 22, .value = 16384, .size = 0},
-            { .name_offset = 141, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
-            { .name_offset = 156, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 22, .value = 16392, .size = 0},
-            { .name_offset = 169, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 14, .value = 8192, .size = 4},
-            { .name_offset = 184, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 23, .value = 16408, .size = 0},
-            { .name_offset = 134, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 12, .value = 4128, .size = 38},
-            { .name_offset = 189, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 23, .value = 16400, .size = 0},
-            { .name_offset = 201, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 0, .section_index = 12, .value = 4380, .size = 3},
-            { .name_offset = 206, .type = ELF_SYMBOL_TYPE_OBJECT, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 22, .value = 16400, .size = 0},
-            { .name_offset = 218, .type = ELF_SYMBOL_TYPE_NONE, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
-            { .name_offset = 244, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_WEAK, .other = 0, .section_index = 0, .value = 0, .size = 0},
-            { .name_offset = 271, .type = ELF_SYMBOL_TYPE_FUNCTION, .binding = ELF_SYMBOL_BINDING_GLOBAL, .other = 2, .section_index = 11, .value = 4096, .size = 0}
-        };
+        u16 section_index_undefined = 0;
+        u16 section_index_absolute = 0xfff1;
 
-        auto size = sizeof(symbols);
-        memcpy(vb_add(&builder->file, size), symbols, size);
+        auto main_c_string = st_get_string(&builder->static_st, strlit("main.c"));
+        auto _dynamic_string = st_get_string(&builder->static_st, strlit("_DYNAMIC"));
+        auto eh_frame_hdr_string = st_get_string(&builder->static_st, strlit("__GNU_EH_FRAME_HDR"));
+        auto got_string = st_get_string(&builder->static_st, strlit("_GLOBAL_OFFSET_TABLE_"));
+        auto libc_start_main_string = st_get_string(&builder->static_st, strlit("__libc_start_main@GLIBC_2.34"));
+        auto deregister_string = st_get_string(&builder->static_st, strlit("_ITM_deregisterTMCloneTable"));
+        auto edata_string = st_get_string(&builder->static_st, strlit("_edata"));
+        auto fini_string = st_get_string(&builder->static_st, strlit("_fini"));
+        auto __data_start_string = st_get_string(&builder->static_st, strlit("__data_start"));
+        auto data_start_string = st_get_string(&builder->static_st, strlit("data_start"));
+
+        ELFSymbol symbols[] = {
+            {
+                .name_offset = main_c_string,
+                .type = ELF_SYMBOL_TYPE_FILE,
+                .binding = ELF_SYMBOL_BINDING_LOCAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = section_index_absolute,
+                .value = 0,
+                .size = 0,
+            },
+            {
+                .name_offset = 0,
+                .type = ELF_SYMBOL_TYPE_FILE,
+                .binding = ELF_SYMBOL_BINDING_LOCAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = section_index_absolute,
+                .value = 0,
+                .size = 0
+            },
+            {
+                .name_offset = _dynamic_string,
+                .type = ELF_SYMBOL_TYPE_OBJECT,
+                .binding = ELF_SYMBOL_BINDING_LOCAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = dynamic_section_index,
+                .value = dynamic_va,
+                .size = 0,
+            },
+            {
+                .name_offset = eh_frame_hdr_string,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_LOCAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = eh_frame_hdr_section_index,
+                .value = eh_frame_offset,
+                .size = 0,
+            },
+            {
+                .name_offset = got_string,
+                .type = ELF_SYMBOL_TYPE_OBJECT,
+                .binding = ELF_SYMBOL_BINDING_LOCAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = got_plt_section_index,
+                .value = got_plt_va,
+                .size = 0,
+            },
+            {
+                .name_offset = libc_start_main_string,
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = section_index_undefined,
+                .value = 0,
+                .size = 0,
+            },
+            {
+                .name_offset = deregister_string,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = section_index_undefined,
+                .value = 0,
+                .size = 0,
+            },
+            {
+                .name_offset = data_start_string,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = data_section_index,
+                .value = data_va_start,
+                .size = 0,
+            },
+            {
+                .name_offset = edata_string,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = data_section_index,
+                .value = data_va_end,
+                .size = 0,
+            },
+            {
+                .name_offset = fini_string,
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_HIDDEN, // TODO: investigate this other field
+                .section_index = fini_section_index,
+                .value = fini_offset,
+                .size = 0,
+            },
+            {
+                .name_offset = __data_start_string,
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = data_section_index,
+                .value = data_va_start,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("__gmon_start__")),
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = section_index_undefined,
+                .value = 0,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("__dso_handle")),
+                .type = ELF_SYMBOL_TYPE_OBJECT,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_HIDDEN,
+                .section_index = data_section_index,
+                .value = __dso_handle_va,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("_IO_stdin_used")),
+                .type = ELF_SYMBOL_TYPE_OBJECT,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = rodata_section_index,
+                .value = rodata_va,
+                .size = _IO_stdin_used_size,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("_end")),
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = bss_section_index,
+                .value = bss_end,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("_start")),
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = text_section_index,
+                .value = _start_offset,
+                .size = _start_size,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("__bss_start")),
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = bss_section_index,
+                .value = bss_start,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("main")),
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = text_section_index,
+                .value = main_offset,
+                .size = main_size,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("__TMC_END__")),
+                .type = ELF_SYMBOL_TYPE_OBJECT,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_HIDDEN,
+                .section_index = data_section_index,
+                .value = data_va_end,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("_ITM_registerTMCloneTable")),
+                .type = ELF_SYMBOL_TYPE_NONE,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = section_index_undefined,
+                .value = 0,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("__cxa_finalize@GLIBC_2.2.5")),
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_WEAK,
+                .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
+                .section_index = section_index_undefined,
+                .value = 0,
+                .size = 0,
+            },
+            {
+                .name_offset = st_get_string(&builder->static_st, strlit("_init")),
+                .type = ELF_SYMBOL_TYPE_FUNCTION,
+                .binding = ELF_SYMBOL_BINDING_GLOBAL,
+                .visibility = ELF_SYMBOL_VISIBILITY_HIDDEN,
+                .section_index = init_section_index,
+                .value = init_offset,
+                .size = 0,
+            }
+        };
+        memcpy(vb_add(&builder->static_st.symbol_table, array_length(symbols)), symbols, sizeof(symbols));
+
+        memcpy(vb_add(&builder->file, builder->static_st.symbol_table.length * sizeof(ELFSymbol)), builder->static_st.symbol_table.pointer, builder->static_st.symbol_table.length * sizeof(ELFSymbol));
+
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9275,35 +9516,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".strtab"));
 
-        String strings[] = {
-            strlit(""),
-            strlit("main.c"),
-            strlit("_DYNAMIC"),
-            strlit("__GNU_EH_FRAME_HDR"),
-            strlit("_GLOBAL_OFFSET_TABLE_"),
-            strlit("__libc_start_main@GLIBC_2.34"),
-            strlit("_ITM_deregisterTMCloneTable"),
-            strlit("_edata"),
-            strlit("_fini"),
-            strlit("__data_start"),
-            strlit("__gmon_start__"),
-            strlit("__dso_handle"),
-            strlit("_IO_stdin_used"),
-            strlit("_end"),
-            strlit("__bss_start"),
-            strlit("main"),
-            strlit("__TMC_END__"),
-            strlit("_ITM_registerTMCloneTable"),
-            strlit("__cxa_finalize@GLIBC_2.2.5"),
-            strlit("_init"),
-        };
-
-        for (u32 i = 0; i < array_length(strings); i += 1)
-        {
-            String string = strings[i];
-            auto string_size = string.length + 1;
-            memcpy(vb_add(&builder->file, string_size), string.pointer, string_size);
-        }
+        memcpy(vb_add(&builder->file, builder->static_st.string_table.length), builder->static_st.string_table.pointer, builder->static_st.string_table.length);
 
         auto size = builder->file.length - offset;
 
@@ -12806,7 +13019,6 @@ fn void print_ir(Thread* restrict thread)
         }
     }
 }
-
 
 fn void dwarf_playground(Thread* thread)
 {
