@@ -386,6 +386,7 @@ STRUCT(ElfProgramHeader)
 };
 static_assert(sizeof(ElfProgramHeader) == 0x38);
 declare_slice(ElfProgramHeader);
+decl_vb(ElfProgramHeader);
 
 typedef enum ELFBitCount : u8
 {
@@ -7048,27 +7049,26 @@ STRUCT(ObjectOptions)
 
 STRUCT(ELFBuilder)
 {
+    VirtualBuffer(u8) file;
     VirtualBuffer(ELFSectionHeader) section_headers;
     VirtualBuffer(u8) section_string_table;
-    VirtualBuffer(u8) file;
-    Slice(ElfProgramHeader) program_headers;
-    u16 program_header_i;
+    VirtualBuffer(ElfProgramHeader) program_headers;
     SymbolTable static_st;
     SymbolTable dynamic_st;
 };
 
-fn void elf_ph_init(ELFBuilder* restrict builder)
-{
-    builder->program_headers.length = 6;
-    auto program_header_size = sizeof(ElfProgramHeader) * builder->program_headers.length;
-    builder->program_headers.pointer = (ElfProgramHeader*)vb_add(&builder->file, program_header_size);
-    builder->program_header_i = 0;
-}
-
-fn void elf_ph_end(ELFBuilder* restrict builder)
-{
-    assert(builder->program_header_i == builder->program_headers.length);
-}
+// fn void elf_ph_init(ELFBuilder* restrict builder)
+// {
+//     builder->program_headers.length = 6;
+//     auto program_header_size = sizeof(ElfProgramHeader) * builder->program_headers.length;
+//     builder->program_headers.pointer = (ElfProgramHeader*)vb_add(&builder->file, program_header_size);
+//     builder->program_header_i = 0;
+// }
+//
+// fn void elf_ph_end(ELFBuilder* restrict builder)
+// {
+//     assert(builder->program_header_i == builder->program_headers.length);
+// }
 
 STRUCT(ELFSectionCreate)
 {
@@ -7091,13 +7091,13 @@ fn void vb_align(VirtualBuffer(u8)* buffer, u64 alignment)
     memset(pointer, 0, count);
 }
 
-fn void elf_add_program_header_raw(ELFBuilder* restrict builder, ElfProgramHeader ph)
-{
-    assert(builder->program_header_i < builder->program_headers.length);
-    auto* program_header = &builder->program_headers.pointer[builder->program_header_i];
-    *program_header = ph;
-    builder->program_header_i += 1;
-}
+// fn void elf_add_program_header_raw(ELFBuilder* restrict builder, ElfProgramHeader ph)
+// {
+//     assert(builder->program_header_i < builder->program_headers.length);
+//     auto* program_header = &builder->program_headers.pointer[builder->program_header_i];
+//     *program_header = ph;
+//     builder->program_header_i += 1;
+// }
 
 fn u64 elf_add_section_no_copy_raw(ELFBuilder* restrict builder, ELFSectionCreate create)
 {
@@ -7160,21 +7160,21 @@ STRUCT(ELFSegmentCreate)
     u64 offset;
 };
 
-fn void elf_add_program_segment_no_copy_raw(ELFBuilder* restrict builder, ELFSegmentCreate create)
-{
-    assert((create.offset & (create.alignment - 1)) == 0);
-
-    elf_add_program_header_raw(builder, (ElfProgramHeader){
-        .type = create.type,
-        .flags = create.flags,
-        .offset = create.offset,
-        .virtual_address = create.offset,
-        .physical_address = create.offset,
-        .file_size = create.size,
-        .memory_size = create.size,
-        .alignment = create.alignment,
-    });
-}
+// fn void elf_add_program_segment_no_copy_raw(ELFBuilder* restrict builder, ELFSegmentCreate create)
+// {
+//     assert((create.offset & (create.alignment - 1)) == 0);
+//
+//     elf_add_program_header_raw(builder, (ElfProgramHeader){
+//         .type = create.type,
+//         .flags = create.flags,
+//         .offset = create.offset,
+//         .virtual_address = create.offset,
+//         .physical_address = create.offset,
+//         .file_size = create.size,
+//         .memory_size = create.size,
+//         .alignment = create.alignment,
+//     });
+// }
 
 fn void elf_fill_program_header(ElfProgramHeader* restrict ph, ELFSegmentCreate create)
 {
@@ -7199,25 +7199,25 @@ STRUCT(ELFSegmentSectionCreate)
     String content;
 };
 
-fn u64 elf_add_both_segment_and_section(ELFBuilder* restrict builder, ELFSegmentSectionCreate create)
-{
-    assert(create.section.size == 0);
-    assert(create.content.length > 0);
-    create.section.size = create.content.length;
-    vb_align(&builder->file, create.section.alignment);
-    auto offset = elf_add_section_no_copy_raw(builder, create.section);
-    ELFSegmentCreate segment = {
-        .type = create.ph_type,
-        .flags = create.ph_flags,
-        .size = create.section.size,
-        .alignment = create.section.alignment, 
-        .offset = offset,
-    };
-    elf_add_program_segment_no_copy_raw(builder, segment);
-    memcpy(vb_add(&builder->file, create.content.length), create.content.pointer, create.content.length);
-
-    return offset;
-}
+// fn u64 elf_add_both_segment_and_section(ELFBuilder* restrict builder, ELFSegmentSectionCreate create)
+// {
+//     assert(create.section.size == 0);
+//     assert(create.content.length > 0);
+//     create.section.size = create.content.length;
+//     vb_align(&builder->file, create.section.alignment);
+//     auto offset = elf_add_section_no_copy_raw(builder, create.section);
+//     ELFSegmentCreate segment = {
+//         .type = create.ph_type,
+//         .flags = create.ph_flags,
+//         .size = create.section.size,
+//         .alignment = create.section.alignment, 
+//         .offset = offset,
+//     };
+//     elf_add_program_segment_no_copy_raw(builder, segment);
+//     memcpy(vb_add(&builder->file, create.content.length), create.content.pointer, create.content.length);
+//
+//     return offset;
+// }
 
 typedef enum SymbolKind : u8
 {
@@ -7595,66 +7595,82 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto shstrtab_section_name = elf_get_section_name(builder, strlit(".shstrtab"));
 
     auto* elf_header = vb_add_struct(&builder->file, ELFHeader);
+
+    // TODO: precompute properly how many program segments we are going to need
     u16 program_header_count = 13;
-    // u64 section_header_offset = 13904;
+    auto* program_headers = vb_add(&builder->file, sizeof(ElfProgramHeader) * program_header_count);
 
-    ElfProgramHeader expected_program_headers[] = {
-        { .type = PT_PHDR, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 64, .virtual_address = 64, .physical_address = 64, .file_size = 728, .memory_size = 728, .alignment = 8},
-        { .type = PT_INTERP, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 792, .virtual_address = 792, .physical_address = 792, .file_size = 28, .memory_size = 28, .alignment = 1},
-        { .type = PT_LOAD, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 0, .virtual_address = 0, .physical_address = 0, .file_size = 1496, .memory_size = 1496, .alignment = 4096},
-        { .type = PT_LOAD, .flags = { .executable = 1, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 4096, .virtual_address = 4096, .physical_address = 4096, .file_size = 301, .memory_size = 301, .alignment = 4096},
-        { .type = PT_LOAD, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 8192, .virtual_address = 8192, .physical_address = 8192, .file_size = 104, .memory_size = 104, .alignment = 4096},
-        { .type = PT_LOAD, .flags = {.executable = 0, .writeable = 1, .readable = 1, .reserved = 0}, .offset = 11792, .virtual_address = 15888, .physical_address = 15888, .file_size = 512, .memory_size = 520, .alignment = 4096},
-        { .type = PT_DYNAMIC, .flags = {.executable = 0, .writeable = 1, .readable = 1, .reserved = 0}, .offset = 11808, .virtual_address = 15904, .physical_address = 15904, .file_size = 416, .memory_size = 416, .alignment = 8},
-        { .type = PT_NOTE, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 824, .virtual_address = 824, .physical_address = 824, .file_size = 32, .memory_size = 32, .alignment = 8},
-        { .type = PT_NOTE, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 856, .virtual_address = 856, .physical_address = 856, .file_size = 68, .memory_size = 68, .alignment = 4},
-        { .type = PT_GNU_PROPERTY, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 824, .virtual_address = 824, .physical_address = 824, .file_size = 32, .memory_size = 32, .alignment = 8},
-        { .type = PT_GNU_EH_FRAME, .flags = {.executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 8196, .virtual_address = 8196, .physical_address = 8196, .file_size = 28, .memory_size = 28, .alignment = 4},
-        { .type = PT_GNU_STACK, .flags = {.executable = 0, .writeable = 1, .readable = 1, .reserved = 0}, .offset = 0, .virtual_address = 0, .physical_address = 0, .file_size = 0, .memory_size = 0, .alignment = 16},
-        { .type = PT_GNU_RELRO, .flags = { .executable = 0, .writeable = 0, .readable = 1, .reserved = 0}, .offset = 11792, .virtual_address = 15888, .physical_address = 15888, .file_size = 496, .memory_size = 496, .alignment = 1}
-    };
+    {
+        // Add program header segment
+        auto offset = sizeof(ELFHeader);
+        auto size = sizeof(ElfProgramHeader) * program_header_count;
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_PHDR,
+            .flags = { .readable = 1 },
+            .offset = offset,
+            .virtual_address = offset,
+            .physical_address = offset,
+            .file_size = size,
+            .memory_size = size,
+            .alignment = alignof(ElfProgramHeader),
+        };
+    }
 
-    auto* program_headers = vb_add_struct(&builder->file, typeof(expected_program_headers));
-    memcpy(program_headers, expected_program_headers, sizeof(expected_program_headers));
-
-    // auto* ptr = (u8*)(program_headers + array_length(expected_program_headers));
     {
         // .interp
         // Section #1
-        u64 interp_alignment = 1;
-        vb_align(&builder->file, interp_alignment);
-        auto interp = strlit("/lib64/ld-linux-x86-64.so.2");
-        auto* interp_section_header = vb_add(&builder->section_headers, 1);
-        auto interp_size = interp.length + 1;
-        auto interp_offset = builder->file.length;
-        memcpy(vb_add(&builder->file, interp_size), interp.pointer, interp_size);
-
+        auto* section_header = vb_add(&builder->section_headers, 1);
         auto interp_section_name = elf_get_section_name(builder, strlit(".interp"));
 
-        *interp_section_header = (ELFSectionHeader)
+        u64 alignment = 1;
+        vb_align(&builder->file, alignment);
+        auto offset = builder->file.length;
+
+        auto content = strlit("/lib64/ld-linux-x86-64.so.2");
+        auto size = content.length + 1;
+        memcpy(vb_add(&builder->file, size), content.pointer, size);
+
+
+        *section_header = (ELFSectionHeader)
         {
             .name_offset = interp_section_name,
                 .type = ELF_SECTION_PROGRAM,
                 .flags = {
                     .alloc = 1,
                 },
-                .address = interp_offset,
-                .offset = interp_offset,
-                .size = interp_size,
+                .address = offset,
+                .offset = offset,
+                .size = size,
                 .link = 0,
                 .info = 0,
-                .alignment = 1,
+                .alignment = alignment,
                 .entry_size = 0,
+        };
+
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_INTERP,
+            .flags = {.readable = 1,},
+            .offset = offset,
+            .virtual_address = offset,
+            .physical_address = offset,
+            .file_size = size,
+            .memory_size = size,
+            .alignment = alignment,
         };
     }
 
+    u32 gnu_property_offset = 0;
+    u32 gnu_property_size = 0;
+    u32 gnu_property_alignment = 0;
     {
         // .note.gnu.property
         // Section #2
         auto* gnu_property_section_header = vb_add(&builder->section_headers, 1);
         u64 alignment = 8;
+        gnu_property_alignment = alignment;
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        gnu_property_offset = offset;
         auto gnu_property_section_name = elf_get_section_name(builder, strlit(".note.gnu.property"));
 
         auto gnu_string = strlit("GNU");
@@ -7672,7 +7688,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         memcpy(vb_add(&builder->file, sizeof(gnu_property_blob)), gnu_property_blob, sizeof(gnu_property_blob));
 
-        auto gnu_property_size = builder->file.length - offset;
+        gnu_property_size = builder->file.length - offset;
 
         *gnu_property_section_header = (ELFSectionHeader)
         {
@@ -7691,14 +7707,18 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    u32 gnu_build_id_offset = 0;
+    u32 gnu_build_id_alignment = 0;
     {
         // .note.gnu.build-id
         // Section #3
         auto* section_header = vb_add(&builder->section_headers, 1);
         u64 alignment = 4;
+        gnu_build_id_alignment = alignment;
         auto name = elf_get_section_name(builder, strlit(".note.gnu.build-id"));
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        gnu_build_id_offset = offset;
 
         auto gnu_string = strlit("GNU");
         auto gnu_string_size = gnu_string.length + 1;
@@ -7780,6 +7800,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .entry_size = 0,
         };
     }
+
+    auto gnu_build_id_abi_note_size = builder->file.length - gnu_build_id_offset;
 
     u16 preliminar_section_count = builder->section_headers.length + 1;
     auto dynamic_symbol_table_index = preliminar_section_count;
@@ -8082,7 +8104,27 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    // Add read-only program segment
+    {
+        auto offset = builder->file.length;
+        assert(offset == 1496);
+
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader)
+        {
+            .type = PT_LOAD,
+            .flags = {.readable = 1},
+            .offset = 0,
+            .virtual_address = 0,
+            .physical_address = 0,
+            .file_size = offset,
+            .memory_size = offset,
+            .alignment = 0x1000,
+        };
+    }
+
     vb_align(&builder->file, 0x1000);
+
+    auto code_offset = builder->file.length;
 
     {
         // .init
@@ -8205,7 +8247,26 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    // Add code segment (read, execute)
+    {
+        auto current_offset = builder->file.length;
+        auto length = current_offset - code_offset;
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader)
+        {
+            .type = PT_LOAD,
+            .flags = { .executable = 1, .readable = 1},
+            .offset = code_offset,
+            .virtual_address = code_offset,
+            .physical_address = code_offset,
+            .file_size = length,
+            .memory_size = length,
+            .alignment = 0x1000,
+        };
+    }
+
     vb_align(&builder->file, 0x1000);
+
+    auto read_only_offset = builder->file.length;
 
     {
         // .rodata
@@ -8239,13 +8300,18 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    u32 eh_frame_offset = 0;
+    u32 eh_frame_size = 0;
+    u32 eh_frame_alignment = 0;
     {
         // .eh_frame_hdr
         auto* section_header = vb_add(&builder->section_headers, 1);
         u64 alignment = 4;
+        eh_frame_alignment = alignment;
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        eh_frame_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".eh_frame_hdr"));
 
@@ -8264,6 +8330,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
 
         auto size = sizeof(eh_frame_hdr) + sizeof(entries);
+        eh_frame_size = size;
         auto* dst = vb_add(&builder->file, size);
 
         memcpy(dst, &eh_frame_hdr, sizeof(eh_frame_hdr));
@@ -8344,6 +8411,22 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    {
+        auto current_offset = builder->file.length;
+        auto size = current_offset - read_only_offset;
+        // Add ro program header
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_LOAD,
+            .flags = {.readable = 1},
+            .offset = read_only_offset,
+            .virtual_address = read_only_offset,
+            .physical_address = read_only_offset,
+            .file_size = size,
+            .memory_size = size,
+            .alignment = 0x1000,
+        };
+    }
+
     u64 init_array_size = 8;
     u64 fini_array_size = 8;
     u64 dynamic_size = 416;
@@ -8358,6 +8441,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     assert(old_length < builder->file.length);
 
     auto virtual_address_offset = 0x1000;
+
+    auto* data_program_header = vb_add(&builder->program_headers, 1);
+    auto data_offset = builder->file.length;
 
     {
         // .init_array
@@ -8492,6 +8578,20 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .alignment = alignment,
             .entry_size = sizeof(ElfDynamicEntry),
         };
+
+        // Add dynamic program header
+        {
+            *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+                .type = PT_DYNAMIC,
+                .flags = {.writeable = 1, .readable = 1},
+                .offset = offset,
+                .virtual_address = virtual_address,
+                .physical_address = virtual_address,
+                .file_size = size,
+                .memory_size = size,
+                .alignment = alignof(ElfDynamicEntry),
+            };
+        }
     }
 
     {
@@ -8562,6 +8662,77 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    // Add several program headers
+    {
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_NOTE,
+            .flags = {.readable = 1},
+            .offset = gnu_property_offset,
+            .virtual_address = gnu_property_offset,
+            .physical_address = gnu_property_offset,
+            .file_size = gnu_property_size,
+            .memory_size = gnu_property_size,
+            .alignment = gnu_property_alignment,
+        };
+
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_NOTE,
+            .flags = {.readable = 1},
+            .offset = gnu_build_id_offset,
+            .virtual_address = gnu_build_id_offset,
+            .physical_address = gnu_build_id_offset,
+            .file_size = gnu_build_id_abi_note_size,
+            .memory_size = gnu_build_id_abi_note_size,
+            .alignment = gnu_build_id_alignment,
+        };
+
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_GNU_PROPERTY,
+            .flags = {.readable = 1},
+            .offset = gnu_property_offset,
+            .virtual_address = gnu_property_offset,
+            .physical_address = gnu_property_offset,
+            .file_size = gnu_property_size,
+            .memory_size = gnu_property_size,
+            .alignment = gnu_property_alignment,
+        };
+
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_GNU_EH_FRAME,
+            .flags = {.readable = 1},
+            .offset = eh_frame_offset,
+            .virtual_address = eh_frame_offset,
+            .physical_address = eh_frame_offset,
+            .file_size = eh_frame_size,
+            .memory_size = eh_frame_size,
+            .alignment = eh_frame_alignment,
+        };
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_GNU_STACK,
+            .flags = { .writeable = 1, .readable = 1},
+            .offset = 0,
+            .virtual_address = 0,
+            .physical_address = 0,
+            .file_size = 0,
+            .memory_size = 0,
+            .alignment = 16,
+        };
+
+        auto relro_end = builder->file.length;
+        auto size = relro_end - data_offset;
+        auto virtual_address = data_offset + virtual_address_offset;
+        *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
+            .type = PT_GNU_RELRO,
+            .flags = { .readable = 1},
+            .offset = data_offset,
+            .virtual_address = virtual_address,
+            .physical_address = virtual_address,
+            .file_size = size,
+            .memory_size = size,
+            .alignment = 1
+        };
+    }
+
     vb_align(&builder->file, 0x1000);
 
     {
@@ -8596,6 +8767,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    auto bss_size = 0;
     {
         // .bss
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8607,7 +8779,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".bss"));
 
-        auto size = 8;
+        bss_size = 8;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8618,11 +8790,28 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             },
             .address = virtual_address,
             .offset = offset,
-            .size = size,
+            .size = bss_size,
             .link = 0,
             .info = 0,
             .alignment = alignment,
             .entry_size = 0,
+        };
+    }
+
+    // Fill data program header (writeable, readable)
+    {
+        auto current_offset = builder->file.length;
+        auto file_size = current_offset - data_offset;
+        auto virtual_address = data_offset + virtual_address_offset;
+        *data_program_header = (ElfProgramHeader) {
+            .type = PT_LOAD,
+            .flags = {.writeable = 1, .readable = 1},
+            .offset = data_offset,
+            .virtual_address = virtual_address,
+            .physical_address = virtual_address,
+            .file_size = file_size,
+            .memory_size = file_size + bss_size,
+            .alignment = 0x1000,
         };
     }
 
@@ -8777,40 +8966,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .entry_size = 0,
         };
     }
-
-    // {
-    //     // .debug_frame
-    //     auto* section_header = vb_add(&builder->section_headers, 1);
-    //     u64 alignment = 8;
-    //
-    //     vb_align(&builder->file, alignment);
-    //     auto offset = builder->file.length;
-    //
-    //     auto name = elf_get_section_name(builder, strlit(".debug_frame"));
-    //
-    //     u8 data[] = {
-    //         0x14, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x04, 0x00, 0x08, 0x00, 0x01, 0x78, 0x10, 0x0C, 
-    //         0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-    //         0x1C, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-    //     };
-    //
-    //     auto size = sizeof(data);
-    //
-    //     memcpy(vb_add(&builder->file, size), data, size);
-    //
-    //     *section_header = (ELFSectionHeader) {
-    //         .name_offset = name,
-    //         .type = ELF_SECTION_PROGRAM,
-    //         .flags = {},
-    //         .address = virtual_address,
-    //         .offset = offset,
-    //         .size = size,
-    //         .link = 0,
-    //         .info = 0,
-    //         .alignment = alignment,
-    //         .entry_size = 0,
-    //     };
-    // }
 
     {
         // .debug_str
@@ -9115,7 +9270,11 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         .section_header_string_table_index = section_header_count - 1,
     };
 
+    assert(builder->program_headers.length == program_header_count);
+    memcpy(program_headers, builder->program_headers.pointer, sizeof(ElfProgramHeader) * builder->program_headers.length);
+
     // Check if the file matches
+    
     // {
     //     auto s = file_read(thread->arena, strlit("/home/david/minimal/main"));
     //
