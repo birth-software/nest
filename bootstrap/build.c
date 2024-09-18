@@ -145,7 +145,7 @@ fn void compile_c(const CompileOptions *const options, char** envp)
         memcpy(vb_add(args, array_length(static_options)), static_options, sizeof(static_options));
     }
 
-    *vb_add(args, 1) = "-DSILENT";
+    // *vb_add(args, 1) = "-DSILENT";
 
     if (options->compiler == clang)
     {

@@ -1091,6 +1091,11 @@ typedef enum DwarfUnitType : u8
     DW_UT_hi_user = 0xff, 
 } DwarfUnitType;
 
+typedef enum DwarfLanguage : u16
+{
+    DW_LANG_C11 = 0x001d,
+} DwarfLanguage;
+
 typedef enum DwarfOperation : u8
 {
     DW_OP_addr = 0x03, // Operands: 1
@@ -1473,6 +1478,19 @@ STRUCT(DwarfAddressTableHeader)
     u8 address_size;
     u8 segment_selector_size;
 };
+
+typedef enum DwarfType : u8
+{
+    DW_ATE_void = 0x00,
+    DW_ATE_address = 0x01,
+    DW_ATE_boolean = 0x02,
+    DW_ATE_complex_float = 0x03,
+    DW_ATE_float = 0x04,
+    DW_ATE_signed = 0x05,
+    DW_ATE_signed_char = 0x06,
+    DW_ATE_unsigned = 0x07,
+    DW_ATE_unsigned_char = 0x08,
+} DwarfType;
 
 typedef enum TypeId : u32
 {
@@ -7542,7 +7560,6 @@ fn Uleb128 uleb128_decode(String input)
     return result;
 }
 
-
 fn void sleb128_encode(VirtualBuffer(u8)* buffer, s32 value)
 {
     auto extra_bits = (u32)(value ^ (value >> 31)) >> 6;
@@ -7570,6 +7587,275 @@ fn void uleb128_encode(VirtualBuffer(u8)* buffer, u32 value)
     *vb_add(buffer, 1) = out;
 }
 
+fn void dwarf_playground(Thread* thread)
+{
+    auto file = file_read(thread->arena,
+#ifdef __APPLE__
+            strlit("/Users/david/minimal/main")
+#else
+            strlit("/home/david/minimal/main")
+#endif
+    );
+    auto* elf_header = (ELFHeader*)file.pointer;
+    auto section_count = elf_header->section_header_count;
+    auto section_header_offset = elf_header->section_header_offset;
+    auto string_table_section_index = elf_header->section_header_string_table_index;
+
+    auto debug_abbrev_section_index = -1;
+    auto debug_info_section_index = -1;
+    auto debug_addr_section_index = -1;
+    auto debug_str_section_index = -1;
+    auto debug_str_offsets_section_index = -1;
+    auto rela_debug_str_offsets_section_index = -1;
+    auto rela_debug_addr_section_index = -1;
+
+    auto section_headers = (ELFSectionHeader*)(file.pointer + section_header_offset);
+    auto* string_table_section_header = (ELFSectionHeader*)(file.pointer + section_header_offset) + string_table_section_index;
+    auto string_table_offset = string_table_section_header->offset;
+
+    for (u16 i = 0; i < section_count; i += 1)
+    {
+        auto* section_header = section_headers + i;
+        auto name_offset = string_table_offset + section_header->name_offset;
+        auto* name = (char*)(file.pointer + name_offset);
+
+        if (strcmp(".debug_abbrev", name) == 0)
+        {
+            debug_abbrev_section_index = i;
+        }
+        else if (strcmp(".debug_info", name) == 0)
+        {
+            debug_info_section_index = i;
+        }
+        else if (strcmp(".debug_addr", name) == 0)
+        {
+            debug_addr_section_index = i;
+        }
+        else if (strcmp(".debug_str", name) == 0)
+        {
+            debug_str_section_index = i;
+        }
+        else if (strcmp(".debug_str_offsets", name) == 0)
+        {
+            debug_str_offsets_section_index = i;
+        }
+        else if (strcmp(".rela.debug_addr", name) == 0)
+        {
+            rela_debug_addr_section_index = i;
+        }
+        else if (strcmp(".rela.debug_str_offsets", name) == 0)
+        {
+            rela_debug_str_offsets_section_index = i;
+        }
+    }
+
+    assert(debug_info_section_index != -1);
+    assert(debug_abbrev_section_index != -1);
+    assert(debug_addr_section_index != -1);
+    assert(debug_str_section_index != -1);
+    assert(debug_str_offsets_section_index != -1);
+
+    auto* debug_abbrev_section_header = section_headers + debug_abbrev_section_index;
+    auto* debug_info_section_header = section_headers + debug_info_section_index;
+    auto* debug_addr_section_header = section_headers + debug_addr_section_index;
+    auto* debug_str_section_header = section_headers + debug_str_section_index;
+    auto* debug_str_offsets_section_header = section_headers + debug_str_offsets_section_index;
+    auto* rela_debug_str_offsets_section_header = section_headers + rela_debug_str_offsets_section_index;
+    auto* rela_debug_addr_section_header = section_headers + rela_debug_addr_section_index;
+
+    auto* rela_debug_str_offsets = (ElfRelocation*)(file.pointer + rela_debug_str_offsets_section_header->offset);
+    auto* rela_debug_addresses = (ElfRelocation*)(file.pointer + rela_debug_addr_section_header->offset);
+
+    auto original_debug_info_bytes = (String) {
+        .pointer = file.pointer + debug_info_section_header->offset,
+        .length = debug_info_section_header->size,
+    };
+    auto debug_info_bytes = original_debug_info_bytes;
+
+    auto* compile_unit_header = (DwarfCompilationUnit*)debug_info_bytes.pointer;
+    debug_info_bytes.pointer += sizeof(DwarfCompilationUnit);
+    debug_info_bytes.length -= sizeof(DwarfCompilationUnit);
+
+    auto debug_abbrev_bytes = (String) {
+        .pointer = file.pointer + debug_abbrev_section_header->offset,
+        .length = debug_abbrev_section_header->size,
+    };
+    auto* debug_addr_header = (DwarfAddressTableHeader*)(file.pointer + debug_addr_section_header->offset);
+    assert(debug_addr_header->unit_length == debug_addr_section_header->size - sizeof(debug_addr_header->unit_length));
+    assert(debug_addr_header->version == 5);
+    assert(debug_addr_header->address_size == 8);
+    auto* debug_addresses = (u64*)debug_addr_header + 1;
+    auto* debug_str_offsets_header = (DwarfStringOffsetsTableHeader*)(file.pointer + debug_str_offsets_section_header->offset);
+    assert(debug_str_offsets_header->unit_length == debug_str_offsets_section_header->size - sizeof(debug_str_offsets_header->unit_length));
+    auto string_count = (debug_str_offsets_section_header->size - sizeof(DwarfStringOffsetsTableHeader)) / sizeof(u32);
+    auto* string_index_offset_map = (u32*)(debug_str_offsets_header + 1);
+    auto* string_table = file.pointer + debug_str_section_header->offset;
+
+    auto debug_str_offset_base_guess = 8;
+
+    auto top = 0;
+    while (debug_abbrev_bytes.length > 0)
+    {
+        auto first = uleb128_decode(debug_abbrev_bytes);
+        debug_abbrev_bytes.pointer += first.i;
+        debug_abbrev_bytes.length -= first.i;
+
+        if (first.number != 0)
+        {
+            auto second = uleb128_decode(debug_abbrev_bytes);
+            debug_abbrev_bytes.pointer += second.i;
+            debug_abbrev_bytes.length -= second.i;
+            auto children = debug_abbrev_bytes.pointer[0];
+            debug_abbrev_bytes.pointer += 1;
+            debug_abbrev_bytes.length -= 1;
+
+            auto di_abbrev_code = uleb128_decode(debug_info_bytes);
+            debug_info_bytes.pointer += di_abbrev_code.i;
+            debug_info_bytes.length -= di_abbrev_code.i;
+            assert(di_abbrev_code.number == first.number);
+
+            print("======\nAbbreviation entry #{u64}: \"{s}\", (0x{u64:x})\n======\n", first.number, dwarf_tag_to_string((DwarfTag)second.number), second.number);
+
+            while (1)
+            {
+                auto first = uleb128_decode(debug_abbrev_bytes);
+                debug_abbrev_bytes.pointer += first.i;
+                debug_abbrev_bytes.length -= first.i;
+
+                auto second = uleb128_decode(debug_abbrev_bytes);
+                debug_abbrev_bytes.pointer += second.i;
+                debug_abbrev_bytes.length -= second.i;
+
+                if (first.number == 0 && second.number == 0)
+                {
+                    break;
+                }
+
+                auto attribute = (DwarfAttribute)first.number;
+                auto form = (DwarfForm)second.number;
+                print("{u32}: Attribute: \"{s}\" (0x{u64:x}). Form: \"{s}\" (0x{u64:x})\n", (u32)(debug_info_bytes.pointer - original_debug_info_bytes.pointer), dwarf_attribute_to_string(attribute), (u64)attribute, dwarf_form_to_string(form), (u64)form);
+
+                switch (form)
+                {
+                    // .debug_str_offsets
+                    case DW_FORM_strx1:
+                        {
+                            auto index = debug_info_bytes.pointer[0];
+                            debug_info_bytes.pointer += 1;
+                            debug_info_bytes.length -= 1;
+
+                            if (rela_debug_str_offsets_section_index != -1)
+                            {
+                                auto* relocation = &rela_debug_str_offsets[index];
+                                auto offset = relocation->addend;
+                                auto* c_string = &string_table[offset];
+                                print("Index: {u32}. Offset: {u32}. String: \"{cstr}\"\n", (u32)index, offset, c_string);
+                            }
+                        } break;
+                    case DW_FORM_data1:
+                        {
+                            auto data = *debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += 1;
+                            debug_info_bytes.length -= 1;
+                            print("Data1: 0x{u32:x}\n", (u32)data);
+                        } break;
+                    case DW_FORM_data2:
+                        {
+                            auto data = *(u16*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u16);
+                            debug_info_bytes.length -= sizeof(u16);
+                            print("Data2: 0x{u32:x}\n", (u32)data);
+                        } break;
+                    case DW_FORM_data4:
+                        {
+                            auto data = *(u32*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u32);
+                            debug_info_bytes.length -= sizeof(u32);
+                            print("Data4: 0x{u32:x}\n", data);
+                        } break;
+                    case DW_FORM_sec_offset:
+                        {
+                            auto sec_offset = *(u32*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u32);
+                            debug_info_bytes.length -= sizeof(u32);
+                            print("Sec offset: 0x{u32:x}\n", sec_offset);
+                        } break;
+                    case DW_FORM_addrx:
+                        {
+                            auto addrx = uleb128_decode(debug_info_bytes);
+                            debug_info_bytes.pointer += addrx.i;
+                            debug_info_bytes.length -= addrx.i;
+                            auto relocation_index = addrx.number;
+
+                            if (rela_debug_addr_section_index != -1)
+                            {
+                                auto* relocation = &rela_debug_addresses[relocation_index];
+                                auto index = relocation->addend;
+
+                                switch (attribute)
+                                {
+                                    case DW_AT_low_pc:
+                                        {
+                                            auto address = debug_addresses[index];
+                                            print("Address: 0x{u64:x}\n", address);
+                                        } break;
+                                    default:
+                                        todo();
+                                }
+                            }
+                        } break;
+                    case DW_FORM_exprloc:
+                        {
+                            auto length = uleb128_decode(debug_info_bytes);
+                            print("Length: {u64}\n", length.number);
+                            debug_info_bytes.pointer += length.i;
+                            debug_info_bytes.length -= length.i;
+
+                            switch (length.number)
+                            {
+                                case 1:
+                                    {
+                                        switch (attribute)
+                                        {
+                                            case DW_AT_frame_base:
+                                                {
+                                                    auto b = *debug_info_bytes.pointer;
+                                                    debug_info_bytes.pointer += 1;
+                                                    debug_info_bytes.length -= 1;
+                                                    auto operation = (DwarfOperation)b;
+
+                                                    print("Operation: {s}\n", dwarf_operation_to_string(operation));
+                                                } break;
+                                            default:
+                                                todo();
+                                        }
+                                    } break;
+                                default:
+                                    todo();
+                            }
+                        } break;
+                    case DW_FORM_flag_present:
+                        {
+                            print("Flag present\n");
+                        } break;
+                    case DW_FORM_ref4:
+                        {
+                            auto ref4 = *(u32*)debug_info_bytes.pointer;
+                            debug_info_bytes.pointer += sizeof(u32);
+                            debug_info_bytes.length -= sizeof(u32);
+                            print("Ref4: {u32:x}\n", ref4);
+                        } break;
+                    default:
+                        todo();
+                }
+            }
+        }
+    }
+
+    assert(debug_abbrev_bytes.length == 0);
+    assert(debug_info_bytes.length == 1);
+    assert(*debug_info_bytes.pointer == 0);
+}
 
 may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restrict options, char** envp)
 {
@@ -9028,17 +9314,105 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_info"));
 
-        u8 data[] = {
-            0x33, 0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x1D, 0x00, 
-            0x01, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00, 0x00, 0x08, 
-            0x00, 0x00, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x57, 0x03, 0x00, 0x01, 0x32, 0x00, 
-            0x00, 0x00, 0x03, 0x04, 0x05, 0x04, 0x00, 
+        // Compilation unit
+        // 0x33, 0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00,
+        DwarfCompilationUnit compilation_unit = {
+            .length = 0x33,
+            .version = 5,
+            .type = DW_UT_compile,
+            .address_size = 8,
+            .debug_abbreviation_offset = 0,
         };
+        *vb_add_struct(&builder->file, typeof(compilation_unit)) = compilation_unit;
 
-        auto size = sizeof(data);
+        // COMPILATION UNIT
+        {
+            u32 abbrev_code = 1;
+            uleb128_encode(&builder->file, abbrev_code);
 
-        memcpy(vb_add(&builder->file, size), data, size);
+            // producer: strx1
+            *vb_add(&builder->file, 1) = 0;
 
+            // language: data2
+            *(u16*)vb_add(&builder->file, sizeof(u16)) = DW_LANG_C11;
+
+            // name: strx1
+            *vb_add(&builder->file, 1) = 1;
+
+            // str_offsets_base: sec_offset
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 8;
+
+            // stmt_list: sec_offset
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 0;
+
+            // comp_dir: strx1
+            *vb_add(&builder->file, 1) = 2;
+
+            // low_pc: addrx
+            uleb128_encode(&builder->file, 0);
+
+            // high_pc: data4
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 3;
+
+            // addr_base: sec_offset
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 8;
+
+            // end compilation unit attribute list
+            // *(u32*)vb_add(&builder->file, sizeof(u32)) = 0;
+        }
+
+        // SUBPROGRAM (main)
+        {
+            u32 abbrev_code = 2;
+            uleb128_encode(&builder->file, abbrev_code);
+
+            // low_pc: addrx
+            uleb128_encode(&builder->file, 0);
+
+            // high_pc: data4
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 3;
+
+            // frame_base: exprloc
+            uleb128_encode(&builder->file, 1);
+            *vb_add(&builder->file, 1) = DW_OP_reg7;
+
+            // call_all_calls: flag_present
+            // not present in the debug_info section
+            
+            // name: strx1
+            *vb_add(&builder->file, 1) = 3;
+            
+            // file: data1
+            *vb_add(&builder->file, 1) = 0;
+            
+            // line: data1
+            *vb_add(&builder->file, 1) = 1;
+
+            // type: ref4
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 0x32;
+
+            // external: flag_present
+            // not present in the debug_info section
+        }
+
+        // base_type (s32)
+        {
+            u32 abbrev_code = 3;
+            uleb128_encode(&builder->file, abbrev_code);
+
+            // name: strx1
+            *vb_add(&builder->file, 1) = 4;
+
+            // encoding: data1
+            *vb_add(&builder->file, 1) = DW_ATE_signed;
+
+            // byte_size: data1
+            *vb_add(&builder->file, 1) = 4;
+        }
+
+        *vb_add(&builder->file, 1) = 0;
+
+        auto size = builder->file.length - offset;
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
             .type = ELF_SECTION_PROGRAM,
@@ -9372,7 +9746,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .name_offset = fini_string,
                 .type = ELF_SYMBOL_TYPE_FUNCTION,
                 .binding = ELF_SYMBOL_BINDING_GLOBAL,
-                .visibility = ELF_SYMBOL_VISIBILITY_HIDDEN, // TODO: investigate this other field
+                .visibility = ELF_SYMBOL_VISIBILITY_HIDDEN,
                 .section_index = fini_section_index,
                 .value = fini_offset,
                 .size = 0,
@@ -13020,268 +13394,7 @@ fn void print_ir(Thread* restrict thread)
     }
 }
 
-fn void dwarf_playground(Thread* thread)
-{
-    auto file = file_read(thread->arena,
-#ifdef __APPLE__
-            strlit("/Users/david/dwarf/main.o")
-#else
-            strlit("/home/david/dwarf/main.o")
-#endif
-    );
-    auto* elf_header = (ELFHeader*)file.pointer;
-    auto section_count = elf_header->section_header_count;
-    auto section_header_offset = elf_header->section_header_offset;
-    auto string_table_section_index = elf_header->section_header_string_table_index;
 
-    auto debug_abbrev_section_index = -1;
-    auto debug_info_section_index = -1;
-    auto debug_addr_section_index = -1;
-    auto debug_str_section_index = -1;
-    auto debug_str_offsets_section_index = -1;
-    auto rela_debug_str_offsets_section_index = -1;
-    auto rela_debug_addr_section_index = -1;
-
-    auto section_headers = (ELFSectionHeader*)(file.pointer + section_header_offset);
-    auto* string_table_section_header = (ELFSectionHeader*)(file.pointer + section_header_offset) + string_table_section_index;
-    auto string_table_offset = string_table_section_header->offset;
-
-    for (u16 i = 0; i < section_count; i += 1)
-    {
-        auto* section_header = section_headers + i;
-        auto name_offset = string_table_offset + section_header->name_offset;
-        auto* name = file.pointer + name_offset;
-        print("Section #{u32}\t\"{cstr}\". Size: {u64}\n", i, name, section_header->size);
-
-        if (strcmp(".debug_abbrev", (char*)name) == 0)
-        {
-            debug_abbrev_section_index = i;
-        }
-        else if (strcmp(".debug_info", (char*)name) == 0)
-        {
-            debug_info_section_index = i;
-        }
-        else if (strcmp(".debug_addr", (char*)name) == 0)
-        {
-            debug_addr_section_index = i;
-        }
-        else if (strcmp(".debug_str", (char*)name) == 0)
-        {
-            debug_str_section_index = i;
-        }
-        else if (strcmp(".debug_str_offsets", (char*)name) == 0)
-        {
-            debug_str_offsets_section_index = i;
-        }
-        else if (strcmp(".rela.debug_addr", (char*)name) == 0)
-        {
-            rela_debug_addr_section_index = i;
-        }
-        else if (strcmp(".rela.debug_str_offsets", (char*)name) == 0)
-        {
-            rela_debug_str_offsets_section_index = i;
-        }
-    }
-
-    assert(debug_info_section_index != -1);
-    assert(debug_abbrev_section_index != -1);
-    assert(debug_addr_section_index != -1);
-    assert(debug_str_section_index != -1);
-    assert(debug_str_offsets_section_index != -1);
-    assert(rela_debug_addr_section_index != -1);
-    assert(rela_debug_str_offsets_section_index != -1);
-
-    auto* debug_abbrev_section_header = section_headers + debug_abbrev_section_index;
-    auto* debug_info_section_header = section_headers + debug_info_section_index;
-    auto* debug_addr_section_header = section_headers + debug_addr_section_index;
-    auto* debug_str_section_header = section_headers + debug_str_section_index;
-    auto* debug_str_offsets_section_header = section_headers + debug_str_offsets_section_index;
-    auto* rela_debug_str_offsets_section_header = section_headers + rela_debug_str_offsets_section_index;
-    auto* rela_debug_addr_section_header = section_headers + rela_debug_addr_section_index;
-
-    auto* rela_debug_str_offsets = (ElfRelocation*)(file.pointer + rela_debug_str_offsets_section_header->offset);
-    auto* rela_debug_addresses = (ElfRelocation*)(file.pointer + rela_debug_addr_section_header->offset);
-
-    auto debug_info_bytes = (String) {
-        .pointer = file.pointer + debug_info_section_header->offset,
-        .length = debug_info_section_header->size,
-    };
-
-    auto* compile_unit_header = (DwarfCompilationUnit*)debug_info_bytes.pointer;
-    debug_info_bytes.pointer += sizeof(DwarfCompilationUnit);
-    debug_info_bytes.length -= sizeof(DwarfCompilationUnit);
-
-    auto debug_abbrev_bytes = (String) {
-        .pointer = file.pointer + debug_abbrev_section_header->offset,
-        .length = debug_abbrev_section_header->size,
-    };
-    auto* debug_addr_header = (DwarfAddressTableHeader*)(file.pointer + debug_addr_section_header->offset);
-    assert(debug_addr_header->unit_length == debug_addr_section_header->size - sizeof(debug_addr_header->unit_length));
-    assert(debug_addr_header->version == 5);
-    assert(debug_addr_header->address_size == 8);
-    auto* debug_addresses = (u64*)debug_addr_header + 1;
-    auto* debug_str_offsets_header = (DwarfStringOffsetsTableHeader*)(file.pointer + debug_str_offsets_section_header->offset);
-    assert(debug_str_offsets_header->unit_length == debug_str_offsets_section_header->size - sizeof(debug_str_offsets_header->unit_length));
-    auto string_count = (debug_str_offsets_section_header->size - sizeof(DwarfStringOffsetsTableHeader)) / sizeof(u32);
-    auto* string_index_offset_map = (u32*)(debug_str_offsets_header + 1);
-    auto* string_table = file.pointer + debug_str_section_header->offset;
-
-    auto debug_str_offset_base_guess = 8;
-
-    auto top = 0;
-    while (debug_abbrev_bytes.length > 0)
-    {
-        auto first = uleb128_decode(debug_abbrev_bytes);
-        debug_abbrev_bytes.pointer += first.i;
-        debug_abbrev_bytes.length -= first.i;
-
-        if (first.number != 0)
-        {
-            auto second = uleb128_decode(debug_abbrev_bytes);
-            debug_abbrev_bytes.pointer += second.i;
-            debug_abbrev_bytes.length -= second.i;
-            auto children = debug_abbrev_bytes.pointer[0];
-            debug_abbrev_bytes.pointer += 1;
-            debug_abbrev_bytes.length -= 1;
-
-            auto di_abbrev_code = uleb128_decode(debug_info_bytes);
-            debug_info_bytes.pointer += di_abbrev_code.i;
-            debug_info_bytes.length -= di_abbrev_code.i;
-            assert(di_abbrev_code.number == first.number);
-
-            print("Abbreviation entry #{u64}: \"{s}\", (0x{u64:x})\n", first.number, dwarf_tag_to_string((DwarfTag)second.number), second.number);
-
-            while (1)
-            {
-                auto first = uleb128_decode(debug_abbrev_bytes);
-                debug_abbrev_bytes.pointer += first.i;
-                debug_abbrev_bytes.length -= first.i;
-                auto second = uleb128_decode(debug_abbrev_bytes);
-                debug_abbrev_bytes.pointer += second.i;
-                debug_abbrev_bytes.length -= second.i;
-
-                if (first.number == 0 && second.number == 0)
-                {
-                    break;
-                }
-
-                auto attribute = (DwarfAttribute)first.number;
-                auto form = (DwarfForm)second.number;
-                print("Attribute: \"{s}\" (0x{u64:x}). Form: \"{s}\" (0x{u64:x})\n", dwarf_attribute_to_string(attribute), (u64)attribute, dwarf_form_to_string(form), (u64)form);
-
-                switch (form)
-                {
-                    // .debug_str_offsets
-                    case DW_FORM_strx1:
-                        {
-                            auto index = debug_info_bytes.pointer[0];
-                            debug_info_bytes.pointer += 1;
-                            debug_info_bytes.length -= 1;
-                            auto* relocation = &rela_debug_str_offsets[index];
-                            auto offset = relocation->addend;
-                            auto* c_string = &string_table[offset];
-                            print("Index: {u32}. Offset: {u32}. String: \"{cstr}\"\n", (u32)index, offset, c_string);
-                        } break;
-                    case DW_FORM_data1:
-                        {
-                            auto data = *debug_info_bytes.pointer;
-                            debug_info_bytes.pointer += 1;
-                            debug_info_bytes.length -= 1;
-                            print("Data1: 0x{u32:x}\n", (u32)data);
-                        } break;
-                    case DW_FORM_data2:
-                        {
-                            auto data = *(u16*)debug_info_bytes.pointer;
-                            debug_info_bytes.pointer += sizeof(u16);
-                            debug_info_bytes.length -= sizeof(u16);
-                            print("Data2: 0x{u32:x}\n", (u32)data);
-                        } break;
-                    case DW_FORM_data4:
-                        {
-                            auto data = *(u32*)debug_info_bytes.pointer;
-                            debug_info_bytes.pointer += sizeof(u32);
-                            debug_info_bytes.length -= sizeof(u32);
-                            print("Data4: 0x{u32:x}\n", data);
-                        } break;
-                    case DW_FORM_sec_offset:
-                        {
-                            auto sec_offset = *(u32*)debug_info_bytes.pointer;
-                            debug_info_bytes.pointer += sizeof(u32);
-                            debug_info_bytes.length -= sizeof(u32);
-                            print("Sec offset: 0x{u32:x}\n", sec_offset);
-                        } break;
-                    case DW_FORM_addrx:
-                        {
-                            auto addrx = uleb128_decode(debug_info_bytes);
-                            debug_info_bytes.pointer += addrx.i;
-                            debug_info_bytes.length -= addrx.i;
-                            auto relocation_index = addrx.number;
-
-                            auto* relocation = &rela_debug_addresses[relocation_index];
-                            auto index = relocation->addend;
-
-                            switch (attribute)
-                            {
-                                case DW_AT_low_pc:
-                                    {
-                                        auto address = debug_addresses[index];
-                                        print("Address: 0x{u64:x}\n", address);
-                                    } break;
-                                default:
-                                    todo();
-                            }
-                        } break;
-                    case DW_FORM_exprloc:
-                        {
-                            auto length = uleb128_decode(debug_info_bytes);
-                            debug_info_bytes.pointer += length.i;
-                            debug_info_bytes.length -= length.i;
-
-                            switch (length.number)
-                            {
-                                case 1:
-                                    {
-                                        switch (attribute)
-                                        {
-                                            case DW_AT_frame_base:
-                                                {
-                                                    auto b = *debug_info_bytes.pointer;
-                                                    debug_info_bytes.pointer += 1;
-                                                    debug_info_bytes.length -= 1;
-                                                    auto operation = (DwarfOperation)b;
-
-                                                    print("Operation: {s}\n", dwarf_operation_to_string(operation));
-                                                } break;
-                                            default:
-                                                todo();
-                                        }
-                                    } break;
-                                default:
-                                    todo();
-                            }
-                        } break;
-                    case DW_FORM_flag_present:
-                        {
-                            print("Flag present\n");
-                        } break;
-                    case DW_FORM_ref4:
-                        {
-                            auto ref4 = *(u32*)debug_info_bytes.pointer;
-                            debug_info_bytes.pointer += sizeof(u32);
-                            debug_info_bytes.length -= sizeof(u32);
-                            print("Ref4: {u32:x}\n", ref4);
-                        } break;
-                    default:
-                        todo();
-                }
-            }
-        }
-    }
-
-    assert(debug_abbrev_bytes.length == 0);
-    assert(debug_info_bytes.length == 1);
-    assert(*debug_info_bytes.pointer == 0);
-}
 
 fn void entry_point(int argc, char* argv[], char* envp[])
 {
