@@ -9662,16 +9662,22 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_str"));
 
-        u8 data[] = {
-            0x63, 0x6C, 0x61, 0x6E, 0x67, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x20, 0x31, 0x38, 
-            0x2E, 0x31, 0x2E, 0x38, 0x00, 0x6D, 0x61, 0x69, 0x6E, 0x2E, 0x63, 0x00, 0x2F, 0x68, 0x6F, 0x6D, 
-            0x65, 0x2F, 0x64, 0x61, 0x76, 0x69, 0x64, 0x2F, 0x6D, 0x69, 0x6E, 0x69, 0x6D, 0x61, 0x6C, 0x00, 
-            0x6D, 0x61, 0x69, 0x6E, 0x00, 0x69, 0x6E, 0x74, 0x00, 
+        String strings[] = {
+            strlit("clang version 18.1.8"),
+            strlit("main.c"),
+            strlit("/home/david/minimal"),
+            strlit("main"),
+            strlit("int"),
         };
 
-        auto size = sizeof(data);
+        for (u32 i = 0; i < array_length(strings); i += 1)
+        {
+            String string = strings[i];
+            auto string_length = string.length + 1;
+            memcpy(vb_add(&builder->file, string_length), string.pointer, string_length);
+        }
 
-        memcpy(vb_add(&builder->file, size), data, size);
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9700,11 +9706,17 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_addr"));
 
-        u8 data[] = { 0x0C, 0x00, 0x00, 0x00, 0x05, 0x00, 0x08, 0x00, 0x1C, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        *vb_add_struct(&builder->file, DwarfAddressTableHeader) = (DwarfAddressTableHeader) {
+            .unit_length = 0xc,
+            .version = 5,
+            .address_size = 8,
+            .segment_selector_size = 0,
+        };
 
-        auto size = sizeof(data);
+        u64 addresses[] = { 0x111c };
+        memcpy(vb_add(&builder->file, sizeof(addresses)), addresses, sizeof(addresses));
 
-        memcpy(vb_add(&builder->file, size), data, size);
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9766,14 +9778,29 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_str_offsets"));
 
-        u8 data[] = {
-            0x18, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x15, 0x00, 0x00, 0x00, 
-            0x1C, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x35, 0x00, 0x00, 0x00, 
+        STRUCT(DwarfDebugStrOffsetsHeader)
+        {
+            u32 length;
+            u16 version;
+            u8 padding[2];
         };
 
-        auto size = sizeof(data);
+        *vb_add_struct(&builder->file, DwarfDebugStrOffsetsHeader) = (DwarfDebugStrOffsetsHeader) {
+            .length = 0x18,
+            .version = 5,
+        };
 
-        memcpy(vb_add(&builder->file, size), data, size);
+        u32 offsets[] = {
+            0,
+            0x15,
+            0x1c,
+            0x30,
+            0x35,
+        };
+
+        memcpy(vb_add(&builder->file, sizeof(offsets)), offsets, sizeof(offsets));
+
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
