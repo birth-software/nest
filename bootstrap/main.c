@@ -650,6 +650,29 @@ typedef enum DwarfTag : u16
     DW_TAG_hi_user = 0xffff,
 } DwarfTag;
 
+typedef enum DwarfOpcode : u8
+{
+    DW_LNS_copy = 1,
+    DW_LNS_advance_pc = 2,
+    DW_LNS_advance_line = 3,
+    DW_LNS_set_file = 4,
+    DW_LNS_set_column = 5,
+    DW_LNS_negate_stmt = 6,
+    DW_LNS_set_basic_block = 7,
+    DW_LNS_const_add_pc = 8,
+    DW_LNS_fixed_advance_pc = 9,
+    DW_LNS_set_prologue_end = 10,
+    DW_LNS_set_epilogue_begin = 11,
+    DW_LNS_set_isa = 12,
+} DwarfOpcode;
+
+typedef enum DwarfExtendedOpcode : u8
+{
+    DW_LNE_end_sequence = 1,
+    DW_LNE_set_address = 2,
+    DW_LNE_set_discriminator = 4,
+} DwarfExtendedOpcode;
+
 fn String dwarf_tag_to_string(DwarfTag tag)
 {
     switch (tag)
@@ -1439,6 +1462,8 @@ String dwarf_operation_to_string(DwarfOperation operation)
     }
 }
 
+// Packing is necessary due to the last fields not completing the alignment of 4
+#pragma pack(push, 1)
 STRUCT(DwarfLineHeader)
 {
     u32 unit_length;
@@ -1452,8 +1477,8 @@ STRUCT(DwarfLineHeader)
     s8 line_base;
     u8 line_range;
     u8 opcode_base;
-    // TODO: add dynamic fields
 };
+#pragma pack(pop)
 
 STRUCT(DwarfCompilationUnit)
 {
@@ -9542,18 +9567,76 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_line"));
 
-        u8 data[] = {
-            0x55, 0x00, 0x00, 0x00, 0x05, 0x00, 0x08, 0x00, 0x37, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0xFB, 
-            0x0E, 0x0D, 0x00, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x01, 0x01, 
-            0x1F, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x01, 0x1F, 0x02, 0x0F, 0x05, 0x1E, 0x01, 0x14, 0x00, 
-            0x00, 0x00, 0x00, 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 
-            0x41, 0xE9, 0x19, 0x04, 0x00, 0x05, 0x05, 0x0A, 0x00, 0x09, 0x02, 0x1C, 0x11, 0x00, 0x00, 0x00, 
-            0x00, 0x00, 0x00, 0x14, 0x02, 0x03, 0x00, 0x01, 0x01, 
+        *vb_add_struct(&builder->file, DwarfLineHeader) = (DwarfLineHeader) {
+            .unit_length = 0x55,
+            .version = 5,
+            .address_size = 8,
+            .segment_selector_size = 0,
+            .header_length = 0x37,
+            .minimum_instruction_length = 1,
+            .maximum_operations_per_instruction = 1,
+            .default_is_stmt = 1,
+            .line_base = -5,
+            .line_range = 14,
+            .opcode_base = 13,
         };
 
-        auto size = sizeof(data);
+        // standard opcode lengths
+        u8 opcode_length_lookup[] = {
+            [DW_LNS_copy - 1] = 0,
+            [DW_LNS_advance_pc - 1] = 1,
+            [DW_LNS_advance_line - 1] = 1,
+            [DW_LNS_set_file - 1] = 1,
+            [DW_LNS_set_column - 1] = 1,
+            [DW_LNS_set_basic_block - 1] = 0,
+            [DW_LNS_negate_stmt - 1] = 0,
+            [DW_LNS_const_add_pc - 1] = 0,
+            [DW_LNS_fixed_advance_pc - 1] = 1,
+            [DW_LNS_set_prologue_end - 1] = 0,
+            [DW_LNS_set_epilogue_begin - 1] = 0,
+            [DW_LNS_set_isa - 1] = 1,
+        };
 
-        memcpy(vb_add(&builder->file, size), data, size);
+        // TODO: this is just one-byte binary integers. Turn into memcpy?
+        for (u32 i = 0; i < array_length(opcode_length_lookup); i += 1)
+        {
+            uleb128_encode(&builder->file, opcode_length_lookup[i]);
+        }
+
+        // TODO: figure out
+        {
+            u8 data[] = {
+                0x01, 0x01, 0x1F, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x01, 0x1F, 0x02, 0x0F, 0x05, 0x1E, 0x01, 0x14, 0x00, 
+                0x00, 0x00, 0x00,
+            };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
+
+        // TODO: figure out
+        {
+            u8 checksum[] = {
+                0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19,
+            };
+            memcpy(vb_add(&builder->file, sizeof(checksum)), checksum, sizeof(checksum));
+        }
+
+        {
+            *vb_add(&builder->file, 1) = DW_LNS_set_file;
+            *vb_add(&builder->file, 1) = 0;
+
+            *vb_add(&builder->file, 1) = DW_LNS_set_column;
+            *vb_add(&builder->file, 1) = 5;
+
+            *vb_add(&builder->file, 1) = DW_LNS_set_prologue_end;
+        }
+
+        // TODO: figure out
+        {
+            u8 data[] = { 0x00, 0x09, 0x02, 0x1C, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x02, 0x03, 0x00, 0x01, 0x01, };
+            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        }
+
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
