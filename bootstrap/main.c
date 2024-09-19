@@ -9742,14 +9742,19 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_line_str"));
 
-        u8 data[] = {
-            0x2F, 0x68, 0x6F, 0x6D, 0x65, 0x2F, 0x64, 0x61, 0x76, 0x69, 0x64, 0x2F, 0x6D, 0x69, 0x6E, 0x69, 
-            0x6D, 0x61, 0x6C, 0x00, 0x6D, 0x61, 0x69, 0x6E, 0x2E, 0x63, 0x00, 
+        String strings[] = {
+            strlit("/home/david/minimal"),
+            strlit("main.c"),
         };
 
-        auto size = sizeof(data);
+        for (u32 i = 0; i < array_length(strings); i += 1)
+        {
+            String string = strings[i];
+            auto string_length = string.length + 1;
+            memcpy(vb_add(&builder->file, string_length), string.pointer, string_length);
+        }
 
-        memcpy(vb_add(&builder->file, size), data, size);
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
