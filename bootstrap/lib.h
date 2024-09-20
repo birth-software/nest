@@ -1,16 +1,21 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stddef.h>
-#include <sys/time.h>
 #if defined(__x86_64__)
 #include <immintrin.h>
 #endif
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN 1
+#include <Windows.h>
+#else
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <sys/time.h>
+#endif
 
 #ifdef NDEBUG
 #define _DEBUG 0
@@ -98,13 +103,22 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
     } while (0)
 
 fn 
+#if _WIN32
+u64
+#else
 #if LINK_LIBC
 struct timespec
 #else
 u64 
 #endif
+#endif
 timestamp()
 {
+#ifdef _WIN32
+    LARGE_INTEGER li;
+    QueryPerformanceCounter(&li);
+    return (u64)li.QuadPart;
+#else
 #if LINK_LIBC
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -114,6 +128,7 @@ timestamp()
     return __rdtsc();
 #else
     return 0;
+#endif
 #endif
 #endif
 }
@@ -441,6 +456,9 @@ may_be_unused fn s32 cast_s64_to_s32(s64 source, const char* name, int line)
 #define unreachable() __builtin_unreachable()
 #endif
 
+#ifdef static_assert
+#undef static_assert
+#endif
 #define static_assert(x) _Static_assert((x), "Static assert failed!")
 #define alignof(x) _Alignof(x)
 #define auto __auto_type
