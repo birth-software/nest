@@ -1289,6 +1289,40 @@ typedef enum DwarfOperation : u8
     DW_OP_hi_user = 0xff,
 } DwarfOperation;
 
+typedef enum DwarfCallFrame : u8
+{
+    // High 2 Low 6
+    // Instruction Bits Bits Operand 1 Operand 2
+    // DW_CFA_advance_loc 0x1 delta
+    // DW_CFA_offset 0x2 register ULEB128 offset
+    // DW_CFA_restore 0x3 register
+    DW_CFA_nop = 0x00,
+    DW_CFA_set_loc = 0x01, // address
+    DW_CFA_advance_loc1 = 0x02, // 1-byte delta
+    DW_CFA_advance_loc2 = 0x03, // 2-byte delta
+    DW_CFA_advance_loc4 = 0x04, // 4-byte delta
+    DW_CFA_offset_extended = 0x05, // ULEB128 register ULEB128 offset
+    DW_CFA_restore_extended = 0x06, // ULEB128 register
+    DW_CFA_undefined = 0x07, // ULEB128 register
+    DW_CFA_same_value = 0x08, // ULEB128 register
+    DW_CFA_register = 0x09, // ULEB128 register ULEB128 offset
+    DW_CFA_remember_state = 0x0a,
+    DW_CFA_restore_state = 0x0b,
+    DW_CFA_def_cfa = 0x0c, // ULEB128 register ULEB128 offset
+    DW_CFA_def_cfa_register = 0x0d, // ULEB128 register
+    DW_CFA_def_cfa_offset = 0x0e, // ULEB128 offset
+    DW_CFA_def_cfa_expression = 0x0f, // BLOCK
+    DW_CFA_expression = 0x10, // ULEB128 register BLOCK
+    DW_CFA_offset_extended_sf = 0x11, // ULEB128 register SLEB128 offset
+    DW_CFA_def_cfa_sf = 0x12, // ULEB128 register SLEB128 offset
+    DW_CFA_def_cfa_offset_sf = 0x13, // SLEB128 offset
+    DW_CFA_val_offset = 0x14, // ULEB128 ULEB128
+    DW_CFA_val_offset_sf = 0x15, // ULEB128 SLEB128
+    DW_CFA_val_expression = 0x16, // ULEB128 BLOCK
+    DW_CFA_lo_user = 0x1c,
+    DW_CFA_hi_user
+} DwarfCallFrame;
+
 String dwarf_operation_to_string(DwarfOperation operation)
 {
     switch (operation)
@@ -8782,6 +8816,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".eh_frame"));
 
+        // Start of CIE
         u32 length = 0x14;
         *(u32*)vb_add(&builder->file, sizeof(u32)) = length;
         u32 id = 0;
@@ -8791,27 +8826,85 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         
         auto augmentation = strlit("zR");
         memcpy(vb_add(&builder->file, augmentation.length + 1), augmentation.pointer, augmentation.length + 1);
-        u32 code_alignment_factor = 1;
-        s32 data_alignment_factor = -8;
-        u32 return_address_coumn = 0x10;
+
         
+        u32 code_alignment_factor = 1;
         uleb128_encode(&builder->file, code_alignment_factor);
+
+        s32 data_alignment_factor = -8;
         sleb128_encode(&builder->file, data_alignment_factor);
+
+        u32 return_address_coumn = 0x10;
         uleb128_encode(&builder->file, return_address_coumn);
 
-        // TODO: figure out what this is
-        *vb_add(&builder->file, 1) = 0x01;
-        *vb_add(&builder->file, 1) = 0x1b;
+        *vb_add(&builder->file, 1) = 0x01; // TODO: figure out what this is
 
-        // TODO: figure out this bunch of dwarf stuff
-        u8 data[] = {
-            0x0C, 0x07, 0x08, 0x90, 0x01, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 
-            0xE0, 0xEF, 0xFF, 0xFF, 0x26, 0x00, 0x00, 0x00, 0x00, 0x44, 0x07, 0x10, 0x00, 0x00, 0x00, 0x00, 
-            0x10, 0x00, 0x00, 0x00, 0x34, 0x00, 0x00, 0x00, 0xC4, 0xF0, 0xFF, 0xFF, 0x03, 0x00, 0x00, 0x00, 
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        u8 augmentation_data = 0x1b;
+        *vb_add(&builder->file, 1) = augmentation_data;
+
+        {
+            *vb_add(&builder->file, 1) = DW_CFA_def_cfa;
+            *vb_add(&builder->file, 1) = 7; // RSP
+            *vb_add(&builder->file, 1) = 8;
+
+            // figure out DW_CFA_offset: RIP -8
+            *vb_add(&builder->file, 1) = (0x02 << 6) | 0x10; // -8 in 6-bit => 0b010000 ??
+            *vb_add(&builder->file, 1) = 0x01;
+
+            *vb_add(&builder->file, 1) = DW_CFA_nop;
+
+            *vb_add(&builder->file, 1) = DW_CFA_nop;
+        }
+        // End of CIE
+
+        STRUCT(FrameDescriptorEntryHeader)
+        {
+            u32 length;
+            u32 pointer;
         };
 
-        memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+        // Start of FDE
+        {
+            *vb_add_struct(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
+                .length = 0x14,
+                .pointer = 0x1c,
+            };
+
+            // Relocated
+            s32 initial_location = 0xffffefe0;
+            assert(initial_location == -4128);
+            *(s32*)(vb_add(&builder->file, sizeof(s32))) = initial_location;
+
+            u32 size = 0x26;
+            *(u32*)(vb_add(&builder->file, sizeof(u32))) = size;
+
+            *vb_add(&builder->file, 1) = 0; // TODO: ???
+
+            *vb_add(&builder->file, 1) = (0x01 << 6) | 0x04; // DW_CFA_advance_loc (4)
+
+            *vb_add(&builder->file, 1) = DW_CFA_undefined;
+            *vb_add(&builder->file, 1) = 0x10; // RIP
+
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 0;
+            // End of FDE
+        }
+
+        // Start of FDE
+        {
+            *vb_add_struct(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
+                .length = 0x10,
+                .pointer = 0x34,
+            };
+            s32 initial_location = 0xfffff0c4;
+            *(s32*)(vb_add(&builder->file, sizeof(s32))) = initial_location;
+
+            u32 size = 3;
+            *(u32*)(vb_add(&builder->file, sizeof(u32))) = size;
+
+            *(u32*)(vb_add(&builder->file, sizeof(u32))) = 0; // TODO: ???
+            *(u32*)(vb_add(&builder->file, sizeof(u32))) = 0; // TODO: ???
+            // End of FDE
+        }
 
         auto size = builder->file.length - offset;
 
@@ -13578,8 +13671,6 @@ fn void print_ir(Thread* restrict thread)
         }
     }
 }
-
-
 
 fn void entry_point(int argc, char* argv[], char* envp[])
 {
