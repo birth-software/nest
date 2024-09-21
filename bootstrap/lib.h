@@ -23,6 +23,13 @@
 #define _DEBUG 1
 #endif
 
+#if _WIN32
+#define stdout_handle (GetStdHandle(STD_OUTPUT_HANDLE))
+#else
+#define stdout_handle (1)
+#endif
+
+
 #ifdef STATIC
 #define LINK_LIBC 0
 #else 
@@ -53,6 +60,12 @@ typedef double f64;
 
 typedef u32 Hash32;
 typedef u64 Hash64;
+
+#ifdef _WIN32
+typedef HANDLE FileDescriptor;
+#else
+typedef int FileDescriptor;
+#endif
 
 #define FOR_N(it, start, end) \
 for (u32 it = (start), end__ = (end); it < end__; ++it)
@@ -1341,7 +1354,8 @@ enum SyscallX86_64 : u64 {
 #endif
 #endif
 
-may_be_unused fn void* syscall_mmap(void* address, size_t length, int protection_flags, int map_flags, int fd, signed long offset)
+#ifndef _WIN32
+may_be_unused fn void* posix_mmap(void* address, size_t length, int protection_flags, int map_flags, int fd, signed long offset)
 {
 #if LINK_LIBC
     return mmap(address, length, protection_flags, map_flags, fd, offset);
@@ -1404,15 +1418,6 @@ fn int syscall_fstat(int fd, struct stat *buffer)
     return fstat(fd, buffer);
 #endif
 #endif
-}
-
-may_be_unused fn u64 file_get_size(int fd)
-{
-    struct stat stat_buffer;
-    int stat_result = syscall_fstat(fd, &stat_buffer);
-    assert(stat_result == 0);
-    auto size = cast(u64, s64, stat_buffer.st_size);
-    return size;
 }
 
 may_be_unused fn ssize_t syscall_read(int fd, void* buffer, size_t bytes)
@@ -1517,6 +1522,23 @@ may_be_unused [[noreturn]] [[gnu::cold]] fn void syscall_exit(int status)
 #endif
 #endif
 }
+#endif
+
+may_be_unused fn u64 file_get_size(FileDescriptor fd)
+{
+#if _WIN32
+    LARGE_INTEGER file_size;
+    GetFileSizeEx(fd, &file_size);
+    return (u64)file_size.QuadPart;
+#else
+    struct stat stat_buffer;
+    int stat_result = syscall_fstat(fd, &stat_buffer);
+    assert(stat_result == 0);
+    auto size = cast(u64, s64, stat_buffer.st_size);
+    return size;
+#endif
+}
+
 
 may_be_unused fn u64 os_timer_freq()
 {
@@ -1525,10 +1547,25 @@ may_be_unused fn u64 os_timer_freq()
 
 may_be_unused fn u64 os_timer_get()
 {
+#if _WIN32
+    LARGE_INTEGER large_integer;
+    QueryPerformanceCounter(&large_integer);
+    return (u64)large_integer.QuadPart;
+#else
     struct timeval tv;
     syscall_gettimeofday(&tv, 0);
     auto result = os_timer_freq() * cast(u64, s64, tv.tv_sec) + cast(u64, s64, tv.tv_usec);
     return result;
+#endif
+}
+
+may_be_unused fn void os_file_write(FileDescriptor fd, String content)
+{
+#if _WIN32
+    WriteFileEx(fd, content.pointer, content.length, 0, 0);
+#else
+    syscall_write(fd, content.pointer, content.length);
+#endif
 }
 
 may_be_unused fn void calibrate_cpu_timer()
@@ -1557,19 +1594,27 @@ may_be_unused fn void calibrate_cpu_timer()
 #endif
 }
 
-fn u8* reserve(u64 size)
+fn u8* os_reserve(u64 size)
 {
+#if _WIN32
+    return (u8*)VirtualAlloc(0, size, MEM_RESERVE, PAGE_READWRITE);
+#else
     int protection_flags = PROT_NONE;
     int map_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_NORESERVE;
-    u8* result = (u8*)syscall_mmap(0, size, protection_flags, map_flags, -1, 0);
+    u8* result = (u8*)posix_mmap(0, size, protection_flags, map_flags, -1, 0);
     assert(result != MAP_FAILED);
     return result;
+#endif
 }
 
 fn void commit(void* address, u64 size)
 {
+#if _WIN32
+    VirtualAlloc(address, size, MEM_COMMIT, PAGE_READWRITE);
+#else
     int result = syscall_mprotect(address, size, PROT_READ | PROT_WRITE);
     assert(result == 0);
+#endif
 }
 
 fn u64 align_forward(u64 value, u64 alignment)
@@ -2709,7 +2754,7 @@ may_be_unused fn void print(const char* format, ...)
         }
 
         String final_string = s_get_slice(u8, buffer, 0, buffer_i);
-        syscall_write(1, final_string.pointer, final_string.length);
+        os_file_write(stdout_handle, final_string);
 #endif
 }
 
@@ -2730,7 +2775,7 @@ static_assert(sizeof(Arena) == 64);
 
 fn Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size)
 {
-    Arena* arena = (Arena*)reserve(reserved_size);
+    Arena* arena = (Arena*)os_reserve(reserved_size);
     commit(arena, initial_size);
     *arena = (Arena){
         .reserved_size = reserved_size,
@@ -2903,7 +2948,7 @@ fn void vb_generic_ensure_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 ite
     {
         if (old_capacity == 0)
         {
-            vb->pointer = reserve(item_size * UINT32_MAX);
+            vb->pointer = os_reserve(item_size * UINT32_MAX);
         }
 
         u32 old_page_capacity = cast(u32, u64, align_forward(old_capacity * item_size, minimum_granularity));
