@@ -6934,7 +6934,7 @@ fn void thread_init(Thread* thread)
     }
 
     // Actually make the syscall
-    auto* ptr = reserve(total_size);
+    auto* ptr = os_reserve(total_size);
     assert(ptr);
 
     auto* buffer_it = (VirtualBuffer(u8)*)&thread->buffer;
