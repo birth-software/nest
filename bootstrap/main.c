@@ -8870,13 +8870,11 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .pointer = 0x1c,
             };
 
-            // Relocated
-            s32 initial_location = 0xffffefe0;
-            assert(initial_location == -4128);
+            // _start
+            s32 initial_location = cast(s32, s64, (s64)_start_offset - (s64)builder->file.length);
             *(s32*)(vb_add(&builder->file, sizeof(s32))) = initial_location;
 
-            u32 size = 0x26;
-            *(u32*)(vb_add(&builder->file, sizeof(u32))) = size;
+            *(u32*)(vb_add(&builder->file, sizeof(u32))) = _start_size;
 
             *vb_add(&builder->file, 1) = 0; // TODO: ???
 
@@ -8895,11 +8893,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 .length = 0x10,
                 .pointer = 0x34,
             };
-            s32 initial_location = 0xfffff0c4;
+            s32 initial_location = cast(s32, s64, (s64)main_offset - (s64)builder->file.length);
             *(s32*)(vb_add(&builder->file, sizeof(s32))) = initial_location;
 
-            u32 size = 3;
-            *(u32*)(vb_add(&builder->file, sizeof(u32))) = size;
+            *(u32*)(vb_add(&builder->file, sizeof(u32))) = main_size;
 
             *(u32*)(vb_add(&builder->file, sizeof(u32))) = 0; // TODO: ???
             *(u32*)(vb_add(&builder->file, sizeof(u32))) = 0; // TODO: ???
