@@ -9722,21 +9722,94 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             uleb128_encode(&builder->file, opcode_length_lookup[i]);
         }
 
-        // TODO: figure out
         {
-            u8 data[] = {
-                0x01, 0x01, 0x1F, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03, 0x01, 0x1F, 0x02, 0x0F, 0x05, 0x1E, 0x01, 0x14, 0x00, 
-                0x00, 0x00, 0x00,
-            };
-            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
-        }
+            typedef enum LineNumberHeaderEntryFormat : u8
+            {
+                DW_LCNT_path = 0x01,
+                DW_LCNT_directory_index = 0x02,
+                DW_LCNT_timestamp = 0x03,
+                DW_LCNT_size = 0x04,
+                DW_LCNT_MD5 = 0x05,
+            } LineNumberHeaderEntryFormat;
 
-        // TODO: figure out
-        {
-            u8 checksum[] = {
-                0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19,
+            STRUCT(FormatDescriptor)
+            {
+                LineNumberHeaderEntryFormat format;
+                DwarfForm form;
             };
-            memcpy(vb_add(&builder->file, sizeof(checksum)), checksum, sizeof(checksum));
+
+            FormatDescriptor directory_entry_formats[] = {
+                { DW_LCNT_path, DW_FORM_line_strp },
+            };
+
+            auto directory_entry_format_count = cast(u8, u32, array_length(directory_entry_formats));
+            *vb_add(&builder->file, 1) = directory_entry_format_count;
+
+            for (u8 i = 0; i < array_length(directory_entry_formats); i += 1)
+            {
+                FormatDescriptor descriptor = directory_entry_formats[i];
+                uleb128_encode(&builder->file, descriptor.format);
+                uleb128_encode(&builder->file, descriptor.form);
+            }
+
+            u32 paths[] = { 0 };
+
+            auto directory_count = array_length(paths);
+            uleb128_encode(&builder->file, directory_count);
+
+            for (u32 i = 0; i < directory_count; i += 1)
+            {
+                auto directory_offset = paths[i];
+                *(u32*)(vb_add(&builder->file, sizeof(u32))) = directory_offset;
+            }
+
+            FormatDescriptor filename_entry_formats[] = {
+                { DW_LCNT_path, DW_FORM_line_strp },
+                { DW_LCNT_directory_index, DW_FORM_udata },
+                { DW_LCNT_MD5, DW_FORM_data16 },
+            };
+
+            auto filename_entry_format_count = cast(u8, u32, array_length(filename_entry_formats));
+            *vb_add(&builder->file, 1) = filename_entry_format_count;
+
+            for (u8 i = 0; i < filename_entry_format_count; i += 1)
+            {
+                FormatDescriptor descriptor = filename_entry_formats[i];
+                uleb128_encode(&builder->file, descriptor.format);
+                uleb128_encode(&builder->file, descriptor.form);
+            }
+
+            STRUCT(FilenameEntry)
+            {
+                u32 filename;
+                u8 directory_index;
+                MD5Result hash;
+            };
+            MD5Result md5_hash = {  { 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19 } };
+#if 0
+            String dummy_file = file_read(thread->arena, strlit("/home/david/minimal/main.c"));
+            auto md5 = md5_init();
+            md5_update(&md5, dummy_file);
+            md5_hash = md5_end(&md5);
+#endif
+
+            FilenameEntry filenames[] = {
+                {
+                    0x14,
+                    0,
+                    md5_hash,
+                },
+            };
+            auto filename_count = array_length(filenames);
+            uleb128_encode(&builder->file, filename_count);
+
+            for (auto i = 0; i < filename_count; i += 1)
+            {
+                auto filename = filenames[i];
+                *(u32*)vb_add(&builder->file, sizeof(u32)) = filename.filename;
+                uleb128_encode(&builder->file, filename.directory_index);
+                memcpy(vb_add(&builder->file, sizeof(filename.hash)), &filename.hash, sizeof(filename.hash));
+            }
         }
 
         auto line_program_start_offset = builder->file.length;
@@ -9748,12 +9821,27 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             *vb_add(&builder->file, 1) = 5;
 
             *vb_add(&builder->file, 1) = DW_LNS_set_prologue_end;
-        }
 
-        // TODO: figure out
-        {
-            u8 data[] = { 0x00, 0x09, 0x02, 0x1C, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x02, 0x03, 0x00, 0x01, 0x01, };
-            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+            {
+                // TODO: confirm this is the encoding of special opcodes?
+                *vb_add(&builder->file, 1) = 0; // Special opcode
+                *vb_add(&builder->file, 1) = 9; // Bytes ahead
+                *vb_add(&builder->file, 1) = DW_LNE_set_address; // Bytes ahead
+                *(u64*)vb_add(&builder->file, sizeof(u64)) = main_offset;
+            }
+
+            *vb_add(&builder->file, 1) = 0x14; // 14, address += 0, line += 2, op-index += 0
+
+            // Advance PC by 3
+            *vb_add(&builder->file, 1) = DW_LNS_advance_pc;
+            *vb_add(&builder->file, 1) = 0x03;
+
+            {
+                // TODO: confirm this is the encoding of special opcodes?
+                *vb_add(&builder->file, 1) = 0; // Special opcode
+                *vb_add(&builder->file, 1) = 1; // Bytes ahead
+                *vb_add(&builder->file, 1) = DW_LNE_end_sequence;
+            }
         }
 
         auto size = builder->file.length - offset;
