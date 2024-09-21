@@ -9396,7 +9396,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
-    u64 virtual_address = 0;
+    const u64 virtual_address = 0;
 
     {
         // .comment
@@ -9441,6 +9441,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    VirtualBuffer(u8) debug_str = {};
+    VirtualBuffer(u32) debug_str_offsets = {};
     {
         // .debug_info
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -9451,39 +9453,54 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_info"));
 
-        // Compilation unit
-        // 0x33, 0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x08, 0x00, 0x00, 0x00, 0x00,
-        DwarfCompilationUnit compilation_unit = {
-            .length = 0x33,
-            .version = 5,
-            .type = DW_UT_compile,
-            .address_size = 8,
-            .debug_abbreviation_offset = 0,
-        };
-        *vb_add_struct(&builder->file, typeof(compilation_unit)) = compilation_unit;
+        auto* compilation_unit = vb_add_struct(&builder->file, typeof(DwarfCompilationUnit));
 
         // COMPILATION UNIT
         {
             u32 abbrev_code = 1;
             uleb128_encode(&builder->file, abbrev_code);
 
-            // producer: strx1
-            *vb_add(&builder->file, 1) = 0;
+            {
+                // producer: strx1
+                auto string = strlit("clang version 18.1.8");
+                auto string_size = string.length + 1;
+                auto string_offset = debug_str.length;
+                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                auto string_offset_index = debug_str_offsets.length;
+                *vb_add(&debug_str_offsets, 1) = string_offset;
+                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+            }
 
             // language: data2
             *(u16*)vb_add(&builder->file, sizeof(u16)) = DW_LANG_C11;
 
-            // name: strx1
-            *vb_add(&builder->file, 1) = 1;
+            {
+                // file: strx1
+                auto string = strlit("main.c");
+                auto string_size = string.length + 1;
+                auto string_offset = debug_str.length;
+                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                auto string_offset_index = debug_str_offsets.length;
+                *vb_add(&debug_str_offsets, 1) = string_offset;
+                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+            }
 
             // str_offsets_base: sec_offset
-            *(u32*)vb_add(&builder->file, sizeof(u32)) = 8;
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 8; // TODO: figure out what this number means
 
             // stmt_list: sec_offset
-            *(u32*)vb_add(&builder->file, sizeof(u32)) = 0;
+            *(u32*)vb_add(&builder->file, sizeof(u32)) = 0; // TODO: figure out what this number means
 
             // comp_dir: strx1
-            *vb_add(&builder->file, 1) = 2;
+            {
+                auto string = strlit("/home/david/minimal");
+                auto string_size = string.length + 1;
+                auto string_offset = debug_str.length;
+                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                auto string_offset_index = debug_str_offsets.length;
+                *vb_add(&debug_str_offsets, 1) = string_offset;
+                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+            }
 
             // low_pc: addrx
             uleb128_encode(&builder->file, 0);
@@ -9493,9 +9510,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
             // addr_base: sec_offset
             *(u32*)vb_add(&builder->file, sizeof(u32)) = 8;
-
-            // end compilation unit attribute list
-            // *(u32*)vb_add(&builder->file, sizeof(u32)) = 0;
         }
 
         // SUBPROGRAM (main)
@@ -9516,8 +9530,16 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             // call_all_calls: flag_present
             // not present in the debug_info section
             
-            // name: strx1
-            *vb_add(&builder->file, 1) = 3;
+            {
+                // name: strx1
+                auto string = strlit("main");
+                auto string_size = string.length + 1;
+                auto string_offset = debug_str.length;
+                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                auto string_offset_index = debug_str_offsets.length;
+                *vb_add(&debug_str_offsets, 1) = string_offset;
+                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+            }
             
             // file: data1
             *vb_add(&builder->file, 1) = 0;
@@ -9537,8 +9559,16 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             u32 abbrev_code = 3;
             uleb128_encode(&builder->file, abbrev_code);
 
-            // name: strx1
-            *vb_add(&builder->file, 1) = 4;
+            {
+                // name: strx1
+                auto string = strlit("int");
+                auto string_size = string.length + 1;
+                auto string_offset = debug_str.length;
+                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                auto string_offset_index = debug_str_offsets.length;
+                *vb_add(&debug_str_offsets, 1) = string_offset;
+                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+            }
 
             // encoding: data1
             *vb_add(&builder->file, 1) = DW_ATE_signed;
@@ -9550,6 +9580,16 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         *vb_add(&builder->file, 1) = 0;
 
         auto size = builder->file.length - offset;
+
+        auto length_size = sizeof(compilation_unit->length);
+        *compilation_unit = (DwarfCompilationUnit) {
+            .length = size - length_size,
+            .version = 5,
+            .type = DW_UT_compile,
+            .address_size = 8,
+            .debug_abbreviation_offset = 0,
+        };
+
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
             .type = ELF_SECTION_PROGRAM,
@@ -9657,19 +9697,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_line"));
 
-        *vb_add_struct(&builder->file, DwarfLineHeader) = (DwarfLineHeader) {
-            .unit_length = 0x55,
-            .version = 5,
-            .address_size = 8,
-            .segment_selector_size = 0,
-            .header_length = 0x37,
-            .minimum_instruction_length = 1,
-            .maximum_operations_per_instruction = 1,
-            .default_is_stmt = 1,
-            .line_base = -5,
-            .line_range = 14,
-            .opcode_base = 13,
-        };
+        auto* header = vb_add_struct(&builder->file, DwarfLineHeader);
+        auto after_header_length = offset + offsetof(DwarfLineHeader, header_length) + sizeof(header->header_length);
 
         // standard opcode lengths
         u8 opcode_length_lookup[] = {
@@ -9710,6 +9739,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             memcpy(vb_add(&builder->file, sizeof(checksum)), checksum, sizeof(checksum));
         }
 
+        auto line_program_start_offset = builder->file.length;
         {
             *vb_add(&builder->file, 1) = DW_LNS_set_file;
             *vb_add(&builder->file, 1) = 0;
@@ -9727,6 +9757,20 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         }
 
         auto size = builder->file.length - offset;
+
+        *header = (DwarfLineHeader) {
+            .unit_length = size - sizeof(header->unit_length),
+            .version = 5,
+            .address_size = 8,
+            .segment_selector_size = 0,
+            .header_length = line_program_start_offset - after_header_length,
+            .minimum_instruction_length = 1,
+            .maximum_operations_per_instruction = 1,
+            .default_is_stmt = 1,
+            .line_base = -5,
+            .line_range = 14,
+            .opcode_base = 13,
+        };
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9752,20 +9796,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_str"));
 
-        String strings[] = {
-            strlit("clang version 18.1.8"),
-            strlit("main.c"),
-            strlit("/home/david/minimal"),
-            strlit("main"),
-            strlit("int"),
-        };
-
-        for (u32 i = 0; i < array_length(strings); i += 1)
-        {
-            String string = strings[i];
-            auto string_length = string.length + 1;
-            memcpy(vb_add(&builder->file, string_length), string.pointer, string_length);
-        }
+        memcpy(vb_add(&builder->file, debug_str.length), debug_str.pointer, debug_str.length);
 
         auto size = builder->file.length - offset;
 
@@ -9795,18 +9826,21 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto offset = builder->file.length;
 
         auto name = elf_get_section_name(builder, strlit(".debug_addr"));
+        auto length_size = offsetof(DwarfAddressTableHeader, version) - offsetof(DwarfAddressTableHeader, unit_length);
+        u64 addresses[] = { main_offset };
 
-        *vb_add_struct(&builder->file, DwarfAddressTableHeader) = (DwarfAddressTableHeader) {
-            .unit_length = 0xc,
+        auto header = (DwarfAddressTableHeader) {
+            .unit_length = sizeof(DwarfAddressTableHeader) - length_size + sizeof(addresses),
             .version = 5,
             .address_size = 8,
             .segment_selector_size = 0,
         };
+        *vb_add_struct(&builder->file, typeof(header)) = header;
 
-        u64 addresses[] = { 0x111c };
         memcpy(vb_add(&builder->file, sizeof(addresses)), addresses, sizeof(addresses));
 
         auto size = builder->file.length - offset;
+        assert(size == header.unit_length + length_size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9879,23 +9913,21 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             u16 version;
             u8 padding[2];
         };
+        static_assert(alignof(DwarfDebugStrOffsetsHeader) == 4);
 
-        *vb_add_struct(&builder->file, DwarfDebugStrOffsetsHeader) = (DwarfDebugStrOffsetsHeader) {
-            .length = 0x18,
+        auto length_size = offsetof(DwarfDebugStrOffsetsHeader, version) - offsetof(DwarfDebugStrOffsetsHeader, length);
+        auto offset_array_size = debug_str_offsets.length * sizeof(*debug_str_offsets.pointer);
+        auto header = (DwarfDebugStrOffsetsHeader) {
+
+            .length = sizeof(DwarfDebugStrOffsetsHeader) - length_size + offset_array_size,
             .version = 5,
         };
+        *vb_add_struct(&builder->file, DwarfDebugStrOffsetsHeader) = header;
 
-        u32 offsets[] = {
-            0,
-            0x15,
-            0x1c,
-            0x30,
-            0x35,
-        };
-
-        memcpy(vb_add(&builder->file, sizeof(offsets)), offsets, sizeof(offsets));
+        memcpy(vb_add(&builder->file, offset_array_size), debug_str_offsets.pointer, offset_array_size);
 
         auto size = builder->file.length - offset;
+        assert(header.length == (size - length_size));
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
