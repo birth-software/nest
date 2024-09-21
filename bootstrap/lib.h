@@ -155,6 +155,22 @@ global u64 cpu_frequency;
 
 may_be_unused fn void print(const char* format, ...);
 
+may_be_unused fn u8 cast_u32_to_u8(u32 source, const char* name, int line)
+{
+#if _DEBUG
+    if (source > UINT8_MAX)
+    {
+        print("Cast failed at {cstr}:{u32}\n", name, line);
+        trap();
+    }
+#else 
+    unused(name);
+    unused(line);
+#endif
+    auto result = (u8)source;
+    return result;
+}
+
 may_be_unused fn u16 cast_u32_to_u16(u32 source, const char* name, int line)
 {
 #if _DEBUG
