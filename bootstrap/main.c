@@ -8729,7 +8729,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto name = elf_get_section_name(builder, strlit(".rodata"));
 
         u32 _IO_stdin_used = 0x20001;
-        u32 data[] = {0x20001};
+        u32 data[] = {_IO_stdin_used};
         _IO_stdin_used_size = sizeof(_IO_stdin_used);
         auto size = sizeof(data);
 
@@ -9687,6 +9687,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
+    VirtualBuffer(u8) debug_line_str = {};
     {
         // .debug_line
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -9752,7 +9753,15 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 uleb128_encode(&builder->file, descriptor.form);
             }
 
-            u32 paths[] = { 0 };
+            // TODO:
+            u8 directory_index = 0;
+            auto directory_string_offset = debug_line_str.length;
+            {
+                auto string = strlit("/home/david/minimal");
+                auto string_size = string.length + 1;
+                memcpy(vb_add(&debug_line_str, string_size), string.pointer, string_size);
+            }
+            u32 paths[] = { directory_string_offset };
 
             auto directory_count = array_length(paths);
             uleb128_encode(&builder->file, directory_count);
@@ -9793,10 +9802,17 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             md5_hash = md5_end(&md5);
 #endif
 
+            auto filename_string_offset = debug_line_str.length;
+            {
+                auto string = strlit("main.c");
+                auto string_size = string.length + 1;
+                memcpy(vb_add(&debug_line_str, string_size), string.pointer, string_size);
+            }
+
             FilenameEntry filenames[] = {
                 {
-                    0x14,
-                    0,
+                    filename_string_offset,
+                    directory_index,
                     md5_hash,
                 },
             };
@@ -9830,11 +9846,12 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 *(u64*)vb_add(&builder->file, sizeof(u64)) = main_offset;
             }
 
+            // TODO: does this have to do with "main.c"?
             *vb_add(&builder->file, 1) = 0x14; // 14, address += 0, line += 2, op-index += 0
 
             // Advance PC by 3
             *vb_add(&builder->file, 1) = DW_LNS_advance_pc;
-            *vb_add(&builder->file, 1) = 0x03;
+            *vb_add(&builder->file, 1) = main_size;
 
             {
                 // TODO: confirm this is the encoding of special opcodes?
@@ -9954,19 +9971,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".debug_line_str"));
 
-        String strings[] = {
-            strlit("/home/david/minimal"),
-            strlit("main.c"),
-        };
-
-        for (u32 i = 0; i < array_length(strings); i += 1)
-        {
-            String string = strings[i];
-            auto string_length = string.length + 1;
-            memcpy(vb_add(&builder->file, string_length), string.pointer, string_length);
-        }
-
-        auto size = builder->file.length - offset;
+        auto size = debug_line_str.length;
+        memcpy(vb_add(&builder->file, size), debug_line_str.pointer, size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
