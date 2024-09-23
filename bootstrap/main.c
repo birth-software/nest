@@ -8029,6 +8029,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     u32 gnu_property_offset = 0;
     u32 gnu_property_size = 0;
     u32 gnu_property_alignment = 0;
+    auto gnu_string = strlit("GNU");
+    auto gnu_string_size = gnu_string.length + 1;
     {
         // .note.gnu.property
         // Section #2
@@ -8040,8 +8042,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         gnu_property_offset = offset;
         auto gnu_property_section_name = elf_get_section_name(builder, strlit(".note.gnu.property"));
 
-        auto gnu_string = strlit("GNU");
-        auto gnu_string_size = gnu_string.length + 1;
         auto* ptr = vb_add_struct(&builder->file, ELFNoteHeader);
         *ptr = (ELFNoteHeader)
         {
@@ -8074,61 +8074,59 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
-    u32 gnu_build_id_offset = 0;
-    u32 gnu_build_id_alignment = 0;
-    {
-        // .note.gnu.build-id
-        // Section #3
-        auto* section_header = vb_add(&builder->section_headers, 1);
-        u64 alignment = 4;
-        gnu_build_id_alignment = alignment;
-        auto name = elf_get_section_name(builder, strlit(".note.gnu.build-id"));
-        vb_align(&builder->file, alignment);
-        auto offset = builder->file.length;
-        gnu_build_id_offset = offset;
-
-        auto gnu_string = strlit("GNU");
-        auto gnu_string_size = gnu_string.length + 1;
-
-        u8 blob[] = { 0xF0, 0xDE, 0x30, 0xDB, 0x5A, 0x9F, 0xE2, 0x4E, 0x0A, 0xCF, 0x93, 0xA4, 0x4C, 0x11, 0x60, 0xB5, 0x0C, 0xD9, 0xAF, 0x50, };
-        static_assert(sizeof(blob) == 20);
-
-        *(vb_add_struct(&builder->file, ELFNoteHeader)) = (ELFNoteHeader)
-        {
-            .name_size = gnu_string_size,
-            .descriptor_size = sizeof(blob),
-            .type = NT_GNU_BUILD_ID,
-        };
-        memcpy(vb_add(&builder->file, gnu_string_size), gnu_string.pointer, gnu_string_size);
-        memcpy(vb_add(&builder->file, sizeof(blob)), blob, sizeof(blob));
-
-        auto size = builder->file.length - offset;
-
-        *section_header = (ELFSectionHeader)
-        {
-            .name_offset = name,
-            .type = ELF_SECTION_NOTE,
-            .flags = {
-                .alloc = 1,
-            },
-            .address = offset,
-            .offset = offset,
-            .size = size,
-            .link = 0,
-            .info = 0,
-            .alignment = alignment,
-            .entry_size = 0,
-        };
-    }
-
+    // u32 gnu_build_id_offset = 0;
+    // u32 gnu_build_id_alignment = 0;
+    // ELFNoteHeader* gnu_build_id_header = 0;
+    // u8* gnu_build_id_string = 0;
+    // u8* gnu_build_id_blob = 0;
+    // u32 gnu_build_id_blob_size = 20;
+    // {
+    //     // .note.gnu.build-id
+    //     // Section #3
+    //     auto* section_header = vb_add(&builder->section_headers, 1);
+    //     u64 alignment = 4;
+    //     gnu_build_id_alignment = alignment;
+    //     auto name = elf_get_section_name(builder, strlit(".note.gnu.build-id"));
+    //     vb_align(&builder->file, alignment);
+    //     auto offset = builder->file.length;
+    //     gnu_build_id_offset = offset;
+    //
+    //     gnu_build_id_header = vb_add_struct(&builder->file, ELFNoteHeader);
+    //     gnu_build_id_string = vb_add(&builder->file, gnu_string_size);
+    //     gnu_build_id_blob = vb_add(&builder->file, gnu_build_id_blob_size);
+    //
+    //     auto size = builder->file.length - offset;
+    //     memset(builder->file.pointer + offset, 0, size);
+    //
+    //     *section_header = (ELFSectionHeader)
+    //     {
+    //         .name_offset = name,
+    //         .type = ELF_SECTION_NOTE,
+    //         .flags = {
+    //             .alloc = 1,
+    //         },
+    //         .address = offset,
+    //         .offset = offset,
+    //         .size = size,
+    //         .link = 0,
+    //         .info = 0,
+    //         .alignment = alignment,
+    //         .entry_size = 0,
+    //     };
+    // }
+    
+    u32 gnu_build_id_abi_note_offset = 0;
+    u32 gnu_build_id_abi_alignment = 0;
     {
         // .note.ABI-tag
         // Section #4
         auto* section_header = vb_add(&builder->section_headers, 1);
         u64 alignment = 4;
+        gnu_build_id_abi_alignment = alignment;
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        gnu_build_id_abi_note_offset = offset;
 
         auto name = elf_get_section_name(builder, strlit(".note.ABI-tag"));
 
@@ -8168,7 +8166,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
-    auto gnu_build_id_abi_note_size = builder->file.length - gnu_build_id_offset;
+    auto gnu_build_id_abi_note_size = builder->file.length - gnu_build_id_abi_note_offset;
 
     u16 preliminar_section_count = builder->section_headers.length + 1;
     auto dynamic_symbol_table_index = preliminar_section_count;
@@ -8491,7 +8489,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     // Add read-only program segment
     {
         auto offset = builder->file.length;
-        assert(offset == 1496);
 
         *vb_add(&builder->program_headers, 1) = (ElfProgramHeader)
         {
@@ -9240,12 +9237,12 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
             .type = PT_NOTE,
             .flags = {.readable = 1},
-            .offset = gnu_build_id_offset,
-            .virtual_address = gnu_build_id_offset,
-            .physical_address = gnu_build_id_offset,
+            .offset = gnu_build_id_abi_note_offset,
+            .virtual_address = gnu_build_id_abi_note_offset,
+            .physical_address = gnu_build_id_abi_note_offset,
             .file_size = gnu_build_id_abi_note_size,
             .memory_size = gnu_build_id_abi_note_size,
-            .alignment = gnu_build_id_alignment,
+            .alignment = gnu_build_id_abi_alignment,
         };
 
         *vb_add(&builder->program_headers, 1) = (ElfProgramHeader) {
@@ -9794,7 +9791,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 u8 directory_index;
                 MD5Result hash;
             };
-            MD5Result md5_hash = {  { 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19 } };
+            MD5Result md5_hash = { { 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19 } };
 #if 0
             String dummy_file = file_read(thread->arena, strlit("/home/david/minimal/main.c"));
             auto md5 = md5_init();
@@ -10370,6 +10367,25 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     memcpy(program_headers, builder->program_headers.pointer, sizeof(ElfProgramHeader) * builder->program_headers.length);
 
     assert(relocation_index == expected_relocation_count);
+
+    // // .note.gnu.build-id
+    // {
+    //     u8 blob[] = { 0xF0, 0xDE, 0x30, 0xDB, 0x5A, 0x9F, 0xE2, 0x4E, 0x0A, 0xCF, 0x93, 0xA4, 0x4C, 0x11, 0x60, 0xB5, 0x0C, 0xD9, 0xAF, 0x50, };
+    //
+    //     // *gnu_build_id_header = (ELFNoteHeader)
+    //     // {
+    //     //     .name_size = gnu_string_size,
+    //     //     .descriptor_size = sizeof(blob),
+    //     //     .type = NT_GNU_BUILD_ID,
+    //     // };
+    //     // memcpy(gnu_build_id_string, gnu_string.pointer, gnu_string_size);
+    //
+    //     auto f = file_read(thread->arena, strlit("/home/david/minimal/main"));
+    //     String exe = { builder->file.pointer, builder->file.length };
+    //     auto sha1 = sha1_compute(exe);
+    //     assert(sizeof(blob) == gnu_build_id_blob_size);
+    //     // memcpy(gnu_build_id_blob, blob, sizeof(blob));
+    // }
 
     // Check if the file matches
     
