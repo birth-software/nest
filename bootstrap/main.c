@@ -35,26 +35,34 @@ fn String file_read(Arena* arena, String path)
 {
     String result = {};
     int file_descriptor = syscall_open(string_to_c(path), 0, 0);
-    assert(file_descriptor != -1);
+    if (file_descriptor >= 0)
+    {
+        struct stat stat_buffer;
+        int stat_result = syscall_fstat(file_descriptor, &stat_buffer);
+        assert(stat_result == 0);
 
-    struct stat stat_buffer;
-    int stat_result = syscall_fstat(file_descriptor, &stat_buffer);
-    assert(stat_result == 0);
+        auto file_size = cast(u64, s64, stat_buffer.st_size);
+        if (file_size > 0)
+        {
+            result = (String){
+                .pointer = arena_allocate_bytes(arena, file_size, 64),
+                    .length = file_size,
+            };
 
-    auto file_size = cast(u64, s64, stat_buffer.st_size);
+            // TODO: big files
+            ssize_t read_result = syscall_read(file_descriptor, result.pointer, result.length);
+            assert(read_result >= 0);
+            assert((u64)read_result == file_size);
+        }
+        else
+        {
+            result.pointer = (u8*)&result;
+        }
 
-    result = (String){
-        .pointer = arena_allocate_bytes(arena, file_size, 64),
-        .length = file_size,
-    };
+        auto close_result = syscall_close(file_descriptor);
+        assert(close_result == 0);
+    }
 
-    // TODO: big files
-    ssize_t read_result = syscall_read(file_descriptor, result.pointer, result.length);
-    assert(read_result >= 0);
-    assert((u64)read_result == file_size);
-
-    auto close_result = syscall_close(file_descriptor);
-    assert(close_result == 0);
 
     return result;
 }
@@ -427,6 +435,41 @@ typedef enum ELFSectionIndex : u16
     ABSOLUTE = 0xfff1,
     COMMON = 0xfff2,
 } ELFSectionIndex;
+
+STRUCT(ELFVersionRequirement)
+{
+    u16 version;
+    u16 count;
+    u32 name_offset;
+    u32 aux_offset;
+    u32 next;
+};
+
+STRUCT(ELFVersionRequirementEntry)
+{
+    u32 hash;
+    u16 flags;
+    u16 other;
+    u32 name_offset;
+    u32 next;
+};
+
+STRUCT(ELFVersionDefinition)
+{
+    u16 version;
+    u16 flags;
+    u16 index;
+    u16 count;
+    u32 hash;
+    u32 aux_offset;
+    u32 next;
+};
+static_assert(sizeof(ELFVersionDefinition) == 20);
+STRUCT(ELFVersionDefinitionEntry)
+{
+    u32 name_offset;
+    u32 next;
+};
 
 STRUCT(ELFHeader)
 {
@@ -6968,7 +7011,7 @@ fn void thread_init(Thread* thread)
     }
 
     // Actually make the syscall
-    auto* ptr = os_reserve(total_size);
+    auto* ptr = os_reserve(0, total_size, (OSReserveProtectionFlags) {}, (OSReserveMapFlags) { .priv = 1, .anon = 1, .noreserve = 1 });
     assert(ptr);
 
     auto* buffer_it = (VirtualBuffer(u8)*)&thread->buffer;
@@ -7555,17 +7598,6 @@ STRUCT(ELFNoteHeader)
 };
 static_assert(sizeof(ELFNoteHeader) == 12);
 
-STRUCT(ELFVersionDefinition)
-{
-    u16 version;
-    u16 flags;
-    u16 index;
-    u16 count;
-    u32 hash;
-    u32 aux;
-    u32 next;
-};
-static_assert(sizeof(ELFVersionDefinition) == 20);
 
 #define elf_eh_frame_absptr 0x00
 #define elf_eh_frame_udata4 0x03
@@ -8418,16 +8450,35 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".gnu.version_r"));
 
-        // TODO: figure out
-        u8 blob[] = {
-            0x01, 0x00, 0x02, 0x00, 0x22, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-            0x75, 0x1A, 0x69, 0x09, 0x00, 0x00, 0x03, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 
-            0xB4, 0x91, 0x96, 0x06, 0x00, 0x00, 0x02, 0x00, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        ELFVersionRequirement first_requirement = {
+            .version = 1,
+            .count = 2,
+            .name_offset = libcso6,
+            .aux_offset = sizeof(ELFVersionRequirement),
+            .next = 0,
+        };
+        *vb_add_struct(&builder->file, ELFVersionRequirement) = first_requirement;
+
+        ELFVersionRequirementEntry entries[] = {
+            {
+                .hash = 0x9691a75,
+                .flags = 0,
+                .other = 3,
+                .name_offset = 0x2c,
+                .next = 0x10,
+            },
+            {
+                .hash = 0x69691b4,
+                .flags = 0,
+                .other = 2,
+                .name_offset = 0x38,
+                .next = 0,
+            },
         };
 
-        auto size = sizeof(blob);
+        memcpy(vb_add(&builder->file, sizeof(entries)), entries, sizeof(entries));
 
-        memcpy(vb_add(&builder->file, size), blob, size);
+        auto size = builder->file.length - offset;
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
