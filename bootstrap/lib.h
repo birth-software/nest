@@ -1610,13 +1610,29 @@ may_be_unused fn void calibrate_cpu_timer()
 #endif
 }
 
-fn u8* os_reserve(u64 size)
+STRUCT(OSReserveProtectionFlags)
+{
+    u32 read:1;
+    u32 write:1;
+    u32 execute:1;
+    u32 reserved:29;
+};
+
+STRUCT(OSReserveMapFlags)
+{
+    u32 priv:1;
+    u32 anon:1;
+    u32 noreserve:1;
+    u32 reserved:29;
+};
+
+fn u8* os_reserve(u64 base, u64 size, OSReserveProtectionFlags protection, OSReserveMapFlags map)
 {
 #if _WIN32
     return (u8*)VirtualAlloc(0, size, MEM_RESERVE, PAGE_READWRITE);
 #else
-    int protection_flags = PROT_NONE;
-    int map_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_NORESERVE;
+    int protection_flags = (protection.read * PROT_READ) | (protection.write * PROT_WRITE) | (protection.execute * PROT_EXEC);
+    int map_flags = (map.anon * MAP_ANONYMOUS) | (map.priv * MAP_PRIVATE) | (map.noreserve * MAP_NORESERVE);
     u8* result = (u8*)posix_mmap(0, size, protection_flags, map_flags, -1, 0);
     assert(result != MAP_FAILED);
     return result;
@@ -1637,6 +1653,12 @@ fn u64 align_forward(u64 value, u64 alignment)
 {
     u64 mask = alignment - 1;
     u64 result = (value + mask) & ~mask;
+    return result;
+}
+
+fn u64 align_backward(u64 value, u64 alignment)
+{
+    u64 result = value & ~(alignment - 1);
     return result;
 }
 
@@ -2791,7 +2813,13 @@ static_assert(sizeof(Arena) == 64);
 
 fn Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size)
 {
-    Arena* arena = (Arena*)os_reserve(reserved_size);
+    Arena* arena = (Arena*)os_reserve(0, reserved_size,
+            (OSReserveProtectionFlags) {},
+            (OSReserveMapFlags) {
+                .priv = 1,
+                .anon = 1,
+                .noreserve = 1,
+            });
     commit(arena, initial_size);
     *arena = (Arena){
         .reserved_size = reserved_size,
@@ -2954,6 +2982,7 @@ decl_vb(u8);
 decl_vbp(u8);
 decl_vb(s32);
 decl_vb(u32);
+decl_vb(String);
 
 fn void vb_generic_ensure_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
 {
@@ -2964,7 +2993,7 @@ fn void vb_generic_ensure_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 ite
     {
         if (old_capacity == 0)
         {
-            vb->pointer = os_reserve(item_size * UINT32_MAX);
+            vb->pointer = os_reserve(0, item_size * UINT32_MAX, (OSReserveProtectionFlags) {}, (OSReserveMapFlags) { .priv = 1, .anon = 1, .noreserve = 1 });
         }
 
         u32 old_page_capacity = cast(u32, u64, align_forward(old_capacity * item_size, minimum_granularity));
