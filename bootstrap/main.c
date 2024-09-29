@@ -26,6 +26,8 @@ STRUCT(GetOrPut(T)) \
     u8 existing;\
 }
 
+auto compiler_name = strlit("nest");
+
 fn int dir_make(const char* path)
 {
     return syscall_mkdir(path, 0755);
@@ -8481,14 +8483,28 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".gnu.version_r"));
 
-        ELFVersionRequirementEntry entries[] = {
-        };
-
         STRUCT(Requirement)
         {
             ELFVersionRequirement req;
             ELFVersionRequirementEntry* entry_pointer;
             u32 entry_count;
+        };
+
+        ELFVersionRequirementEntry entries[] =  {
+            {
+                .hash = glibc_225.hash,
+                .flags = 0,
+                .index = 3,
+                .name_offset = glibc_225.offset,
+                .next = sizeof(ELFVersionRequirementEntry),
+            },
+            {
+                .hash = glibc_234.hash,
+                .flags = 0,
+                .index = 2,
+                .name_offset = glibc_234.offset,
+                .next = 0,
+            },
         };
 
         Requirement requirements[] = {
@@ -8499,23 +8515,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                     .aux_offset = sizeof(ELFVersionRequirement),
                     .next = 0,
                 },
-                .entry_pointer = (ELFVersionRequirementEntry[]) {
-                    {
-                        .hash = glibc_225.hash,
-                        .flags = 0,
-                        .index = 3,
-                        .name_offset = glibc_225.offset,
-                        .next = sizeof(ELFVersionRequirementEntry),
-                    },
-                    {
-                        .hash = glibc_234.hash,
-                        .flags = 0,
-                        .index = 2,
-                        .name_offset = glibc_234.offset,
-                        .next = 0,
-                    },
-                },
-                .entry_count = 2,
+                .entry_pointer = entries,
+                .entry_count = array_length(entries),
             }
         };
 
@@ -9168,6 +9169,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             u32 pointer;
         };
 
+        auto fde0_offset = builder->file.length - offset;
         // Start of FDE
         {
             *vb_add_struct(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
@@ -9708,48 +9710,48 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     const u64 virtual_address = 0;
 
-    {
-        // .comment
-        auto* section_header = vb_add(&builder->section_headers, 1);
-        u64 alignment = 1;
-
-        vb_align(&builder->file, alignment);
-        auto offset = builder->file.length;
-
-        auto name = elf_get_section_name(builder, strlit(".comment"));
-
-        String strings[] = {
-            strlit("GCC: (GNU) 14.2.1 20240805"),
-            strlit("GCC: (GNU) 14.2.1 20240910"),
-            strlit("clang version 18.1.8"),
-        };
-
-        for (u32 i = 0; i < array_length(strings); i += 1)
-        {
-            String string = strings[i];
-            // Copy also null-terminated byte
-            auto string_size = string.length + 1;
-            memcpy(vb_add(&builder->file, string_size), string.pointer, string_size);
-        }
-
-        auto size = builder->file.length - offset;
-
-        *section_header = (ELFSectionHeader) {
-            .name_offset = name,
-            .type = ELF_SECTION_PROGRAM,
-            .flags = {
-                .merge = 1,
-                .strings = 1,
-            },
-            .address = virtual_address,
-            .offset = offset,
-            .size = size,
-            .link = 0,
-            .info = 0,
-            .alignment = alignment,
-            .entry_size = 1,
-        };
-    }
+    // {
+    //     // .comment
+    //     auto* section_header = vb_add(&builder->section_headers, 1);
+    //     u64 alignment = 1;
+    //
+    //     vb_align(&builder->file, alignment);
+    //     auto offset = builder->file.length;
+    //
+    //     auto name = elf_get_section_name(builder, strlit(".comment"));
+    //
+    //     String strings[] = {
+    //         strlit("GCC: (GNU) 14.2.1 20240805"),
+    //         strlit("GCC: (GNU) 14.2.1 20240910"),
+    //         strlit("clang version 18.1.8"),
+    //     };
+    //
+    //     for (u32 i = 0; i < array_length(strings); i += 1)
+    //     {
+    //         String string = strings[i];
+    //         // Copy also null-terminated byte
+    //         auto string_size = string.length + 1;
+    //         memcpy(vb_add(&builder->file, string_size), string.pointer, string_size);
+    //     }
+    //
+    //     auto size = builder->file.length - offset;
+    //
+    //     *section_header = (ELFSectionHeader) {
+    //         .name_offset = name,
+    //         .type = ELF_SECTION_PROGRAM,
+    //         .flags = {
+    //             .merge = 1,
+    //             .strings = 1,
+    //         },
+    //         .address = virtual_address,
+    //         .offset = offset,
+    //         .size = size,
+    //         .link = 0,
+    //         .info = 0,
+    //         .alignment = alignment,
+    //         .entry_size = 1,
+    //     };
+    // }
 
     for (u32 i = 0, dynamic_relocation_i = dynamic_relocation_offset; dynamic_relocation_i < dynamic_relocation_count; dynamic_relocation_i += 1, i += 1)
     {
@@ -9794,7 +9796,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
             {
                 // producer: strx1
-                auto string = strlit("clang version 18.1.8");
+                auto string = compiler_name;
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
                 memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
@@ -9808,7 +9810,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
             {
                 // file: strx1
-                auto string = strlit("main.c");
+                auto string = strlit("first.nat");
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
                 memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
@@ -9825,7 +9827,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
             // comp_dir: strx1
             {
-                auto string = strlit("/home/david/minimal");
+                auto string = strlit("/home/david/dev/nest/tests");
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
                 memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
@@ -9893,7 +9895,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
             {
                 // name: strx1
-                auto string = strlit("int");
+                auto string = strlit("s32");
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
                 memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
@@ -9906,7 +9908,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             *vb_add(&builder->file, 1) = DW_ATE_signed;
 
             // byte_size: data1
-            *vb_add(&builder->file, 1) = 4;
+            *vb_add(&builder->file, 1) = sizeof(s32); // sizeof(int);
         }
 
         *vb_add(&builder->file, 1) = 0;
@@ -10089,7 +10091,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             u8 directory_index = 0;
             auto directory_string_offset = debug_line_str.length;
             {
-                auto string = strlit("/home/david/minimal");
+                auto string = strlit("/home/david/dev/nest/tests");
                 auto string_size = string.length + 1;
                 memcpy(vb_add(&debug_line_str, string_size), string.pointer, string_size);
             }
@@ -10126,17 +10128,15 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 u8 directory_index;
                 MD5Result hash;
             };
-            MD5Result md5_hash = { { 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19 } };
-#if 0
-            String dummy_file = file_read(thread->arena, strlit("/home/david/minimal/main.c"));
+            // MD5Result md5_hash = { { 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19 } };
+            String dummy_file = file_read(thread->arena, strlit("/home/david/dev/nest/tests/first.nat"));
             auto md5 = md5_init();
             md5_update(&md5, dummy_file);
-            md5_hash = md5_end(&md5);
-#endif
+            auto md5_hash = md5_end(&md5);
 
             auto filename_string_offset = debug_line_str.length;
             {
-                auto string = strlit("main.c");
+                auto string = strlit("first.nat");
                 auto string_size = string.length + 1;
                 memcpy(vb_add(&debug_line_str, string_size), string.pointer, string_size);
             }
@@ -10382,7 +10382,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         u16 section_index_undefined = 0;
         u16 section_index_absolute = 0xfff1;
 
-        auto main_c_string = st_get_string(&builder->static_st, strlit("main.c"));
+        auto main_c_string = st_get_string(&builder->static_st, strlit("first.nat"));
         auto _dynamic_string = st_get_string(&builder->static_st, strlit("_DYNAMIC"));
         auto eh_frame_hdr_string = st_get_string(&builder->static_st, strlit("__GNU_EH_FRAME_HDR"));
         auto got_string = st_get_string(&builder->static_st, strlit("_GLOBAL_OFFSET_TABLE_"));
@@ -10727,46 +10727,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     memcpy(program_headers, builder->program_headers.pointer, sizeof(ElfProgramHeader) * builder->program_headers.length);
 
     assert(dynamic_relocation_count == expected_dynamic_relocation_count);
-
-    // // .note.gnu.build-id
-    // {
-    //     u8 blob[] = { 0xF0, 0xDE, 0x30, 0xDB, 0x5A, 0x9F, 0xE2, 0x4E, 0x0A, 0xCF, 0x93, 0xA4, 0x4C, 0x11, 0x60, 0xB5, 0x0C, 0xD9, 0xAF, 0x50, };
-    //
-    //     // *gnu_build_id_header = (ELFNoteHeader)
-    //     // {
-    //     //     .name_size = gnu_string_size,
-    //     //     .descriptor_size = sizeof(blob),
-    //     //     .type = NT_GNU_BUILD_ID,
-    //     // };
-    //     // memcpy(gnu_build_id_string, gnu_string.pointer, gnu_string_size);
-    //
-    //     auto f = file_read(thread->arena, strlit("/home/david/minimal/main"));
-    //     String exe = { builder->file.pointer, builder->file.length };
-    //     auto sha1 = sha1_compute(exe);
-    //     assert(sizeof(blob) == gnu_build_id_blob_size);
-    //     // memcpy(gnu_build_id_blob, blob, sizeof(blob));
-    // }
-
-    // Check if the file matches
-    
-    // {
-    //     auto s = file_read(thread->arena, strlit("/home/david/minimal/main"));
-    //
-    //     if (s.length != builder->file.length)
-    //     {
-    //         fail();
-    //     }
-    //
-    //     for (u32 i = 0; i < s.length; i += 1)
-    //     {
-    //         auto mine = builder->file.pointer[i];
-    //         auto correct = s.pointer[i];
-    //         if (mine != correct)
-    //         {
-    //             fail();
-    //         }
-    //     }
-    // }
 
     auto exe_path_z = options->exe_path;
     {
