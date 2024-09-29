@@ -532,6 +532,7 @@ fn void entry_point(int argc, char* argv[], char* envp[])
             // static_assert(array_length(all_optimization_modes) == OPTIMIZATION_COUNT);
             String every_single_test[] = {
                  strlit("tests/first.nat"),
+                 strlit("test/stack.nat"),
                  // strlit("tests/add_sub.nat"),
                  // strlit("tests/mul.nat"),
                  // strlit("tests/div.nat"),

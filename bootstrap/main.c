@@ -1969,6 +1969,7 @@ STRUCT(File)
     // StringMap values;
     // StringMap types;
 };
+decl_vb(File);
 
 STRUCT(FunctionBuilder)
 {
@@ -2119,6 +2120,7 @@ STRUCT(Thread)
         VirtualBuffer(Function) functions;
         VirtualBuffer(u8) string;
         VirtualBuffer(RegisterMask) register_masks;
+        VirtualBuffer(File) files;
     } buffer;
     struct
     {
@@ -7000,6 +7002,7 @@ fn void thread_init(Thread* thread)
         align_forward(sizeof(Function) * UINT32_MAX, page_size),
         align_forward(sizeof(u8) * UINT32_MAX, page_size),
         align_forward(sizeof(RegisterMask) * UINT32_MAX, page_size),
+        align_forward(sizeof(File) * UINT32_MAX, page_size),
     };
     static_assert(sizeof(thread->buffer) / sizeof(VirtualBuffer(u8)) == array_length(offsets));
 
@@ -15280,25 +15283,28 @@ fn void entry_point(int argc, char* argv[], char* envp[])
         fail();
     }
 
-    String source_file_path = arguments.pointer[1];
+
+    File* file = vb_add(&thread->buffer.files, 1);
+    file->path = arguments.pointer[1];
+    file->source = file_read(thread->arena, file->path);
+
+    if (!file->source.pointer)
+    {
+        fail();
+    }
+
     CompilerBackend compiler_backend = arguments.pointer[2].pointer[0];
     u8 emit_ir = arguments.length >= 4 && arguments.pointer[3].pointer[0] == 'y';
 
-    os_directory_make(strlit("nest"));
-
-    File file = {
-        .path = source_file_path,
-        .source = file_read(thread->arena, source_file_path),
-    };
-    analyze_file(thread, &file);
+    analyze_file(thread, file);
 
     if (thread->main_function == -1)
     {
         fail();
     }
 
-    print("File path: {s}\n", source_file_path);
-    auto test_dir = string_no_extension(file.path);
+    print("File path: {s}\n", file->source);
+    auto test_dir = string_no_extension(file->path);
     print("Test dir path: {s}\n", test_dir);
     auto test_name = string_base(test_dir);
     print("Test name: {s}\n", test_name);
@@ -15309,6 +15315,7 @@ fn void entry_point(int argc, char* argv[], char* envp[])
     }
     else
     {
+        os_directory_make(strlit("nest"));
         code_generation(thread, (CodegenOptions) {
             .test_name = test_name,
             .backend = compiler_backend,
