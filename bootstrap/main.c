@@ -7654,7 +7654,6 @@ STRUCT(EhFrameHeaderEntry)
     u32 fde;
 };
 
-
 STRUCT(Uleb128)
 {
     u64 number;
@@ -8483,32 +8482,53 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto name = elf_get_section_name(builder, strlit(".gnu.version_r"));
 
         ELFVersionRequirementEntry entries[] = {
-            {
-                .hash = glibc_225.hash,
-                .flags = 0,
-                .index = 3,
-                .name_offset = glibc_225.offset,
-                .next = sizeof(ELFVersionRequirementEntry),
-            },
-            {
-                .hash = glibc_234.hash,
-                .flags = 0,
-                .index = 2,
-                .name_offset = glibc_234.offset,
-                .next = 0,
-            },
         };
 
-        ELFVersionRequirement first_requirement = {
-            .version = 1,
-            .count = array_length(entries),
-            .name_offset = libcso6,
-            .aux_offset = sizeof(ELFVersionRequirement),
-            .next = 0,
+        STRUCT(Requirement)
+        {
+            ELFVersionRequirement req;
+            ELFVersionRequirementEntry* entry_pointer;
+            u32 entry_count;
         };
 
-        *vb_add_struct(&builder->file, ELFVersionRequirement) = first_requirement;
-        memcpy(vb_add(&builder->file, sizeof(entries)), entries, sizeof(entries));
+        Requirement requirements[] = {
+            {
+                .req = {
+                    .version = 1,
+                    .name_offset = libcso6,
+                    .aux_offset = sizeof(ELFVersionRequirement),
+                    .next = 0,
+                },
+                .entry_pointer = (ELFVersionRequirementEntry[]) {
+                    {
+                        .hash = glibc_225.hash,
+                        .flags = 0,
+                        .index = 3,
+                        .name_offset = glibc_225.offset,
+                        .next = sizeof(ELFVersionRequirementEntry),
+                    },
+                    {
+                        .hash = glibc_234.hash,
+                        .flags = 0,
+                        .index = 2,
+                        .name_offset = glibc_234.offset,
+                        .next = 0,
+                    },
+                },
+                .entry_count = 2,
+            }
+        };
+
+        for (u32 i = 0; i < array_length(requirements); i += 1)
+        {
+            auto req = &requirements[i];
+            auto requirement = req->req;
+            requirement.count = req->entry_count;
+            *vb_add_struct(&builder->file, ELFVersionRequirement) = requirement;
+
+            auto entry_size = req->entry_count * sizeof(*req->entry_pointer);
+            memcpy(vb_add(&builder->file, entry_size), req->entry_pointer, entry_size);
+        }
 
         auto size = builder->file.length - offset;
 
@@ -8522,7 +8542,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .offset = offset,
             .size = size,
             .link = dynamic_string_table_index,
-            .info = 1, // TODO: figure out
+            .info = array_length(requirements),
             .alignment = alignment,
             .entry_size = 0,
         };
@@ -8665,20 +8685,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     u32 _start_size = 0;
     u32 main_offset = 0;
     u32 main_size = 0;
-
-    // SymbolRelocation _start_libc_start_main_relocation;
-    // SymbolRelocation _start_main_relocation;
-    // SymbolRelocation text_1_tmc_end_1_relocation;
-    // SymbolRelocation text_1_tmc_end_2_relocation;
-    // SymbolRelocation text_2_tmc_end_1_relocation;
-    // SymbolRelocation text_2_tmc_end_2_relocation;
-    // SymbolRelocation text_ITM_deregisterTMCloneTable_relocation;
-    // SymbolRelocation text_ITM_registerTMCloneTable_relocation;
-    // SymbolRelocation text_fini_array_tmc_end_1_relocation;
-    // SymbolRelocation text_fini_array_tmc_end_2_relocation;
-    // SymbolRelocation text_fini_array_cxa_finalize_1_relocation;
-    // SymbolRelocation text_fini_array_cxa_finalize_2_relocation;
-    // SymbolRelocation text_fini_array_dso_handle_relocation;
 
     auto text_section_index = builder->section_headers.length;
     {
@@ -9053,6 +9059,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     u32 eh_frame_size = 0;
     u32 eh_frame_alignment = 0;
     u32 eh_frame_hdr_section_index = builder->section_headers.length;
+    u32 eh_frame_header_entries = 0;
+    EhFrameHeader* eh_frame_header = 0;
     {
         // .eh_frame_hdr
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -9067,25 +9075,18 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         // TODO: figure out a link between this and the code
         EhFrameHeaderEntry entries[] = {
-            { .pc = -4068, .fde = 0x34 },
-            { .pc = -3816, .fde = 0x4c },
+            { .pc = _start_offset - offset, .fde = 0x34 },
+            { .pc = main_offset - offset, .fde = 0x4c },
         };
 
-        EhFrameHeader eh_frame_hdr = {
-            .version = 1,
-            .pointer_encoding = elf_eh_frame_sdata4 | elf_eh_frame_pcrel,
-            .count_encoding = elf_eh_frame_udata4 | elf_eh_frame_absptr,
-            .table_encoding = elf_eh_frame_sdata4 | elf_eh_frame_datarel,
-            .frame_start = 0x18,
-            .entry_count = array_length(entries),
-        };
+        eh_frame_header_entries = array_length(entries);
 
-        auto size = sizeof(eh_frame_hdr) + sizeof(entries);
+        auto size = sizeof(EhFrameHeader) + sizeof(entries);
         eh_frame_size = size;
         auto* dst = vb_add(&builder->file, size);
+        eh_frame_header = (EhFrameHeader*)dst;
 
-        memcpy(dst, &eh_frame_hdr, sizeof(eh_frame_hdr));
-        memcpy(dst + sizeof(eh_frame_hdr), entries, sizeof(entries));
+        memcpy(dst + sizeof(EhFrameHeader), entries, sizeof(entries));
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9110,6 +9111,14 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
+        *eh_frame_header = (EhFrameHeader){
+            .version = 1,
+            .pointer_encoding = elf_eh_frame_sdata4 | elf_eh_frame_pcrel,
+            .count_encoding = elf_eh_frame_udata4 | elf_eh_frame_absptr,
+            .table_encoding = elf_eh_frame_sdata4 | elf_eh_frame_datarel,
+            .frame_start = offset - (((u8*)eh_frame_header - builder->file.pointer) + offsetof(EhFrameHeader, frame_start)),
+            .entry_count = eh_frame_header_entries,
+        };
 
         auto name = elf_get_section_name(builder, strlit(".eh_frame"));
 
@@ -9123,7 +9132,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         
         auto augmentation = strlit("zR");
         memcpy(vb_add(&builder->file, augmentation.length + 1), augmentation.pointer, augmentation.length + 1);
-
         
         u32 code_alignment_factor = 1;
         uleb128_encode(&builder->file, code_alignment_factor);
