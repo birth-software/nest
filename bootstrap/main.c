@@ -7576,6 +7576,39 @@ fn u32 st_get_string(SymbolTable* restrict section, String string)
     return elf_get_string(&section->string_table, string);
 }
 
+STRUCT(StringOffsetAndHash)
+{
+    u32 hash;
+    u32 offset;
+};
+
+fn u32 string_sysv_hash(String string)
+{
+    u32 hash = 0;
+    for (u32 i = 0; i < string.length; i += 1)
+    {
+        hash *= 16;
+        auto ch = string.pointer[i];
+        hash += ch;
+        hash ^= (hash >> 24) & 0xf0;
+    }
+
+    hash &= 0x0fffffff;
+
+    return hash;
+}
+
+fn StringOffsetAndHash st_get_string_and_hash(SymbolTable* restrict section, String string)
+{
+    auto offset = st_get_string(section, string);
+    auto hash = string_sysv_hash(string);
+
+    return (StringOffsetAndHash){
+        .offset = offset,
+        .hash = hash,
+    };
+}
+
 fn u32 elf_get_section_name(ELFBuilder* builder, String name)
 {
     return elf_get_string(&builder->section_string_table, name);
@@ -8037,7 +8070,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto size = content.length + 1;
         memcpy(vb_add(&builder->file, size), content.pointer, size);
 
-
         *section_header = (ELFSectionHeader)
         {
             .name_offset = interp_section_name,
@@ -8074,6 +8106,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     {
         // .note.gnu.property
         // Section #2
+        // This note tells the dynamic linker to use baseline CPU features
         auto* gnu_property_section_header = vb_add(&builder->section_headers, 1);
         u64 alignment = 8;
         gnu_property_alignment = alignment;
@@ -8243,7 +8276,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto size = builder->file.length - offset;
 
-
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
             .type = ELF_SECTION_GNU_HASH,
@@ -8263,8 +8295,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto libc_start_main = st_get_string(&builder->dynamic_st, strlit("__libc_start_main"));
     auto cxa_finalize = st_get_string(&builder->dynamic_st, strlit("__cxa_finalize"));
     auto libcso6 = st_get_string(&builder->dynamic_st, strlit("libc.so.6"));
-    auto glibc_225 = st_get_string(&builder->dynamic_st, strlit("GLIBC_2.2.5"));
-    auto glibc_234 = st_get_string(&builder->dynamic_st, strlit("GLIBC_2.34"));
+    auto glibc_225 = st_get_string_and_hash(&builder->dynamic_st, strlit("GLIBC_2.2.5"));
+    auto glibc_234 = st_get_string_and_hash(&builder->dynamic_st, strlit("GLIBC_2.34"));
     auto itm_deregister = st_get_string(&builder->dynamic_st, strlit("_ITM_deregisterTMCloneTable"));
     auto gmon_start = st_get_string(&builder->dynamic_st, strlit("__gmon_start__"));
     auto itm_register = st_get_string(&builder->dynamic_st, strlit("_ITM_registerTMCloneTable"));
@@ -8450,32 +8482,32 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".gnu.version_r"));
 
-        ELFVersionRequirement first_requirement = {
-            .version = 1,
-            .count = 2,
-            .name_offset = libcso6,
-            .aux_offset = sizeof(ELFVersionRequirement),
-            .next = 0,
-        };
-        *vb_add_struct(&builder->file, ELFVersionRequirement) = first_requirement;
-
         ELFVersionRequirementEntry entries[] = {
             {
-                .hash = 0x9691a75,
+                .hash = glibc_225.hash,
                 .flags = 0,
                 .index = 3,
-                .name_offset = glibc_225,
+                .name_offset = glibc_225.offset,
                 .next = sizeof(ELFVersionRequirementEntry),
             },
             {
-                .hash = 0x69691b4,
+                .hash = glibc_234.hash,
                 .flags = 0,
                 .index = 2,
-                .name_offset = glibc_234,
+                .name_offset = glibc_234.offset,
                 .next = 0,
             },
         };
 
+        ELFVersionRequirement first_requirement = {
+            .version = 1,
+            .count = array_length(entries),
+            .name_offset = libcso6,
+            .aux_offset = sizeof(ELFVersionRequirement),
+            .next = 0,
+        };
+
+        *vb_add_struct(&builder->file, ELFVersionRequirement) = first_requirement;
         memcpy(vb_add(&builder->file, sizeof(entries)), entries, sizeof(entries));
 
         auto size = builder->file.length - offset;
