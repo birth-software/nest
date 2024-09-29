@@ -449,7 +449,7 @@ STRUCT(ELFVersionRequirementEntry)
 {
     u32 hash;
     u16 flags;
-    u16 other;
+    u16 index;
     u32 name_offset;
     u32 next;
 };
@@ -8463,15 +8463,15 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             {
                 .hash = 0x9691a75,
                 .flags = 0,
-                .other = 3,
-                .name_offset = 0x2c,
-                .next = 0x10,
+                .index = 3,
+                .name_offset = glibc_225,
+                .next = sizeof(ELFVersionRequirementEntry),
             },
             {
                 .hash = 0x69691b4,
                 .flags = 0,
-                .other = 2,
-                .name_offset = 0x38,
+                .index = 2,
+                .name_offset = glibc_234,
                 .next = 0,
             },
         };
