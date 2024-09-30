@@ -296,34 +296,34 @@ typedef enum ELFSectionType : u32
 
 } ELFSectionType;
 
-fn String elf_section_type_to_string(ELFSectionType type)
-{
-    switch (type)
-    {
-        case_to_name(ELF_SECTION_, NULL);
-        case_to_name(ELF_SECTION_, PROGRAM);
-        case_to_name(ELF_SECTION_, SYMBOL_TABLE);
-        case_to_name(ELF_SECTION_, STRING_TABLE);
-        case_to_name(ELF_SECTION_, RELOCATION_WITH_ADDENDS);
-        case_to_name(ELF_SECTION_, SYMBOL_HASH_TABLE);
-        case_to_name(ELF_SECTION_, DYNAMIC);
-        case_to_name(ELF_SECTION_, NOTE);
-        case_to_name(ELF_SECTION_, BSS);
-        case_to_name(ELF_SECTION_, RELOCATION_NO_ADDENDS);
-        case_to_name(ELF_SECTION_, LIB);
-        case_to_name(ELF_SECTION_, DYNAMIC_SYMBOL_TABLE);
-        case_to_name(ELF_SECTION_, INIT_ARRAY);
-        case_to_name(ELF_SECTION_, FINI_ARRAY);
-        case_to_name(ELF_SECTION_, PREINIT_ARRAY);
-        case_to_name(ELF_SECTION_, GROUP);
-        case_to_name(ELF_SECTION_, SYMBOL_TABLE_SECTION_HEADER_INDEX);
-        case_to_name(ELF_SECTION_, GNU_HASH);
-        case_to_name(ELF_SECTION_, GNU_VERDEF);
-        case_to_name(ELF_SECTION_, GNU_VERNEED);
-        case_to_name(ELF_SECTION_, GNU_VERSYM);
-      break;
-    }
-}
+// fn String elf_section_type_to_string(ELFSectionType type)
+// {
+//     switch (type)
+//     {
+//         case_to_name(ELF_SECTION_, NULL);
+//         case_to_name(ELF_SECTION_, PROGRAM);
+//         case_to_name(ELF_SECTION_, SYMBOL_TABLE);
+//         case_to_name(ELF_SECTION_, STRING_TABLE);
+//         case_to_name(ELF_SECTION_, RELOCATION_WITH_ADDENDS);
+//         case_to_name(ELF_SECTION_, SYMBOL_HASH_TABLE);
+//         case_to_name(ELF_SECTION_, DYNAMIC);
+//         case_to_name(ELF_SECTION_, NOTE);
+//         case_to_name(ELF_SECTION_, BSS);
+//         case_to_name(ELF_SECTION_, RELOCATION_NO_ADDENDS);
+//         case_to_name(ELF_SECTION_, LIB);
+//         case_to_name(ELF_SECTION_, DYNAMIC_SYMBOL_TABLE);
+//         case_to_name(ELF_SECTION_, INIT_ARRAY);
+//         case_to_name(ELF_SECTION_, FINI_ARRAY);
+//         case_to_name(ELF_SECTION_, PREINIT_ARRAY);
+//         case_to_name(ELF_SECTION_, GROUP);
+//         case_to_name(ELF_SECTION_, SYMBOL_TABLE_SECTION_HEADER_INDEX);
+//         case_to_name(ELF_SECTION_, GNU_HASH);
+//         case_to_name(ELF_SECTION_, GNU_VERDEF);
+//         case_to_name(ELF_SECTION_, GNU_VERNEED);
+//         case_to_name(ELF_SECTION_, GNU_VERSYM);
+//       break;
+//     }
+// }
 
 STRUCT(ELFSectionHeaderFlags)
 {
@@ -3176,10 +3176,10 @@ fn s64 ip_generic_find_slot(GenericInternPool* pool, Thread* thread, u32 item_in
         auto chunk = _mm512_loadu_epi32(ptr);
         auto is_zero = _mm512_cmpeq_epi32_mask(chunk, _mm512_setzero_epi32());
 #elif (__AVX2__)
-        auto chunk = _mm256_loadu_si256(ptr);
+        auto chunk = _mm256_loadu_si256((const __m256i_u*) ptr);
         auto is_zero = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(chunk, _mm256_setzero_si256())));
 #endif
-        auto occupied_slots_ahead = cast(u32, s32, __builtin_ctz(is_zero));
+        auto occupied_slots_ahead = cast(u32, s32, __builtin_ctz((u32)is_zero));
 #else
         u32 occupied_slots_ahead = 0;
         for (u32 fake_i = it_index; fake_i < it_index + existing_capacity; fake_i += 1)
@@ -7229,57 +7229,57 @@ fn void vb_align(VirtualBuffer(u8)* buffer, u64 alignment)
 //     builder->program_header_i += 1;
 // }
 
-fn u64 elf_add_section_no_copy_raw(ELFBuilder* restrict builder, ELFSectionCreate create)
-{
-    assert(create.size > 0);
-    assert(create.name.pointer);
-    assert(create.name.length);
-    assert((builder->file.length & (create.alignment - 1)) == 0);
+// fn u64 elf_add_section_no_copy_raw(ELFBuilder* restrict builder, ELFSectionCreate create)
+// {
+//     assert(create.size > 0);
+//     assert(create.name.pointer);
+//     assert(create.name.length);
+//     assert((builder->file.length & (create.alignment - 1)) == 0);
+//
+//     auto name_offset = builder->section_string_table.length;
+//     {
+//         memcpy(vb_add(&builder->section_string_table, create.name.length), create.name.pointer, create.name.length);
+//         *vb_add(&builder->section_string_table, 1) = 0;
+//     }
+//
+//     auto offset = builder->file.length;
+//
+//     auto sh = (ELFSectionHeader) {
+//         .name_offset = name_offset,
+//         .type = create.type,
+//         .flags = create.flags,
+//         .address = offset,
+//         .offset = offset,
+//         .size = create.size,
+//         .link = create.link,
+//         .info = create.info,
+//         .alignment = create.alignment,
+//         .entry_size = create.entry_size,
+//     };
+//
+//     *vb_add(&builder->section_headers, 1) = sh;
+//
+//     return offset;
+// }
 
-    auto name_offset = builder->section_string_table.length;
-    {
-        memcpy(vb_add(&builder->section_string_table, create.name.length), create.name.pointer, create.name.length);
-        *vb_add(&builder->section_string_table, 1) = 0;
-    }
+// fn u64 elf_add_section_no_copy(ELFBuilder* restrict builder, ELFSectionCreate create)
+// {
+//     assert(create.size > 0);
+//     vb_align(&builder->file, create.alignment);
+//     return elf_add_section_no_copy_raw(builder, create);
+// }
 
-    auto offset = builder->file.length;
-
-    auto sh = (ELFSectionHeader) {
-        .name_offset = name_offset,
-        .type = create.type,
-        .flags = create.flags,
-        .address = offset,
-        .offset = offset,
-        .size = create.size,
-        .link = create.link,
-        .info = create.info,
-        .alignment = create.alignment,
-        .entry_size = create.entry_size,
-    };
-
-    *vb_add(&builder->section_headers, 1) = sh;
-
-    return offset;
-}
-
-fn u64 elf_add_section_no_copy(ELFBuilder* restrict builder, ELFSectionCreate create)
-{
-    assert(create.size > 0);
-    vb_align(&builder->file, create.alignment);
-    return elf_add_section_no_copy_raw(builder, create);
-}
-
-fn u64 elf_add_section_copy(ELFBuilder* restrict builder, ELFSectionCreate create, String content)
-{
-    assert(create.size == 0);
-    assert(content.length > 0);
-    create.size = content.length;
-    auto result = elf_add_section_no_copy(builder, create);
-
-    memcpy(vb_add(&builder->file, content.length), content.pointer, content.length);
-
-    return result;
-}
+// fn u64 elf_add_section_copy(ELFBuilder* restrict builder, ELFSectionCreate create, String content)
+// {
+//     assert(create.size == 0);
+//     assert(content.length > 0);
+//     create.size = content.length;
+//     auto result = elf_add_section_no_copy(builder, create);
+//
+//     memcpy(vb_add(&builder->file, content.length), content.pointer, content.length);
+//
+//     return result;
+// }
 
 STRUCT(ELFSegmentCreate)
 {
@@ -7306,20 +7306,20 @@ STRUCT(ELFSegmentCreate)
 //     });
 // }
 
-fn void elf_fill_program_header(ElfProgramHeader* restrict ph, ELFSegmentCreate create)
-{
-    assert((create.offset & (create.alignment - 1)) == 0);
-    *ph = (ElfProgramHeader){
-        .type = create.type,
-        .flags = create.flags,
-        .offset = create.offset,
-        .virtual_address = create.offset,
-        .physical_address = create.offset,
-        .file_size = create.size,
-        .memory_size = create.size,
-        .alignment = create.alignment,
-    };
-}
+// fn void elf_fill_program_header(ElfProgramHeader* restrict ph, ELFSegmentCreate create)
+// {
+//     assert((create.offset & (create.alignment - 1)) == 0);
+//     *ph = (ElfProgramHeader){
+//         .type = create.type,
+//         .flags = create.flags,
+//         .offset = create.offset,
+//         .virtual_address = create.offset,
+//         .physical_address = create.offset,
+//         .file_size = create.size,
+//         .memory_size = create.size,
+//         .alignment = create.alignment,
+//     };
+// }
 
 STRUCT(ELFSegmentSectionCreate)
 {
@@ -7483,54 +7483,6 @@ STRUCT(SymbolTableOutput)
     u64 string_table_offset;
 };
 
-fn SymbolTableOutput emit_symbol_table(ELFBuilder* restrict builder, SymbolTable* st, SymbolTableKind kind)
-{
-    SymbolTableOutput result = {};
-
-    if (st->symbol_table.length > 0)
-    {
-        String symbol_table_name;
-        String string_table_name;
-        ELFSectionType type;
-
-        switch (kind)
-        {
-            case SYMBOL_TABLE_KIND_STATIC:
-                symbol_table_name = strlit(".symtab");
-                string_table_name = strlit(".strtab");
-                type = ELF_SECTION_SYMBOL_TABLE;
-                break;
-            case SYMBOL_TABLE_KIND_DYNAMIC:
-                symbol_table_name = strlit(".dynsym");
-                string_table_name = strlit(".dynstr");
-                type = ELF_SECTION_DYNAMIC_SYMBOL_TABLE;
-                break;
-        }
-
-        result.symbol_table_offset = elf_add_section_copy(builder, (ELFSectionCreate){
-            .name = symbol_table_name,
-            .type = type,
-            .flags = {},
-            .link = builder->section_headers.length + 1, // TODO: figure out
-            .info = 4, // TODO: figure out
-            .alignment = alignof(ELFSymbol),
-            .entry_size = sizeof(ELFSymbol),
-        }, (String) { .pointer = (u8*)st->symbol_table.pointer, .length = sizeof(*st->symbol_table.pointer) * st->symbol_table.length, });
-
-        result.string_table_offset = elf_add_section_copy(builder, (ELFSectionCreate){
-            .name = string_table_name,
-            .type = ELF_SECTION_STRING_TABLE,
-            .flags = {},
-            .link = 0,
-            .info = 0,
-            .alignment = 1,
-            .entry_size = 0,
-        }, (String) { .pointer = st->string_table.pointer, .length = sizeof(*st->string_table.pointer) * st->string_table.length, });
-    }
-
-    return result;
-}
-
 fn u32 elf_get_string(VirtualBuffer(u8)* restrict buffer, String string)
 {
     assert(buffer->length > 0);
@@ -7566,7 +7518,7 @@ fn u32 elf_get_string(VirtualBuffer(u8)* restrict buffer, String string)
     }
 
     auto length = buffer->length;
-    auto* ptr = vb_add(buffer, string.length + 1);
+    auto* ptr = vb_add(buffer, cast(u32, u64, string.length + 1));
     memcpy(ptr, string.pointer, string.length);
     *(ptr + string.length) = 0;
 
@@ -7712,7 +7664,7 @@ fn void uleb128_encode(VirtualBuffer(u8)* buffer, u32 value)
     *vb_add(buffer, 1) = out;
 }
 
-fn void dwarf_playground(Thread* thread)
+may_be_unused fn void dwarf_playground(Thread* thread)
 {
     auto file = file_read(thread->arena,
 #ifdef __APPLE__
@@ -7797,7 +7749,7 @@ fn void dwarf_playground(Thread* thread)
     };
     auto debug_info_bytes = original_debug_info_bytes;
 
-    auto* compile_unit_header = (DwarfCompilationUnit*)debug_info_bytes.pointer;
+    // auto* compile_unit_header = (DwarfCompilationUnit*)debug_info_bytes.pointer;
     debug_info_bytes.pointer += sizeof(DwarfCompilationUnit);
     debug_info_bytes.length -= sizeof(DwarfCompilationUnit);
 
@@ -7812,13 +7764,12 @@ fn void dwarf_playground(Thread* thread)
     auto* debug_addresses = (u64*)debug_addr_header + 1;
     auto* debug_str_offsets_header = (DwarfStringOffsetsTableHeader*)(file.pointer + debug_str_offsets_section_header->offset);
     assert(debug_str_offsets_header->unit_length == debug_str_offsets_section_header->size - sizeof(debug_str_offsets_header->unit_length));
-    auto string_count = (debug_str_offsets_section_header->size - sizeof(DwarfStringOffsetsTableHeader)) / sizeof(u32);
-    auto* string_index_offset_map = (u32*)(debug_str_offsets_header + 1);
+    // auto string_count = (debug_str_offsets_section_header->size - sizeof(DwarfStringOffsetsTableHeader)) / sizeof(u32);
+    // auto* string_index_offset_map = (u32*)(debug_str_offsets_header + 1);
     auto* string_table = file.pointer + debug_str_section_header->offset;
 
-    auto debug_str_offset_base_guess = 8;
+    // auto debug_str_offset_base_guess = 8;
 
-    auto top = 0;
     while (debug_abbrev_bytes.length > 0)
     {
         auto first = uleb128_decode(debug_abbrev_bytes);
@@ -7830,7 +7781,7 @@ fn void dwarf_playground(Thread* thread)
             auto second = uleb128_decode(debug_abbrev_bytes);
             debug_abbrev_bytes.pointer += second.i;
             debug_abbrev_bytes.length -= second.i;
-            auto children = debug_abbrev_bytes.pointer[0];
+            // auto children = debug_abbrev_bytes.pointer[0];
             debug_abbrev_bytes.pointer += 1;
             debug_abbrev_bytes.length -= 1;
 
@@ -8012,7 +7963,7 @@ STRUCT(SymbolRelocation)
 };
 decl_vb(SymbolRelocation);
 
-may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restrict options, char** envp)
+may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
 {
     unused(thread);
 
@@ -8020,7 +7971,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     ELFBuilder* restrict builder = &builder_stack;
     // Initialization
     {
-        if (options->dynamic)
+        if (options.dynamic)
         {
             st_init(&builder->dynamic_st);
         }
@@ -8034,6 +7985,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto symtab_section_name = elf_get_section_name(builder, strlit(".symtab"));
     auto strtab_section_name = elf_get_section_name(builder, strlit(".strtab"));
     auto shstrtab_section_name = elf_get_section_name(builder, strlit(".shstrtab"));
+    unused(symtab_section_name);
+    unused(strtab_section_name);
+    unused(shstrtab_section_name);
 
     auto* elf_header = vb_add_struct(&builder->file, ELFHeader);
 
@@ -8068,7 +8022,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto offset = builder->file.length;
 
         auto content = strlit("/lib64/ld-linux-x86-64.so.2");
-        auto size = content.length + 1;
+        auto size = cast(u32, u64, content.length + 1);
         memcpy(vb_add(&builder->file, size), content.pointer, size);
 
         *section_header = (ELFSectionHeader)
@@ -8103,13 +8057,13 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     u32 gnu_property_size = 0;
     u32 gnu_property_alignment = 0;
     auto gnu_string = strlit("GNU");
-    auto gnu_string_size = gnu_string.length + 1;
+    auto gnu_string_size = cast(u32, u64, gnu_string.length + 1);
     {
         // .note.gnu.property
         // Section #2
         // This note tells the dynamic linker to use baseline CPU features
         auto* gnu_property_section_header = vb_add(&builder->section_headers, 1);
-        u64 alignment = 8;
+        u32 alignment = 8;
         gnu_property_alignment = alignment;
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
@@ -8195,7 +8149,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         // .note.ABI-tag
         // Section #4
         auto* section_header = vb_add(&builder->section_headers, 1);
-        u64 alignment = 4;
+        u32 alignment = 4;
         gnu_build_id_abi_alignment = alignment;
 
         vb_align(&builder->file, alignment);
@@ -8205,7 +8159,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto name = elf_get_section_name(builder, strlit(".note.ABI-tag"));
 
         auto gnu_string = strlit("GNU");
-        auto gnu_string_size = gnu_string.length + 1;
+        auto gnu_string_size = cast(u32, u64, gnu_string.length + 1);
         *vb_add_struct(&builder->file, ELFNoteHeader) = (ELFNoteHeader) {
             .name_size = gnu_string_size,
             .descriptor_size = 16,
@@ -8242,9 +8196,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     auto gnu_build_id_abi_note_size = builder->file.length - gnu_build_id_abi_note_offset;
 
-    u16 preliminar_section_count = builder->section_headers.length + 1;
+    auto preliminar_section_count = cast(u16, u32, builder->section_headers.length + 1);
     auto dynamic_symbol_table_index = preliminar_section_count;
-    auto dynamic_string_table_index = dynamic_symbol_table_index + 1;
+    auto dynamic_string_table_index = cast(u16, u32, dynamic_symbol_table_index + 1);
 
     u32 gnu_hash_offset = 0;
     {
@@ -8303,7 +8257,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto itm_register = st_get_string(&builder->dynamic_st, strlit("_ITM_registerTMCloneTable"));
 
     u32 dynsym_offset = 0;
-    u32 dynsym_size;
+    // u32 dynsym_size;
     {
         // .dynsym
         // Section #6
@@ -8369,8 +8323,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             },
         };
         memcpy(vb_add(&builder->dynamic_st.symbol_table, array_length(expected_symbols)), expected_symbols, sizeof(expected_symbols));
-        u64 size = builder->dynamic_st.symbol_table.length * sizeof(ELFSymbol);
-        dynsym_size = size;
+        u32 size = builder->dynamic_st.symbol_table.length * sizeof(ELFSymbol);
+        // dynsym_size = size;
 
         memcpy(vb_add(&builder->file, size), builder->dynamic_st.symbol_table.pointer, size);
 
@@ -8451,7 +8405,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             3 // .gnu.version_r
         };
 
-        auto size = sizeof(symbol_versions);
+        u32 size = sizeof(symbol_versions);
 
         memcpy(vb_add(&builder->file, size), symbol_versions, size);
 
@@ -8487,7 +8441,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         {
             ELFVersionRequirement req;
             ELFVersionRequirementEntry* entry_pointer;
-            u32 entry_count;
+            u16 entry_count;
         };
 
         ELFVersionRequirementEntry entries[] =  {
@@ -8527,7 +8481,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             requirement.count = req->entry_count;
             *vb_add_struct(&builder->file, ELFVersionRequirement) = requirement;
 
-            auto entry_size = req->entry_count * sizeof(*req->entry_pointer);
+            u32 entry_size = req->entry_count * sizeof(*req->entry_pointer);
             memcpy(vb_add(&builder->file, entry_size), req->entry_pointer, entry_size);
         }
 
@@ -8565,8 +8519,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     //     { .offset = 16352, .info = { .type = { .x86_64 = R_X86_64_GLOB_DAT }, .symbol = 5}, .addend = 0 }, // cxa_finalize
     // };
 
-    auto expected_dynamic_relocation_count = 8;
-    auto rela_count = 3;
+    u32 expected_dynamic_relocation_count = 8;
+    u32 rela_count = 3;
     u32 rela_dyn_offset = 0;
     u32 rela_dyn_size = 0;
     {
@@ -8580,7 +8534,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto name = elf_get_section_name(builder, strlit(".rela.dyn"));
 
-        auto size = sizeof(ElfRelocationWithAddend) * expected_dynamic_relocation_count;
+        u32 size = sizeof(ElfRelocationWithAddend) * expected_dynamic_relocation_count;
         rela_dyn_size = size;
         dynamic_relocations = (ElfRelocationWithAddend*)vb_add(&builder->file, size);
 
@@ -8621,7 +8575,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     auto code_offset = builder->file.length;
     auto init_offset = code_offset;
-    auto init_section_index = builder->section_headers.length;
+    auto init_section_index = cast(u16, u32, builder->section_headers.length);
     VirtualBuffer(SymbolRelocation) symbol_relocations = {};
     String init_section_content = {};
     {
@@ -8659,7 +8613,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
 
         init_section_content.length = sizeof(data);
-        init_section_content.pointer = vb_add(&builder->file, init_section_content.length);
+        init_section_content.pointer = vb_add(&builder->file, cast(u32, u64, init_section_content.length));
 
         memcpy(init_section_content.pointer, data, init_section_content.length);
 
@@ -8685,9 +8639,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     u32 _start_offset = 0;
     u32 _start_size = 0;
     u32 main_offset = 0;
-    u32 main_size = 0;
+    u32 main_size;
 
-    auto text_section_index = builder->section_headers.length;
+    auto text_section_index = cast(u16, u32, builder->section_headers.length);
     {
         //.text
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8755,7 +8709,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             }
         }
 
-        auto uk0_offset = builder->file.length;
         {
             u8 data[] = {
                 0x48, 0x8D, 0x3D, 0xB9, 0x2F, 0x00, 0x00,
@@ -8799,7 +8752,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
         }
 
-        auto uk1_offset = builder->file.length;
         {
             u8 data[] = {
                 0x48, 0x8D, 0x3D, 0x89, 0x2F, 0x00, 0x00, 0x48, 0x8D, 0x35, 0x82, 0x2F, 0x00, 0x00, 0x48, 0x29, 
@@ -8928,9 +8880,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         // TODO: fix this
         main_offset = builder->file.length;
-        main_size = options->code.length;
+        main_size = cast(u32, u64, options.code.length);
 
-        memcpy(vb_add(&builder->file, options->code.length), options->code.pointer, options->code.length);
+        memcpy(vb_add(&builder->file, cast(u32, u64, options.code.length)), options.code.pointer, options.code.length);
 
         auto size = builder->file.length - offset;
 
@@ -8952,7 +8904,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     }
 
     u32 fini_offset = 0; 
-    u32 fini_section_index = builder->section_headers.length;
+    auto fini_section_index = cast(u16, u32, builder->section_headers.length);
     {
         // .fini
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8976,8 +8928,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         // 1128:	48 83 c4 08          	add    rsp,0x8
         // 112c:	c3                   	ret
 
-        auto size = sizeof(data);
-
+        u32 size = sizeof(data);
         memcpy(vb_add(&builder->file, size), data, size);
 
         *section_header = (ELFSectionHeader) {
@@ -9018,7 +8969,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     auto read_only_offset = builder->file.length;
 
-    auto rodata_section_index = builder->section_headers.length;
+    auto rodata_section_index = cast(u16, u32, builder->section_headers.length);
     u32 _IO_stdin_used_size = 0;
     u32 rodata_va = 0;
     {
@@ -9035,8 +8986,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         u32 _IO_stdin_used = 0x20001;
         u32 data[] = {_IO_stdin_used};
         _IO_stdin_used_size = sizeof(_IO_stdin_used);
-        auto size = sizeof(data);
 
+        u32 size = sizeof(data);
         memcpy(vb_add(&builder->file, size), data, size);
 
         *section_header = (ELFSectionHeader) {
@@ -9058,8 +9009,8 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     u32 eh_frame_offset = 0;
     u32 eh_frame_size = 0;
-    u32 eh_frame_alignment = 0;
-    u32 eh_frame_hdr_section_index = builder->section_headers.length;
+    u64 eh_frame_alignment = 0;
+    auto eh_frame_hdr_section_index = cast(u16, u32, builder->section_headers.length);
     u32 eh_frame_header_entries = 0;
     EhFrameHeader* eh_frame_header = 0;
     {
@@ -9076,13 +9027,13 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         // TODO: figure out a link between this and the code
         EhFrameHeaderEntry entries[] = {
-            { .pc = _start_offset - offset, .fde = 0x34 },
-            { .pc = main_offset - offset, .fde = 0x4c },
+            { .pc = cast(s32, s64, (s64)_start_offset - (s64)offset), .fde = 0x34 },
+            { .pc = cast(s32, s64, (s64)main_offset - (s64)offset), .fde = 0x4c },
         };
 
         eh_frame_header_entries = array_length(entries);
 
-        auto size = sizeof(EhFrameHeader) + sizeof(entries);
+        u32 size = sizeof(EhFrameHeader) + sizeof(entries);
         eh_frame_size = size;
         auto* dst = vb_add(&builder->file, size);
         eh_frame_header = (EhFrameHeader*)dst;
@@ -9117,7 +9068,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .pointer_encoding = elf_eh_frame_sdata4 | elf_eh_frame_pcrel,
             .count_encoding = elf_eh_frame_udata4 | elf_eh_frame_absptr,
             .table_encoding = elf_eh_frame_sdata4 | elf_eh_frame_datarel,
-            .frame_start = offset - (((u8*)eh_frame_header - builder->file.pointer) + offsetof(EhFrameHeader, frame_start)),
+            .frame_start = cast(u32, u64, offset - (cast(u64, s64, ((u8*)eh_frame_header - builder->file.pointer)) + offsetof(EhFrameHeader, frame_start))),
             .entry_count = eh_frame_header_entries,
         };
 
@@ -9132,7 +9083,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         *vb_add(&builder->file, 1) = version;
         
         auto augmentation = strlit("zR");
-        memcpy(vb_add(&builder->file, augmentation.length + 1), augmentation.pointer, augmentation.length + 1);
+        memcpy(vb_add(&builder->file, cast(u32, u64, augmentation.length + 1)), augmentation.pointer, augmentation.length + 1);
         
         u32 code_alignment_factor = 1;
         uleb128_encode(&builder->file, code_alignment_factor);
@@ -9169,7 +9120,6 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             u32 pointer;
         };
 
-        auto fde0_offset = builder->file.length - offset;
         // Start of FDE
         {
             *vb_add_struct(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
@@ -9259,7 +9209,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     assert(old_length < builder->file.length);
 
     // TODO: figure out why a virtual address offset is needed here
-    auto virtual_address_offset = 0x1000;
+    u32 virtual_address_offset = 0x1000;
 
     auto* data_program_header = vb_add(&builder->program_headers, 1);
     auto data_offset = builder->file.length;
@@ -9282,7 +9232,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         u64 content[] = { text_init_array_offset };
 
-        auto size = sizeof(content);
+        u32 size = sizeof(content);
         assert(init_array_size == size);
 
         memcpy(vb_add(&builder->file, size), content, size);
@@ -9327,7 +9277,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         auto name = elf_get_section_name(builder, strlit(".fini_array"));
 
         u64 content[] = { text_fini_array_offset };
-        auto size = sizeof(content);
+        u32 size = sizeof(content);
         assert(size == fini_array_size);
         memcpy(vb_add(&builder->file, size), content, size);
 
@@ -9358,7 +9308,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
     auto* __dso_handle_relocation = &dynamic_relocations[dynamic_relocation_count];
     dynamic_relocation_count += 1;
 
-    auto dynamic_section_index = builder->section_headers.length;
+    auto dynamic_section_index = cast(u16, u32, builder->section_headers.length);
     u32 dynamic_va = 0;
     {
         // .dynamic
@@ -9405,7 +9355,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             { .tag = DT_NULL, { .address = 0}},
         };
 
-        auto size = sizeof(dynamic_entries);
+        u32 size = sizeof(dynamic_entries);
 
         memcpy(vb_add(&builder->file, size), dynamic_entries, size);
 
@@ -9477,7 +9427,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             };
         }
 
-        auto size = sizeof(entries);
+        u32 size = sizeof(entries);
 
         memcpy(vb_add(&builder->file, size), entries, size);
 
@@ -9498,7 +9448,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
-    auto got_plt_section_index = builder->section_headers.length;
+    auto got_plt_section_index = cast(u16, u32, builder->section_headers.length);
     u32 got_plt_va = 0;
     {
         // .got.plt
@@ -9515,7 +9465,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         // TODO: figure out why there are three entries here
         u64 entries[] = { dynamic_va, 0, 0 };
 
-        auto size = sizeof(entries);
+        u32 size = sizeof(entries);
 
         memcpy(vb_add(&builder->file, size), entries, size);
 
@@ -9611,7 +9561,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     u32 data_va_start = 0;
     u32 data_va_end = 0;
-    u32 data_section_index = builder->section_headers.length;
+    auto data_section_index = cast(u16, u32, builder->section_headers.length);
     u32 __dso_handle_va;
     {
         // .data
@@ -9628,9 +9578,9 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         // TODO: figure out what's this
         __dso_handle_va = virtual_address + sizeof(u64);
         u64 entries[] = { 0, __dso_handle_va };
-        auto size = sizeof(entries);
+        u32 size = sizeof(entries);
         memcpy(vb_add(&builder->file, size), entries, size);
-        data_va_end = data_va_start + size;
+        data_va_end = cast(u32, u64, data_va_start + size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9655,10 +9605,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         };
     }
 
-    auto bss_size = 0;
-    auto bss_section_index = builder->section_headers.length;
-    auto bss_end = 0;
-    auto bss_start = 0;
+    u32 bss_size;
+    auto bss_section_index = cast(u16, u32, builder->section_headers.length);
+    u32 bss_end;
+    u32 bss_start;
     {
         // .bss
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -9799,7 +9749,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 auto string = compiler_name;
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9813,7 +9763,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 auto string = strlit("first.nat");
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9830,7 +9780,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 auto string = strlit("/home/david/dev/nest/tests");
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9869,7 +9819,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 auto string = strlit("main");
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9898,7 +9848,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                 auto string = strlit("s32");
                 auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, string_size), string.pointer, string_size);
+                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9917,7 +9867,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
         auto length_size = sizeof(compilation_unit->length);
         *compilation_unit = (DwarfCompilationUnit) {
-            .length = size - length_size,
+            .length = cast(u32, u64, size - length_size),
             .version = 5,
             .type = DW_UT_compile,
             .address_size = 8,
@@ -10093,11 +10043,11 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             {
                 auto string = strlit("/home/david/dev/nest/tests");
                 auto string_size = string.length + 1;
-                memcpy(vb_add(&debug_line_str, string_size), string.pointer, string_size);
+                memcpy(vb_add(&debug_line_str, cast(u32, u64, string_size)), string.pointer, string_size);
             }
             u32 paths[] = { directory_string_offset };
 
-            auto directory_count = array_length(paths);
+            u32 directory_count = array_length(paths);
             uleb128_encode(&builder->file, directory_count);
 
             for (u32 i = 0; i < directory_count; i += 1)
@@ -10138,7 +10088,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             {
                 auto string = strlit("first.nat");
                 auto string_size = string.length + 1;
-                memcpy(vb_add(&debug_line_str, string_size), string.pointer, string_size);
+                memcpy(vb_add(&debug_line_str, cast(u32, u64, string_size)), string.pointer, string_size);
             }
 
             FilenameEntry filenames[] = {
@@ -10148,10 +10098,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
                     md5_hash,
                 },
             };
-            auto filename_count = array_length(filenames);
+            u32 filename_count = array_length(filenames);
             uleb128_encode(&builder->file, filename_count);
 
-            for (auto i = 0; i < filename_count; i += 1)
+            for (typeof(filename_count) i = 0; i < filename_count; i += 1)
             {
                 auto filename = filenames[i];
                 *(u32*)vb_add(&builder->file, sizeof(u32)) = filename.filename;
@@ -10183,7 +10133,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
             // Advance PC by 3
             *vb_add(&builder->file, 1) = DW_LNS_advance_pc;
-            *vb_add(&builder->file, 1) = main_size;
+            *vb_add(&builder->file, 1) = cast(u8, u32, main_size);
 
             {
                 // TODO: confirm this is the encoding of special opcodes?
@@ -10200,7 +10150,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
             .version = 5,
             .address_size = 8,
             .segment_selector_size = 0,
-            .header_length = line_program_start_offset - after_header_length,
+            .header_length = cast(u32, u64, line_program_start_offset - after_header_length),
             .minimum_instruction_length = 1,
             .maximum_operations_per_instruction = 1,
             .default_is_stmt = 1,
@@ -10267,7 +10217,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         u64 addresses[] = { main_offset };
 
         auto header = (DwarfAddressTableHeader) {
-            .unit_length = sizeof(DwarfAddressTableHeader) - length_size + sizeof(addresses),
+            .unit_length = cast(u32, u64, sizeof(DwarfAddressTableHeader) - length_size + sizeof(addresses)),
             .version = 5,
             .address_size = 8,
             .segment_selector_size = 0,
@@ -10342,10 +10292,10 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
         static_assert(alignof(DwarfDebugStrOffsetsHeader) == 4);
 
         auto length_size = offsetof(DwarfDebugStrOffsetsHeader, version) - offsetof(DwarfDebugStrOffsetsHeader, length);
-        auto offset_array_size = debug_str_offsets.length * sizeof(*debug_str_offsets.pointer);
+        u32 offset_array_size = debug_str_offsets.length * sizeof(*debug_str_offsets.pointer);
         auto header = (DwarfDebugStrOffsetsHeader) {
 
-            .length = sizeof(DwarfDebugStrOffsetsHeader) - length_size + offset_array_size,
+            .length = cast(u32, u64, sizeof(DwarfDebugStrOffsetsHeader) - length_size + offset_array_size),
             .version = 5,
         };
         *vb_add_struct(&builder->file, DwarfDebugStrOffsetsHeader) = header;
@@ -10696,7 +10646,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     vb_align(&builder->file, alignof(ELFSectionHeader));
     auto section_header_offset = builder->file.length;
-    auto section_header_count = builder->section_headers.length;
+    auto section_header_count = cast(u16, u32, builder->section_headers.length);
     memcpy(vb_add(&builder->file, sizeof(ELFSectionHeader) * section_header_count), builder->section_headers.pointer, builder->section_headers.length * sizeof(ELFSectionHeader));
 
     *elf_header = (ELFHeader)
@@ -10728,7 +10678,7 @@ may_be_unused fn void write_elf(Thread* thread, const ObjectOptions* const restr
 
     assert(dynamic_relocation_count == expected_dynamic_relocation_count);
 
-    auto exe_path_z = options->exe_path;
+    auto exe_path_z = options.exe_path;
     {
         int fd = syscall_open(exe_path_z, O_WRONLY | O_CREAT | O_TRUNC, 0755);
         assert(fd != -1);
@@ -12946,12 +12896,15 @@ fn u8 operand_equal(MachineOperand a, MachineOperand b)
     return (a.id == MACHINE_OPERAND_GPR || a.id == MACHINE_OPERAND_XMM) ? a.register_value == b.register_value : 0;
 }
 
-fn void write_macho(Thread* restrict thread, const ObjectOptions * const restrict options, char** envp)
+may_be_unused fn void write_macho(Thread* restrict thread, const ObjectOptions * const restrict options, char** envp)
 {
+    unused(thread);
+    unused(options);
+    unused(envp);
     todo();
 }
 
-fn void code_generation(Thread* restrict thread, CodegenOptions options, char** envp)
+fn void code_generation(Thread* restrict thread, CodegenOptions options)
 {
     auto cfg_builder = cfg_builder_init(thread);
     auto* restrict builder = &cfg_builder;
@@ -13742,7 +13695,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options, char** 
 #if defined(__APPLE__)
             write_macho(thread, &object_options, envp);
 #elif defined(__linux__)
-            write_elf(thread, &object_options, envp);
+            write_elf(thread, object_options);
 #else
             todo();
 #endif
@@ -14133,6 +14086,7 @@ fn void print_ir(Thread* restrict thread)
 
 fn void entry_point(int argc, char* argv[], char* envp[])
 {
+    unused(envp);
 #if DO_UNIT_TESTS
     unit_tests();
 #endif
@@ -14194,9 +14148,9 @@ fn void entry_point(int argc, char* argv[], char* envp[])
     else
     {
         code_generation(thread, (CodegenOptions) {
-                .test_name = test_name,
-                .backend = compiler_backend,
-                }, envp);
+            .test_name = test_name,
+            .backend = compiler_backend,
+        });
     }
 
     thread_clear(thread);

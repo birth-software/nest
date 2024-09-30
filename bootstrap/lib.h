@@ -537,11 +537,11 @@ fn f64 resolve_timestamp(
     case TIME_UNIT_NANOSECONDS:
         return (f64)ns;
     case TIME_UNIT_MICROSECONDS:
-        return ns / 1000.0;
+        return (f64)ns / 1000.0;
     case TIME_UNIT_MILLISECONDS:
-        return ns / 1000000.0;
+        return (f64)ns / 1000000.0;
     case TIME_UNIT_SECONDS:
-        return ns / 1000000000.0;
+        return (f64)ns / 1000000000.0;
     }
 #else
     assert(end >= start);
@@ -1633,7 +1633,7 @@ fn u8* os_reserve(u64 base, u64 size, OSReserveProtectionFlags protection, OSRes
 #else
     int protection_flags = (protection.read * PROT_READ) | (protection.write * PROT_WRITE) | (protection.execute * PROT_EXEC);
     int map_flags = (map.anon * MAP_ANONYMOUS) | (map.priv * MAP_PRIVATE) | (map.noreserve * MAP_NORESERVE);
-    u8* result = (u8*)posix_mmap(0, size, protection_flags, map_flags, -1, 0);
+    u8* result = (u8*)posix_mmap((void*)base, size, protection_flags, map_flags, -1, 0);
     assert(result != MAP_FAILED);
     return result;
 #endif
@@ -1649,14 +1649,14 @@ fn void commit(void* address, u64 size)
 #endif
 }
 
-fn u64 align_forward(u64 value, u64 alignment)
+may_be_unused fn u64 align_forward(u64 value, u64 alignment)
 {
     u64 mask = alignment - 1;
     u64 result = (value + mask) & ~mask;
     return result;
 }
 
-fn u64 align_backward(u64 value, u64 alignment)
+may_be_unused fn u64 align_backward(u64 value, u64 alignment)
 {
     u64 result = value & ~(alignment - 1);
     return result;
@@ -2669,7 +2669,7 @@ may_be_unused fn void print(const char* format, ...)
                                                     {
                                                         write_float_decimal(s_get_slice(u8, buffer, buffer_i + dp_uoffset + 1, buffer.length), &output, olength - dp_uoffset);
                                                         buffer.pointer[buffer_i + dp_uoffset] = '.';
-                                                        auto dp_index = buffer_i + dp_uoffset + 1;
+                                                        // auto dp_index = buffer_i + dp_uoffset + 1;
                                                         write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, dp_uoffset);
                                                         buffer_i += olength + 1;
                                                     }
@@ -2889,7 +2889,7 @@ may_be_unused fn void arena_reset(Arena* arena)
 
 #define transmute(D, source) *(D*)&source
 
-fn void run_command(CStringSlice arguments, char* envp[])
+may_be_unused fn void run_command(CStringSlice arguments, char* envp[])
 {
     print("Running command:\n");
     assert(arguments.pointer[arguments.length - 1] == 0);
@@ -3112,7 +3112,7 @@ global u8 md5_padding[] = {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 
-fn MD5Context md5_init()
+may_be_unused fn MD5Context md5_init()
 {
     return (MD5Context) {
         .buffer = { MD5_A, MD5_B, MD5_C, MD5_D },
@@ -3124,7 +3124,7 @@ fn u32 rotate_left_u32(u32 x, u32 n)
     return (x << n) | (x >> (32 - n));
 }
 
-fn void md5_step(u32* buffer, u32* input)
+may_be_unused fn void md5_step(u32* buffer, u32* input)
 {
     u32 aa = buffer[0];
     u32 bb = buffer[1];
@@ -3172,7 +3172,7 @@ fn void md5_step(u32* buffer, u32* input)
     buffer[3] += dd;
 }
 
-fn void md5_update(MD5Context* context, String input_argument)
+may_be_unused fn void md5_update(MD5Context* context, String input_argument)
 {
     u32 input_local[16];
     auto offset = context->size % 64;
@@ -3202,7 +3202,7 @@ STRUCT(MD5Result)
     u8 hash[16];
 };
 
-fn MD5Result md5_end(MD5Context* context)
+may_be_unused fn MD5Result md5_end(MD5Context* context)
 {
     u32 input[16];
     auto offset = context->size % 64;
@@ -3233,10 +3233,10 @@ fn MD5Result md5_end(MD5Context* context)
 }
 
 // https://github.com/jasinb/sha1.git
-STRUCT(Sha1Digest)
-{
-    u32 digest[5];
-};
+// STRUCT(Sha1Digest)
+// {
+//     u32 digest[5];
+// };
 
 // static uint32_t rotl32(uint32_t x, int b)
 // {
@@ -3244,155 +3244,155 @@ STRUCT(Sha1Digest)
 // }
 //
 // switch endianness
-fn u32 sha1_get32(u8* p)
-{
-    return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-}
+// fn u32 sha1_get32(u8* p)
+// {
+//     return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+// }
 
-fn u32 sha1_f(int t, u32 b, u32 c, u32 d)
-{
-    assert(0 <= t && t < 80);
+// fn u32 sha1_f(int t, u32 b, u32 c, u32 d)
+// {
+//     assert(0 <= t && t < 80);
+//
+//     if (t < 20)
+//     {
+//         return (b & c) | ((~b) & d);
+//     }
+//     else if (t < 40)
+//     {
+//         return b ^ c ^ d;
+//     }
+//     else if (t < 60)
+//     {
+//         return (b & c) | (b & d) | (c & d);
+//     }
+//     else
+//     //if (t < 80)
+//     {
+//         return b ^ c ^ d;
+//     }
+// }
 
-    if (t < 20)
-    {
-        return (b & c) | ((~b) & d);
-    }
-    else if (t < 40)
-    {
-        return b ^ c ^ d;
-    }
-    else if (t < 60)
-    {
-        return (b & c) | (b & d) | (c & d);
-    }
-    else
-    //if (t < 80)
-    {
-        return b ^ c ^ d;
-    }
-}
+// STRUCT(Sha1Context)
+// {
+//     u8 block[64];
+//     u32 h[5];
+//     u64 bytes;
+//     u32 cur;
+// };
 
-STRUCT(Sha1Context)
-{
-    u8 block[64];
-    u32 h[5];
-    u64 bytes;
-    u32 cur;
-};
+// fn void sha1_reset(Sha1Context* ctx)
+// {
+//     ctx->h[0] = 0x67452301;
+//     ctx->h[1] = 0xefcdab89;
+//     ctx->h[2] = 0x98badcfe;
+//     ctx->h[3] = 0x10325476;
+//     ctx->h[4] = 0xc3d2e1f0;
+//     ctx->bytes = 0;
+//     ctx->cur = 0;
+// }
 
-fn void sha1_reset(Sha1Context* ctx)
-{
-    ctx->h[0] = 0x67452301;
-    ctx->h[1] = 0xefcdab89;
-    ctx->h[2] = 0x98badcfe;
-    ctx->h[3] = 0x10325476;
-    ctx->h[4] = 0xc3d2e1f0;
-    ctx->bytes = 0;
-    ctx->cur = 0;
-}
+// fn void sha1_process_block(Sha1Context* ctx)
+// {
+//     global const u32 k[4] =
+//     {
+//         0x5A827999,
+//         0x6ED9EBA1,
+//         0x8F1BBCDC,
+//         0xCA62C1D6
+//     };
+//
+//     u32 w[16];
+//     u32 a = ctx->h[0];
+//     u32 b = ctx->h[1];
+//     u32 c = ctx->h[2];
+//     u32 d = ctx->h[3];
+//     u32 e = ctx->h[4];
+//     u32 t;
+//
+//     for (t = 0; t < 16; t++)
+//         w[t] = sha1_get32((u8*)(&((uint32_t*)ctx->block)[t]));
+//
+//     for (t = 0; t < 80; t++)
+//     {
+//         auto s = t & 0xf;
+//         u32 temp;
+//         if (t >= 16)
+//             w[s] = rotate_left_u32(w[(s + 13) & 0xf] ^ w[(s + 8) & 0xf] ^ w[(s + 2) & 0xf] ^ w[s], 1);
+//
+//          temp = rotate_left_u32(a, 5) + sha1_f(t, b,c,d) + e + w[s] + k[t/20];
+//
+//          e = d; d = c; c = rotate_left_u32(b, 30); b = a; a = temp;
+//     }
+//
+//     ctx->h[0] += a;
+//     ctx->h[1] += b;
+//     ctx->h[2] += c;
+//     ctx->h[3] += d;
+//     ctx->h[4] += e;
+// }
 
-fn void sha1_process_block(Sha1Context* ctx)
-{
-    global const u32 k[4] =
-    {
-        0x5A827999,
-        0x6ED9EBA1,
-        0x8F1BBCDC,
-        0xCA62C1D6
-    };
+// fn void sha1_write(Sha1Context* ctx, String bytes)
+// {
+//     auto length = bytes.length;
+//     ctx->bytes += length;
+//
+//     const uint8_t* src = bytes.pointer;
+//     while (length--)
+//     {
+//         // TODO: could optimize the first and last few bytes, and then copy
+//         // 128 bit blocks with SIMD in between
+//         ctx->block[ctx->cur++] = *src++;
+//         if (ctx->cur == 64)
+//         {
+//             sha1_process_block(ctx);
+//             ctx->cur = 0;
+//         }
+//     }
+// }
 
-    u32 w[16];
-    u32 a = ctx->h[0];
-    u32 b = ctx->h[1];
-    u32 c = ctx->h[2];
-    u32 d = ctx->h[3];
-    u32 e = ctx->h[4];
-    u32 t;
+// fn Sha1Digest sha1_get_digest(Sha1Context* ctx)
+// {
+//     // append separator
+//     ctx->block[ctx->cur++] = 0x80;
+//     if (ctx->cur > 56)
+//     {
+//         // no space in block for the 64-bit message length, flush
+//         memset(&ctx->block[ctx->cur], 0, 64 - ctx->cur);
+//         sha1_process_block(ctx);
+//         ctx->cur = 0;
+//     }
+//
+//     memset(&ctx->block[ctx->cur], 0, 56 - ctx->cur);
+//     uint64_t bits = ctx->bytes * 8;
+//
+//     // TODO a few instructions could be shaven
+//     ctx->block[56] = (uint8_t)(bits >> 56 & 0xff);
+//     ctx->block[57] = (uint8_t)(bits >> 48 & 0xff);
+//     ctx->block[58] = (uint8_t)(bits >> 40 & 0xff);
+//     ctx->block[59] = (uint8_t)(bits >> 32 & 0xff);
+//     ctx->block[60] = (uint8_t)(bits >> 24 & 0xff);
+//     ctx->block[61] = (uint8_t)(bits >> 16 & 0xff);
+//     ctx->block[62] = (uint8_t)(bits >> 8  & 0xff);
+//     ctx->block[63] = (uint8_t)(bits >> 0  & 0xff);
+//     sha1_process_block(ctx);
+//
+//     {
+//         Sha1Digest ret;
+//         int i;
+//         for (i = 0; i < 5; i++)
+//             ret.digest[i] = sha1_get32((u8*)&ctx->h[i]);
+//         sha1_reset(ctx);
+//         return ret;
+//     }
+// }
 
-    for (t = 0; t < 16; t++)
-        w[t] = sha1_get32((u8*)(&((uint32_t*)ctx->block)[t]));
-
-    for (t = 0; t < 80; t++)
-    {
-        auto s = t & 0xf;
-        u32 temp;
-        if (t >= 16)
-            w[s] = rotate_left_u32(w[(s + 13) & 0xf] ^ w[(s + 8) & 0xf] ^ w[(s + 2) & 0xf] ^ w[s], 1);
-
-         temp = rotate_left_u32(a, 5) + sha1_f(t, b,c,d) + e + w[s] + k[t/20];
-
-         e = d; d = c; c = rotate_left_u32(b, 30); b = a; a = temp;
-    }
-
-    ctx->h[0] += a;
-    ctx->h[1] += b;
-    ctx->h[2] += c;
-    ctx->h[3] += d;
-    ctx->h[4] += e;
-}
-
-fn void sha1_write(Sha1Context* ctx, String bytes)
-{
-    auto length = bytes.length;
-    ctx->bytes += length;
-
-    const uint8_t* src = bytes.pointer;
-    while (length--)
-    {
-        // TODO: could optimize the first and last few bytes, and then copy
-        // 128 bit blocks with SIMD in between
-        ctx->block[ctx->cur++] = *src++;
-        if (ctx->cur == 64)
-        {
-            sha1_process_block(ctx);
-            ctx->cur = 0;
-        }
-    }
-}
-
-fn Sha1Digest sha1_get_digest(Sha1Context* ctx)
-{
-    // append separator
-    ctx->block[ctx->cur++] = 0x80;
-    if (ctx->cur > 56)
-    {
-        // no space in block for the 64-bit message length, flush
-        memset(&ctx->block[ctx->cur], 0, 64 - ctx->cur);
-        sha1_process_block(ctx);
-        ctx->cur = 0;
-    }
-
-    memset(&ctx->block[ctx->cur], 0, 56 - ctx->cur);
-    uint64_t bits = ctx->bytes * 8;
-
-    // TODO a few instructions could be shaven
-    ctx->block[56] = (uint8_t)(bits >> 56 & 0xff);
-    ctx->block[57] = (uint8_t)(bits >> 48 & 0xff);
-    ctx->block[58] = (uint8_t)(bits >> 40 & 0xff);
-    ctx->block[59] = (uint8_t)(bits >> 32 & 0xff);
-    ctx->block[60] = (uint8_t)(bits >> 24 & 0xff);
-    ctx->block[61] = (uint8_t)(bits >> 16 & 0xff);
-    ctx->block[62] = (uint8_t)(bits >> 8  & 0xff);
-    ctx->block[63] = (uint8_t)(bits >> 0  & 0xff);
-    sha1_process_block(ctx);
-
-    {
-        Sha1Digest ret;
-        int i;
-        for (i = 0; i < 5; i++)
-            ret.digest[i] = sha1_get32((u8*)&ctx->h[i]);
-        sha1_reset(ctx);
-        return ret;
-    }
-}
-
-fn Sha1Digest sha1_compute(String bytes)
-{
-    Sha1Context ctx;
-    sha1_reset(&ctx);
-    sha1_write(&ctx, bytes);
-    return sha1_get_digest(&ctx);
-}
+// fn Sha1Digest sha1_compute(String bytes)
+// {
+//     Sha1Context ctx;
+//     sha1_reset(&ctx);
+//     sha1_write(&ctx, bytes);
+//     return sha1_get_digest(&ctx);
+// }
 
 fn void entry_point(int argc, char* argv[], char* envp[]);
 
