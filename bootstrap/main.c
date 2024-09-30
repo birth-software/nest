@@ -28,22 +28,19 @@ STRUCT(GetOrPut(T)) \
 
 auto compiler_name = strlit("nest");
 
-fn int dir_make(const char* path)
-{
-    return syscall_mkdir(path, 0755);
-}
-
 fn String file_read(Arena* arena, String path)
 {
     String result = {};
-    int file_descriptor = syscall_open(string_to_c(path), 0, 0);
-    if (file_descriptor >= 0)
+    auto file_descriptor = os_file_open(path, (OSFileOpenFlags) {
+        .read = 1,
+        .write = 0,
+        .create = 0,
+        .truncate = 0,
+        .executable = 0,
+    });
+    if (os_file_descriptor_is_valid(file_descriptor))
     {
-        struct stat stat_buffer;
-        int stat_result = syscall_fstat(file_descriptor, &stat_buffer);
-        assert(stat_result == 0);
-
-        auto file_size = cast(u64, s64, stat_buffer.st_size);
+        auto file_size = os_file_get_size(file_descriptor);
         if (file_size > 0)
         {
             result = (String){
@@ -52,17 +49,16 @@ fn String file_read(Arena* arena, String path)
             };
 
             // TODO: big files
-            ssize_t read_result = syscall_read(file_descriptor, result.pointer, result.length);
-            assert(read_result >= 0);
-            assert((u64)read_result == file_size);
+            // TODO: result codes
+            os_file_read(file_descriptor, result, file_size);
         }
         else
         {
             result.pointer = (u8*)&result;
         }
 
-        auto close_result = syscall_close(file_descriptor);
-        assert(close_result == 0);
+        // TODO: check result
+        os_file_close(file_descriptor);
     }
 
 
@@ -72,9 +68,10 @@ fn String file_read(Arena* arena, String path)
 fn void print_string(String message)
 {
 #ifndef SILENT
-        ssize_t result = syscall_write(1, message.pointer, message.length);
-        assert(result >= 0);
-        assert((u64)result == message.length);
+    // TODO: check writes
+    os_file_write(stdout_get(), message);
+    // assert(result >= 0);
+    // assert((u64)result == message.length);
 #else
         unused(message);
 #endif
@@ -433,9 +430,9 @@ typedef enum ELFMachine : u16
 
 typedef enum ELFSectionIndex : u16
 {
-    UNDEFINED = 0,
-    ABSOLUTE = 0xfff1,
-    COMMON = 0xfff2,
+    ELF_SECTION_UNDEFINED = 0,
+    ELF_SECTION_ABSOLUTE = 0xfff1,
+    ELF_SECTION_COMMON = 0xfff2,
 } ELFSectionIndex;
 
 STRUCT(ELFVersionRequirement)
@@ -1676,7 +1673,7 @@ STRUCT(DebugType)
 decl_vb(DebugType);
 declare_ip(DebugType);
 
-typedef enum BackendTypeId
+typedef enum BackendTypeId : u8
 {
     BACKEND_TYPE_VOID = 0x00,
     BACKEND_TYPE_INTEGER_8 = 0x01,
@@ -5325,7 +5322,7 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
                     static_assert(array_length(thread->types.debug.integer.array) == 8);
                     auto index = signedness * 4 + bit_index;
                     auto debug_type_index = thread->types.debug.integer.array[index];
-                    BackendTypeId backend_type = bit_index + 1;
+                    BackendTypeId backend_type = cast(u8, u32, bit_index + 1);
                     auto type_pair = type_pair_make(debug_type_index, backend_type);
                     return type_pair;
                 }
@@ -7170,8 +7167,8 @@ typedef enum CompilerBackend : u8
 
 STRUCT(ObjectOptions)
 {
-    char* object_path;
-    char* exe_path;
+    String object_path;
+    String exe_path;
     Slice(u8) code;
     u64 dynamic:1;
     u64 reserved:63;
@@ -10329,9 +10326,6 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
 
         auto name = elf_get_section_name(builder, strlit(".symtab"));
 
-        u16 section_index_undefined = 0;
-        u16 section_index_absolute = 0xfff1;
-
         auto main_c_string = st_get_string(&builder->static_st, strlit("first.nat"));
         auto _dynamic_string = st_get_string(&builder->static_st, strlit("_DYNAMIC"));
         auto eh_frame_hdr_string = st_get_string(&builder->static_st, strlit("__GNU_EH_FRAME_HDR"));
@@ -10349,7 +10343,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .type = ELF_SYMBOL_TYPE_FILE,
                 .binding = ELF_SYMBOL_BINDING_LOCAL,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
-                .section_index = section_index_absolute,
+                .section_index = ELF_SECTION_ABSOLUTE,
                 .value = 0,
                 .size = 0,
             },
@@ -10358,7 +10352,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .type = ELF_SYMBOL_TYPE_FILE,
                 .binding = ELF_SYMBOL_BINDING_LOCAL,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
-                .section_index = section_index_absolute,
+                .section_index = ELF_SECTION_ABSOLUTE,
                 .value = 0,
                 .size = 0
             },
@@ -10394,7 +10388,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .type = ELF_SYMBOL_TYPE_FUNCTION,
                 .binding = ELF_SYMBOL_BINDING_GLOBAL,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
-                .section_index = section_index_undefined,
+                .section_index = ELF_SECTION_UNDEFINED,
                 .value = 0,
                 .size = 0,
             },
@@ -10403,7 +10397,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .type = ELF_SYMBOL_TYPE_NONE,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
-                .section_index = section_index_undefined,
+                .section_index = ELF_SECTION_UNDEFINED,
                 .value = 0,
                 .size = 0,
             },
@@ -10448,7 +10442,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .type = ELF_SYMBOL_TYPE_NONE,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
-                .section_index = section_index_undefined,
+                .section_index = ELF_SECTION_UNDEFINED,
                 .value = 0,
                 .size = 0,
             },
@@ -10520,7 +10514,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .type = ELF_SYMBOL_TYPE_NONE,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
-                .section_index = section_index_undefined,
+                .section_index = ELF_SECTION_UNDEFINED,
                 .value = 0,
                 .size = 0,
             },
@@ -10529,7 +10523,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .type = ELF_SYMBOL_TYPE_FUNCTION,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
-                .section_index = section_index_undefined,
+                .section_index = ELF_SECTION_UNDEFINED,
                 .value = 0,
                 .size = 0,
             },
@@ -10678,17 +10672,505 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
 
     assert(dynamic_relocation_count == expected_dynamic_relocation_count);
 
-    auto exe_path_z = options.exe_path;
     {
-        int fd = syscall_open(exe_path_z, O_WRONLY | O_CREAT | O_TRUNC, 0755);
-        assert(fd != -1);
-        syscall_write(fd, builder->file.pointer, builder->file.length);
-
-        syscall_close(fd);
+        auto fd = os_file_open(options.exe_path, (OSFileOpenFlags) {
+            .write = 1,
+            .truncate = 1,
+            .create = 1,
+            .executable = 1,
+        });
+        assert(os_file_descriptor_is_valid(fd));
+        os_file_write(fd, (String) { builder->file.pointer, builder->file.length });
+        os_file_close(fd);
     }
 }
 
-void subsume_node_without_killing(Thread* thread, NodeIndex old_node_index, NodeIndex new_node_index)
+STRUCT(DOSHeader)
+{
+    u16 signature;
+    u16 extra_page_size;
+    u16 page_count;
+    u16 relocations;
+    u16 header_size_in_paragraphs;
+    u16 minimum_allocated_paragraphs;
+    u16 maximum_allocated_paragraphs;
+    u16 initial_ss_value;
+    u16 initial_relative_sp_value;
+    u16 checksum;
+    u16 initial_relative_ip_value;
+    u16 initial_cs_value;
+    u16 relocation_table_pointer;
+    u16 overlay_number;
+    u16 reserved_words[4];
+    u16 oem_identifier;
+    u16 oem_information;
+    u16 other_reserved_words[10];
+    u32 coff_header_pointer;
+};
+
+static_assert(sizeof(DOSHeader) == 0x40);
+
+typedef enum COFFArchitecture : u16
+{
+    COFF_ARCH_UNKNOWN = 0x0000,
+    COFF_ARCH_AMD64 = 0x8664,
+    COFF_ARCH_ARM64 = 0xAA64,
+} COFFArchitecture;
+
+STRUCT(COFFCharacteristics)
+{
+    u16 base_relocations_stripped:1;
+    u16 executable_image:1;
+    u16 line_numbers_stripped:1;
+    u16 symbols_stripped:1;
+    u16 aggressively_trim_working_set:1;
+    u16 large_address_aware:1;
+    u16 padding:1;
+    u16 bytes_reversed_low:1;
+    u16 machine_32_bit:1;
+    u16 debug_info_stripped:1;
+    u16 removable_run_from_swap:1;
+    u16 net_run_from_swap:1;
+    u16 system_file:1;
+    u16 dll:1;
+    u16 uniprocessor_machine_only:1;
+    u16 bytes_reversed_high:1;
+};
+
+static_assert(sizeof(COFFCharacteristics) == sizeof(u16));
+
+typedef enum COFFOptionalHeaderFormat : u16
+{
+    COFF_FORMAT_ROM = 0x107,
+    COFF_FORMAT_PE32 = 0x10b,
+    COFF_FORMAT_PE32_PLUS = 0x20b,
+} COFFOptionalHeaderFormat;
+
+typedef enum COFFSubsystem : u16
+{
+    COFF_SUBSYSTEM_UNKNOWN = 0x0000,
+    COFF_SUBSYSTEM_NATIVE = 0x0001,
+    COFF_SUBSYSTEM_WINDOWS_GUI = 0x0002,
+    COFF_SUBSYSTEM_WINDOWS_CUI = 0x0003,
+    COFF_SUBSYSTEM_OS_2_CUI = 0x0005,
+    COFF_SUBSYSTEM_POSIX_CUI = 0x0007,
+    COFF_SUBSYSTEM_WINDOWS_9X_NATIVE = 0x0008,
+    COFF_SUBSYSTEM_WINDOWS_CE_GUI = 0x0009,
+    COFF_SUBSYSTEM_EFI_APPLICATION = 0x000a,
+    COFF_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER = 0x000b,
+    COFF_SUBSYSTEM_EFI_RUNTIME_DRIVER = 0x000c,
+    COFF_SUBSYSTEM_EFI_ROM = 0x000d,
+    COFF_SUBSYSTEM_XBOX = 0x000e,
+    COFF_SUBSYSTEM_WINDOWS_BOOT_APPLICATION = 0x0010,
+} COFFSubsystem;
+
+STRUCT(COFFDllCharacteristics)
+{
+    u16 call_when_loaded:1;
+    u16 call_when_thread_terminates:1;
+    u16 call_when_thread_starts:1;
+    u16 call_when_exiting:1;
+    u16 padding:1;
+    u16 high_entropy_va:1;
+    u16 dynamic_base:1;
+    u16 force_integrity:1;
+    u16 nx_compatible:1;
+    u16 no_isolation:1;
+    u16 no_seh:1;
+    u16 do_not_bind:1;
+    u16 app_container:1;
+    u16 is_wdm_driver:1;
+    u16 supports_control_flow_guard:1;
+    u16 terminal_server_aware:1;
+};
+
+static_assert(sizeof(COFFDllCharacteristics) == sizeof(u16));
+
+STRUCT(COFFLoaderFlags)
+{
+    u32 prestart_breakpoint:1;
+    u32 postloading_debugger:1;
+    u32 padding:30;
+};
+
+static_assert(sizeof(COFFLoaderFlags) == sizeof(u32));
+
+STRUCT(COFFHeader)
+{
+    u32 signature;
+    COFFArchitecture architecture;
+    u16 section_count;
+    u32 time_date_stamp;
+    u32 symbol_table_pointer;
+    u32 symbol_count;
+    u16 optional_header_size;
+    COFFCharacteristics characteristics;
+};
+
+STRUCT(COFFOptionalHeader)
+{
+    COFFOptionalHeaderFormat format;
+    u8 major_linker_version;
+    u8 minor_linker_version;
+    u32 code_size;
+    u32 initialized_data_size;
+    u32 uninitialized_data_size;
+    u32 entry_point_address;
+    u32 code_offset;
+    u64 image_offset;
+    u32 virtual_section_alignment;
+    u32 file_section_alignment;
+    u16 major_operating_system_version;
+    u16 minor_operating_system_version;
+    u16 major_image_version;
+    u16 minor_image_version;
+    u16 major_subsystem_version;
+    u16 minor_subsystem_version;
+    u32 win32_version_value;
+    u32 image_size;
+    u32 headers_size;
+    u32 checksum;
+    COFFSubsystem subsystem;
+    COFFDllCharacteristics dll_characteristics;
+    u64 stack_reserve_size;
+    u64 stack_commit_size;
+    u64 heap_reserve_size;
+    u64 heap_commit_size;
+    COFFLoaderFlags loader_flags;
+    u32 directory_count;
+};
+
+STRUCT(COFFDataDirectory)
+{
+    u32 rva;
+    u32 size;
+};
+
+STRUCT(COFFSectionFlags)
+{
+    u32 padding:3;
+    u32 do_not_pad:1;
+    u32 padding1:1;
+    u32 contains_code:1;
+    u32 contains_initialized_data:1;
+    u32 contains_uninitialized_data:1;
+    u32 link_other:1;
+    u32 link_has_information:1;
+    u32 padding2:1;
+    u32 link_remove:1;
+    u32 link_has_comdat:1;
+    u32 padding3:1;
+    u32 reset_speculative_exceptions:1;
+    u32 global_pointer_relocations:1;
+    u32 purgeable:1;
+    u32 is_16_bit:1;
+    u32 locked:1;
+    u32 preloaded:1;
+    u32 data_alignment:4;
+    u32 link_extended_relocations:1;
+    u32 discardable:1;
+    u32 not_cached:1;
+    u32 not_pageable:1;
+    u32 shared:1;
+    u32 execute:1;
+    u32 read:1;
+    u32 writte:1;
+};
+
+static_assert(sizeof(COFFSectionFlags) == sizeof(u32));
+
+STRUCT(COFFSectionName)
+{
+    u8 name[8];
+};
+
+STRUCT(COFFSectionHeader)
+{
+    COFFSectionName name;
+    u32 virtual_size;
+    u32 rva;
+    u32 file_size;
+    u32 file_offset;
+    u32 relocation_offset;
+    u32 line_number_offset;
+    u16 relocation_count;
+    u16 line_number_count;
+    COFFSectionFlags flags;
+};
+
+static_assert(sizeof(COFFSectionHeader) == 40);
+
+fn COFFSectionName coff_section_name(String name)
+{
+    COFFSectionName result = {};
+    assert(name.length <= array_length(result.name));
+    memcpy(result.name, name.pointer, name.length);
+
+    return result;
+}
+
+may_be_unused fn void write_pe(Thread* thread, ObjectOptions options)
+{
+    VirtualBuffer(u8) file = {};
+    auto* mz = "MZ";
+    auto signature = *(u16*)mz;
+    *vb_add_struct(&file, DOSHeader) = (DOSHeader)
+    {
+        .signature = signature,
+        .extra_page_size = 144,
+        .page_count = 3,
+        .relocations = 0,
+        .header_size_in_paragraphs = 4,
+        .minimum_allocated_paragraphs = 0,
+        .maximum_allocated_paragraphs = (u16)~((u16)(0u)),
+        .initial_ss_value = 0,
+        .initial_relative_sp_value = 184,
+        .checksum = 0,
+        .initial_relative_ip_value = 0,
+        .initial_cs_value = 0,
+        .relocation_table_pointer = sizeof(DOSHeader),
+        .overlay_number = 0,
+        .coff_header_pointer = 208,
+    };
+    u8 code[] =  { 0x0E, 0x1F, 0xBA, 0x0E, 0x00, 0xB4, 0x09, 0xCD, 0x21, 0xB8, 0x01, 0x4C, 0xCD, 0x21, };
+    vb_add_array(&file, code);
+
+    auto str = strlit("This program cannot be run in DOS mode.\r\r\n");
+    memcpy(vb_add(&file, cast(u32, u64, str.length)), str.pointer, str.length);
+    *vb_add(&file, 1) = '$';
+
+    vb_align(&file, 8);
+
+    u8 rich_header[] = {
+        0xDD, 0x6A, 0x05, 0xC7, 0x99, 0x0B, 0x6B, 0x94, 0x99, 0x0B, 0x6B, 0x94, 0x99, 0x0B, 0x6B, 0x94, 
+        0xD2, 0x73, 0x6A, 0x95, 0x9A, 0x0B, 0x6B, 0x94, 0x99, 0x0B, 0x6A, 0x94, 0x98, 0x0B, 0x6B, 0x94, 
+        0xD1, 0x8E, 0x6F, 0x95, 0x98, 0x0B, 0x6B, 0x94, 0xD1, 0x8E, 0x69, 0x95, 0x98, 0x0B, 0x6B, 0x94, 
+        0x52, 0x69, 0x63, 0x68, 0x99, 0x0B, 0x6B, 0x94, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    };
+    vb_add_array(&file, rich_header);
+
+    COFFDataDirectory directories[] = {
+        { .rva = 0, .size = 0, },
+        { .rva = 8632, .size = 40, },
+        { .rva = 0, .size = 0, },
+        { .rva = 12288, .size = 12, },
+        { .rva = 0, .size = 0, },
+        { .rva = 0, .size = 0, },
+        { .rva = 8208, .size = 84, },
+        { .rva = 0, .size = 0, },
+        { .rva = 0, .size = 0, },
+        { .rva = 0, .size = 0, },
+        { .rva = 0, .size = 0, },
+        { .rva = 0, .size = 0, },
+        { .rva = 8192, .size = 16, },
+        { .rva = 0, .size = 0, },
+        { .rva = 0, .size = 0, },
+        { .rva = 0, .size = 0, },
+    };
+
+    auto coff_optional_header = (COFFOptionalHeader) {
+        .format = COFF_FORMAT_PE32_PLUS,
+        .major_linker_version = 14,
+        .minor_linker_version = 41,
+        .code_size = 0x200,
+        .initialized_data_size = 0x600,
+        .uninitialized_data_size = 0,
+        .entry_point_address = 0x1000,
+        .code_offset = 0x1000,
+        .image_offset = 0x140000000,
+        .virtual_section_alignment = 0x1000,
+        .file_section_alignment = 0x200,
+        .major_operating_system_version = 6,
+        .minor_operating_system_version = 0,
+        .major_image_version = 0,
+        .minor_image_version = 0,
+        .major_subsystem_version = 6,
+        .minor_subsystem_version = 0,
+        .win32_version_value = 0,
+        .image_size = 0x4000,
+        .headers_size = 0x400,
+        .checksum = 0,
+        .subsystem = COFF_SUBSYSTEM_WINDOWS_CUI,
+        .dll_characteristics = {
+            .high_entropy_va = 1,
+            .dynamic_base = 1,
+            .nx_compatible = 1,
+            .terminal_server_aware = 1,
+        },
+        .stack_reserve_size = MB(1),
+        .stack_commit_size = 0x1000,
+        .heap_reserve_size = MB(1),
+        .heap_commit_size = 0x1000,
+        .loader_flags = {},
+        .directory_count = array_length(directories),
+    };
+
+    u8 coff_signature[] = { 'P', 'E', 0, 0 };
+    auto coff_header = (COFFHeader) {
+        .signature = *(u32*)coff_signature, 
+        .architecture = COFF_ARCH_AMD64,
+        .section_count = 3,
+        .time_date_stamp = 1727882096,
+        .symbol_table_pointer = 0,
+        .symbol_count = 0,
+        .optional_header_size = 240,
+        .characteristics = {
+            .executable_image = 1,
+            .large_address_aware = 1,
+        },
+    };
+
+    assert(file.length == 0xd0);
+    *vb_add_struct(&file, COFFHeader) = coff_header;
+    *vb_add_struct(&file, COFFOptionalHeader) = coff_optional_header;
+    assert(file.length == 0x158);
+    vb_add_array(&file, directories);
+
+    COFFSectionHeader section_headers[] = {
+        {
+            .name = coff_section_name(strlit(".text")),
+            .virtual_size = 18,
+            .rva = 0x1000,
+            .file_size = 0x200,
+            .file_offset = 1024,
+            .flags = {
+                .contains_code = 1,
+                .execute = 1,
+                .read = 1,
+            },
+        },
+        {
+            .name = coff_section_name(strlit(".rdata")),
+            .virtual_size = 524,
+            .rva = 0x2000,
+            .file_size = 0x400,
+            .file_offset = 0x600,
+            .flags = {
+                .contains_initialized_data = 1,
+                .read = 1,
+            },
+        },
+        {
+            .name = coff_section_name(strlit(".pdata")),
+            .virtual_size = 12,
+            .rva = 0x3000,
+            .file_size = 0x200,
+            .file_offset = 0xa00,
+            .flags = {
+                .contains_initialized_data = 1,
+                .read = 1,
+            },
+        },
+    };
+    vb_add_array(&file, section_headers);
+
+    u8 text_content[] = { 0x48, 0x83, 0xEC, 0x28, 0x33, 0xC9, 0xFF, 0x15, 0xF4, 0x0F, 0x00, 0x00, 0x90, 0x48, 0x83, 0xC4, 0x28, 0xC3, };
+
+    u8 rdata_content[] = {
+        0xF0, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+        0x3C, 0x00, 0x00, 0x00, 0x84, 0x20, 0x00, 0x00, 0x84, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 
+        0xC0, 0x20, 0x00, 0x00, 0xC0, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x63, 0xFD, 0x66, 
+        0x00, 0x00, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x00, 0xDC, 0x00, 0x00, 0x00, 0xD4, 0x20, 0x00, 0x00, 
+        0xD4, 0x06, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x03, 0x80, 0x03, 0x80, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x7C, 0x20, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 
+        0x12, 0x00, 0x00, 0x00, 0x52, 0x53, 0x44, 0x53, 0x3D, 0x15, 0x84, 0x0A, 0xBC, 0x9F, 0xA1, 0x4B, 
+        0x82, 0xB4, 0x94, 0xF1, 0x5B, 0x91, 0x63, 0x3A, 0x03, 0x00, 0x00, 0x00, 0x43, 0x3A, 0x5C, 0x55, 
+        0x73, 0x65, 0x72, 0x73, 0x5C, 0x44, 0x61, 0x76, 0x69, 0x64, 0x5C, 0x64, 0x65, 0x76, 0x5C, 0x6D, 
+        0x69, 0x6E, 0x69, 0x6D, 0x61, 0x6C, 0x5C, 0x6D, 0x61, 0x69, 0x6E, 0x2E, 0x70, 0x64, 0x62, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
+        0x2E, 0x74, 0x65, 0x78, 0x74, 0x24, 0x6D, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 
+        0x10, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x35, 0x00, 0x00, 0x00, 0x00, 
+        0x10, 0x20, 0x00, 0x00, 0x54, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
+        0x64, 0x20, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x76, 
+        0x6F, 0x6C, 0x74, 0x6D, 0x64, 0x00, 0x00, 0x00, 0x84, 0x20, 0x00, 0x00, 0x2C, 0x01, 0x00, 0x00, 
+        0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x7A, 0x7A, 0x7A, 0x64, 0x62, 0x67, 0x00, 0x00, 0x00, 
+        0xB0, 0x21, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2E, 0x78, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
+        0xB8, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x32, 
+        0x00, 0x00, 0x00, 0x00, 0xCC, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 
+        0x74, 0x61, 0x24, 0x33, 0x00, 0x00, 0x00, 0x00, 0xE0, 0x21, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 
+        0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x34, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x21, 0x00, 0x00, 
+        0x1C, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x36, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x30, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x2E, 0x70, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
+        0x01, 0x04, 0x01, 0x00, 0x04, 0x42, 0x00, 0x00, 0xE0, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0xFE, 0x21, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0xF0, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x78, 0x01, 0x45, 0x78, 0x69, 0x74, 0x50, 0x72, 0x6F, 0x63, 0x65, 0x73, 0x73, 0x00, 0x4B, 0x45, 
+        0x52, 0x4E, 0x45, 0x4C, 0x33, 0x32, 0x2E, 0x64, 0x6C, 0x6C, 0x00, 0x00, 
+    };
+
+    u8 pdata_content[] = { 0x00, 0x10, 0x00, 0x00, 0x12, 0x10, 0x00, 0x00, 0xB0, 0x21, 0x00, 0x00, };
+
+    String section_contents[] = {
+        { text_content, sizeof(text_content) },
+        { rdata_content, sizeof(rdata_content) },
+        { pdata_content, sizeof(pdata_content) },
+    };
+
+    vb_align(&file, 0x200);
+
+    for (u32 i = 0; i < array_length(section_contents); i += 1)
+    {
+        auto section_content = section_contents[i];
+
+        memcpy(vb_add(&file, cast(u32, u64, section_content.length)), section_content.pointer, section_content.length);
+
+        vb_align(&file, 0x200);
+    }
+
+    // Check if file matches
+#define CHECK_PE_MATCH 0
+#if CHECK_PE_MATCH
+    auto minimal = file_read(thread->arena, strlit("C:/Users/David/dev/minimal/main.exe"));
+    assert(file.length == minimal.length);
+
+    for (u32 i = 0; i < minimal.length; i += 1)
+    {
+        auto mine = file.pointer[i];
+        auto original = minimal.pointer[i];
+        assert(mine == original);
+    }
+#else
+    unused(thread);
+#endif
+
+    {
+        auto fd = os_file_open(options.exe_path, (OSFileOpenFlags) {
+            .write = 1,
+            .truncate = 1,
+            .create = 1,
+            .executable = 1,
+        });
+#if _WIN32
+        if (!os_file_descriptor_is_valid(fd))
+        {
+            auto err = GetLastError();
+            LPSTR lpMsgBuf;
+            DWORD bufSize = FormatMessageA(
+                    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                    NULL,
+                    err,
+                    LANG_NEUTRAL, // Use default language
+                    (LPSTR)&lpMsgBuf,
+                    0,
+                    NULL
+                    );
+            unused(bufSize);
+            print("Error opening file \"{s}\": {cstr}\n", options.exe_path, lpMsgBuf);
+            fail();
+        }
+#endif
+        assert(os_file_descriptor_is_valid(fd));
+        os_file_write(fd, (String) { file.pointer, file.length });
+        os_file_close(fd);
+    }
+}
+
+fn void subsume_node_without_killing(Thread* thread, NodeIndex old_node_index, NodeIndex new_node_index)
 {
     assert(!index_equal(old_node_index, new_node_index));
     auto* old = thread_node_get(thread, old_node_index);
@@ -13647,9 +14129,20 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     })));
 
     auto exe_path_view = s_get_slice(u8, object_path, 0, object_path.length - 2);
-    auto exe_path = (char*)arena_allocate_bytes(thread->arena, exe_path_view.length + 1, 1);
-    memcpy(exe_path, exe_path_view.pointer, exe_path_view.length);
-    exe_path[exe_path_view.length] = 0;
+    u32 extra_bytes = 0;
+#if _WIN32
+    extra_bytes = strlen(".exe");
+#endif
+    String exe_path = {
+        .pointer = arena_allocate_bytes(thread->arena, exe_path_view.length + extra_bytes + 1, 1),
+        .length = exe_path_view.length + extra_bytes,
+    };
+
+    memcpy(exe_path.pointer, exe_path_view.pointer, exe_path_view.length);
+#if _WIN32
+    memcpy(exe_path.pointer + exe_path_view.length, ".exe", extra_bytes);
+#endif
+    exe_path.pointer[exe_path_view.length + extra_bytes] = 0;
 
     switch (options.backend)
     {
@@ -13687,13 +14180,15 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
         {
             auto code_slice = (Slice(u8)) { .pointer = code.pointer, .length = code.length, };
             auto object_options = (ObjectOptions) {
-                .object_path = string_to_c(object_path),
+                .object_path = object_path,
                 .exe_path = exe_path,
                 .code = code_slice,
                 .dynamic = 1,
             };
-#if defined(__APPLE__)
-            write_macho(thread, &object_options, envp);
+#if _WIN32
+            write_pe(thread, object_options);
+#elif defined(__APPLE__)
+            write_macho(thread, object_options, envp);
 #elif defined(__linux__)
             write_elf(thread, object_options);
 #else
@@ -14122,7 +14617,7 @@ fn void entry_point(int argc, char* argv[], char* envp[])
     CompilerBackend compiler_backend = arguments.pointer[2].pointer[0];
     u8 emit_ir = arguments.length >= 4 && arguments.pointer[3].pointer[0] == 'y';
 
-    dir_make("nest");
+    os_directory_make(strlit("nest"));
 
     File file = {
         .path = source_file_path,
