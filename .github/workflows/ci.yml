@@ -30,3 +30,12 @@ jobs:
   #     - name: Build and test
   #       run: |
   #         ./project.sh test all
+  windows_build_and_test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          ./project.bat test all

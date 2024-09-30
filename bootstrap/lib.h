@@ -23,13 +23,6 @@
 #define _DEBUG 1
 #endif
 
-#if _WIN32
-#define stdout_handle (GetStdHandle(STD_OUTPUT_HANDLE))
-#else
-#define stdout_handle (1)
-#endif
-
-
 #ifdef STATIC
 #define LINK_LIBC 0
 #else 
@@ -145,6 +138,7 @@ timestamp()
 #endif
 #endif
 }
+
 
 #if LINK_LIBC
 global struct timespec cpu_resolution;
@@ -494,6 +488,16 @@ may_be_unused fn s32 cast_s64_to_s32(s64 source, const char* name, int line)
 
 #define todo() do { print("TODO at {cstr}:{u32}\n", __FILE__, __LINE__); __builtin_trap(); } while(0)
 
+fn FileDescriptor stdout_get()
+{
+#if _WIN32
+    auto handle = GetStdHandle(STD_OUTPUT_HANDLE);
+    assert(handle != INVALID_HANDLE_VALUE);
+    return handle;
+#else
+    return 1;
+#endif
+}
 
 #if __APPLE__
     const global u64 page_size = KB(16);
@@ -509,14 +513,24 @@ typedef enum TimeUnit
     TIME_UNIT_SECONDS,
 } TimeUnit;
 
-fn f64 resolve_timestamp(
+may_be_unused fn f64 resolve_timestamp(
+#if _WIN32
+        u64 start, u64 end,
+#else
 #if LINK_LIBC
         struct timespec start, struct timespec end,
 #else
         u64 start, u64 end,
 #endif
+#endif
         TimeUnit time_unit)
 {
+#if _WIN32
+    unused(start);
+    unused(end);
+    unused(time_unit);
+    todo();
+#else
 #if LINK_LIBC
     assert(end.tv_sec >= start.tv_sec);
     struct timespec result = {
@@ -568,6 +582,7 @@ fn f64 resolve_timestamp(
         // warning: rdtsc frequency not queried (returning ticks as are)
         return s;
     }
+#endif
 #endif
 }
 
@@ -1462,30 +1477,33 @@ may_be_unused fn ssize_t syscall_write(int fd, const void *buffer, size_t bytes)
 #endif
 }
 
-may_be_unused fn int syscall_mkdir(const char* path, u32 mode)
+may_be_unused fn int syscall_mkdir(String path, u32 mode)
 {
+    assert(path.pointer[path.length] == 0);
 #if LINK_LIBC
-    return mkdir(path, mode);
+    return mkdir((char*)path.pointer, mode);
 #else
-    return cast(s32, s64, syscall2(syscall_x86_64_mkdir, (s64)path, (s64)mode));
+    return cast(s32, s64, syscall2(syscall_x86_64_mkdir, (s64)path.pointer, (s64)mode));
 #endif
 }
 
-may_be_unused fn int syscall_rmdir(const char* path)
+may_be_unused fn int syscall_rmdir(String path)
 {
+    assert(path.pointer[path.length] == 0);
 #if LINK_LIBC
-    return rmdir(path);
+    return rmdir((char*)path.pointer);
 #else
-    return cast(s32, s64, syscall1(syscall_x86_64_rmdir, (s64)path));
+    return cast(s32, s64, syscall1(syscall_x86_64_rmdir, (s64)path.pointer));
 #endif
 }
 
-may_be_unused fn int syscall_unlink(const char* path)
+may_be_unused fn int syscall_unlink(String path)
 {
+    assert(path.pointer[path.length] == 0);
 #if LINK_LIBC
-    return unlink(path);
+    return unlink((char*)path.pointer);
 #else
-    return cast(s32, s64, syscall1(syscall_x86_64_unlink, (s64)path));
+    return cast(s32, s64, syscall1(syscall_x86_64_unlink, (s64)path.pointer));
 #endif
 }
 
@@ -1507,6 +1525,7 @@ may_be_unused fn signed long syscall_execve(const char* path, char *const argv[]
     return syscall3(syscall_x86_64_execve, (s64)path, (s64)argv, (s64)envp);
 #endif
 }
+
 may_be_unused fn pid_t syscall_waitpid(pid_t pid, int* status, int options)
 {
 #if LINK_LIBC
@@ -1540,22 +1559,6 @@ may_be_unused [[noreturn]] [[gnu::cold]] fn void syscall_exit(int status)
 }
 #endif
 
-may_be_unused fn u64 file_get_size(FileDescriptor fd)
-{
-#if _WIN32
-    LARGE_INTEGER file_size;
-    GetFileSizeEx(fd, &file_size);
-    return (u64)file_size.QuadPart;
-#else
-    struct stat stat_buffer;
-    int stat_result = syscall_fstat(fd, &stat_buffer);
-    assert(stat_result == 0);
-    auto size = cast(u64, s64, stat_buffer.st_size);
-    return size;
-#endif
-}
-
-
 may_be_unused fn u64 os_timer_freq()
 {
     return 1000 * 1000;
@@ -1575,12 +1578,108 @@ may_be_unused fn u64 os_timer_get()
 #endif
 }
 
+STRUCT(OSFileOpenFlags)
+{
+    u32 truncate:1;
+    u32 executable:1;
+    u32 write:1;
+    u32 read:1;
+    u32 create:1;
+};
+
+may_be_unused fn u8 os_file_descriptor_is_valid(FileDescriptor fd)
+{
+#if _WIN32
+    return fd != INVALID_HANDLE_VALUE;
+#else
+    return fd >= 0;
+#endif
+}
+
+may_be_unused fn FileDescriptor os_file_open(String path, OSFileOpenFlags flags)
+{
+    assert(path.pointer[path.length] == 0);
+#if _WIN32
+
+    DWORD dwDesiredAccess = 0;
+    dwDesiredAccess |= flags.read * GENERIC_READ;
+    dwDesiredAccess |= flags.write * GENERIC_WRITE;
+    dwDesiredAccess |= flags.write * GENERIC_EXECUTE;
+    DWORD dwShareMode = 0;
+    LPSECURITY_ATTRIBUTES lpSecurityAttributes = 0;
+    DWORD dwCreationDisposition = 0;
+    dwCreationDisposition |= (!flags.create) * OPEN_EXISTING;
+    dwCreationDisposition |= flags.create * CREATE_ALWAYS;
+    DWORD dwFlagsAndAttributes = 0;
+    dwFlagsAndAttributes |= FILE_ATTRIBUTE_NORMAL;
+    HANDLE hTemplateFile = 0;
+    auto handle = CreateFileA((char*)path.pointer, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
+    return handle;
+#else
+    int posix_flags = 0;
+    posix_flags |= O_WRONLY * (flags.write & !flags.read);
+    posix_flags |= O_RDONLY * ((!flags.write) & flags.read);
+    posix_flags |= O_RDWR * (flags.write & flags.read);
+    posix_flags |= O_CREAT * flags.create;
+    posix_flags |= O_TRUNC * flags.truncate;
+
+    int permissions;
+    if (flags.executable && flags.write)
+    {
+        permissions = 0755;
+    }
+    else
+    {
+        permissions = 0644;
+    }
+    auto result = syscall_open((char*)path.pointer, posix_flags, permissions);
+    return result;
+#endif
+}
+
+may_be_unused fn u64 os_file_get_size(FileDescriptor fd)
+{
+#if _WIN32
+    LARGE_INTEGER file_size;
+    GetFileSizeEx(fd, &file_size);
+    return (u64)file_size.QuadPart;
+#else
+    struct stat stat_buffer;
+    int stat_result = syscall_fstat(fd, &stat_buffer);
+    assert(stat_result == 0);
+    auto size = cast(u64, s64, stat_buffer.st_size);
+    return size;
+#endif
+}
+
 may_be_unused fn void os_file_write(FileDescriptor fd, String content)
 {
 #if _WIN32
-    WriteFileEx(fd, content.pointer, content.length, 0, 0);
+    WriteFile(fd, content.pointer, cast(u32, u64, content.length), 0, 0);
 #else
     syscall_write(fd, content.pointer, content.length);
+#endif
+}
+
+may_be_unused fn void os_file_read(FileDescriptor fd, String buffer, u64 byte_count)
+{
+    assert(byte_count <= buffer.length);
+    if (byte_count <= buffer.length)
+    {
+#if _WIN32
+        ReadFile(fd, buffer.pointer, cast(u32, u64, byte_count), 0, 0);
+#else
+        syscall_read(fd, buffer.pointer, byte_count);
+#endif
+    }
+}
+
+may_be_unused fn void os_file_close(FileDescriptor fd)
+{
+#if _WIN32
+    CloseHandle(fd);
+#else
+    syscall_close(fd);
 #endif
 }
 
@@ -1629,7 +1728,13 @@ STRUCT(OSReserveMapFlags)
 fn u8* os_reserve(u64 base, u64 size, OSReserveProtectionFlags protection, OSReserveMapFlags map)
 {
 #if _WIN32
-    return (u8*)VirtualAlloc(0, size, MEM_RESERVE, PAGE_READWRITE);
+    DWORD map_flags = 0;
+    map_flags |= (MEM_RESERVE * map.noreserve);
+    DWORD protection_flags = 0;
+    protection_flags |= PAGE_READWRITE * (!protection.write && !protection.read);
+    protection_flags |= PAGE_READWRITE * (protection.write && protection.read);
+    protection_flags |= PAGE_READONLY * (protection.write && !protection.read);
+    return (u8*)VirtualAlloc((void*)base, size, map_flags, protection_flags);
 #else
     int protection_flags = (protection.read * PROT_READ) | (protection.write * PROT_WRITE) | (protection.execute * PROT_EXEC);
     int map_flags = (map.anon * MAP_ANONYMOUS) | (map.priv * MAP_PRIVATE) | (map.noreserve * MAP_NORESERVE);
@@ -1646,6 +1751,16 @@ fn void commit(void* address, u64 size)
 #else
     int result = syscall_mprotect(address, size, PROT_READ | PROT_WRITE);
     assert(result == 0);
+#endif
+}
+
+may_be_unused fn void os_directory_make(String path)
+{
+    assert(path.pointer[path.length] == 0);
+#if _WIN32
+    CreateDirectoryA((char*)path.pointer, 0);
+#else
+    syscall_mkdir(path, 0755);
 #endif
 }
 
@@ -2792,7 +2907,7 @@ may_be_unused fn void print(const char* format, ...)
         }
 
         String final_string = s_get_slice(u8, buffer, 0, buffer_i);
-        os_file_write(stdout_handle, final_string);
+        os_file_write(stdout_get(), final_string);
 #endif
 }
 
@@ -2814,7 +2929,10 @@ static_assert(sizeof(Arena) == 64);
 fn Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size)
 {
     Arena* arena = (Arena*)os_reserve(0, reserved_size,
-            (OSReserveProtectionFlags) {},
+            (OSReserveProtectionFlags) {
+                .read = 1,
+                .write = 1,
+            },
             (OSReserveMapFlags) {
                 .priv = 1,
                 .anon = 1,
@@ -2889,9 +3007,10 @@ may_be_unused fn void arena_reset(Arena* arena)
 
 #define transmute(D, source) *(D*)&source
 
-may_be_unused fn void run_command(CStringSlice arguments, char* envp[])
+may_be_unused fn void run_command(Arena* arena, CStringSlice arguments, char* envp[])
 {
     print("Running command:\n");
+    assert(arguments.length > 0);
     assert(arguments.pointer[arguments.length - 1] == 0);
     for (u32 i = 0; i < arguments.length - 1; i += 1)
     {
@@ -2899,8 +3018,75 @@ may_be_unused fn void run_command(CStringSlice arguments, char* envp[])
         print("{cstr} ", argument);
     }
     print("\n");
-    pid_t pid = syscall_fork();
 
+#if _WIN32
+    auto start_timestamp = timestamp();
+
+    u32 length = 0;
+    for (u32 i = 0; i < arguments.length; i += 1)
+    {
+        auto argument = arguments.pointer[i];
+        if (argument)
+        {
+            auto string_len = strlen(argument);
+            length += cast(u32, u64, string_len + 1);
+        }
+    }
+
+    char* bytes = (char*)arena_allocate_bytes(arena, length, 1);
+    u32 byte_i = 0;
+    for (u32 i = 0; i < arguments.length; i += 1)
+    {
+        auto argument = arguments.pointer[i];
+        if (argument)
+        {
+            auto len = strlen(argument);
+            memcpy(&bytes[byte_i], argument, len);
+            byte_i += len;
+            bytes[byte_i] = ' ';
+            byte_i += 1;
+        }
+    }
+    bytes[byte_i - 1] = 0;
+    auto end_timestamp = timestamp();
+
+    PROCESS_INFORMATION process_information = {};
+    STARTUPINFOA startup_info = {};
+    startup_info.cb = sizeof(startup_info);
+    startup_info.dwFlags |= STARTF_USESTDHANDLES;
+    startup_info.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    startup_info.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+
+    auto handle_inheritance = 1;
+    if (CreateProcessA(0, bytes, 0, 0, handle_inheritance, 0, 0, 0, &startup_info, &process_information))
+    {
+        WaitForSingleObject(process_information.hProcess, INFINITE);
+        CloseHandle(process_information.hProcess);
+        CloseHandle(process_information.hThread);
+    }
+    else
+    {
+        print("Failure\n");
+        auto err = GetLastError();
+        LPSTR lpMsgBuf;
+        DWORD bufSize = FormatMessageA(
+                FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                err,
+                LANG_NEUTRAL, // Use default language
+                (LPSTR)&lpMsgBuf,
+                0,
+                NULL
+                );
+        unused(bufSize);
+        todo();
+    }
+    unused(start_timestamp);
+    unused(end_timestamp);
+    unused(envp);
+#else
+    unused(arena);
+    pid_t pid = syscall_fork();
 
     if (pid == -1)
     {
@@ -2950,7 +3136,6 @@ may_be_unused fn void run_command(CStringSlice arguments, char* envp[])
             print("Program failed to run!\n");
             fail();
         }
-
         auto ms = resolve_timestamp(start_timestamp, end_timestamp, TIME_UNIT_MILLISECONDS);
         auto ticks =
 #if LINK_LIBC
@@ -2961,6 +3146,7 @@ may_be_unused fn void run_command(CStringSlice arguments, char* envp[])
             ;
         print("Command run successfully in {f64} {cstr}\n", ms, ticks ? "ticks" : "ms");
     }
+#endif
 }
 
 #define VirtualBuffer(T) VirtualBuffer_ ## T
@@ -3045,6 +3231,8 @@ may_be_unused fn u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
 #define vb_append_one(a, item) (typeof((a)->pointer)) vb_generic_append((VirtualBuffer(u8)*)(a), &(item), sizeof(*((a)->pointer)), 1)
 #define vb_to_bytes(vb) (Slice(u8)) { .pointer = (u8*)((vb).pointer), .length = sizeof(*((vb).pointer)) * (vb).length, }
 #define vb_ensure_capacity(a, count) vb_generic_ensure_capacity((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
+#define vb_add_array(vb, arr) memcpy(vb_add(vb, sizeof(arr)), arr, sizeof(arr))
+
 
 may_be_unused fn Hash32 hash32_fib_end(Hash32 hash)
 {

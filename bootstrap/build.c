@@ -50,19 +50,21 @@ fn u8 is_debug(OptimizationMode optimization_mode, u8 debug_info)
     return (optimization_mode == O0) & (debug_info != 0);
 }
 
-fn void compile_c(const CompileOptions *const options, char** envp)
+fn void compile_c(Arena* arena, CompileOptions options, char** envp)
 {
     VirtualBufferP(char) argument_stack = {};
     auto* args = &argument_stack;
     char* compiler;
 
-    switch (options->compiler)
+    switch (options.compiler)
     {
     case gcc:
         compiler = "/usr/bin/gcc";
         break;
     case clang:
-#ifdef __APPLE__
+#if _WIN32
+        compiler = "clang";
+#elif defined( __APPLE__)
         compiler = "/opt/homebrew/opt/llvm/bin/clang";
 #else
         compiler = "/usr/bin/clang";
@@ -74,16 +76,16 @@ fn void compile_c(const CompileOptions *const options, char** envp)
 
     *vb_add(args, 1) = compiler;
     // *vb_add(args, 1) = "-E";
-    *vb_add(args, 1) = options->in_path;
+    *vb_add(args, 1) = options.in_path;
     *vb_add(args, 1) = "-o";
-    *vb_add(args, 1) = options->out_path;
+    *vb_add(args, 1) = options.out_path;
 
-    if (options->debug_info)
+    if (options.debug_info)
     {
         *vb_add(args, 1) = "-g3";
     }
 
-    switch (options->optimization_mode)
+    switch (options.optimization_mode)
     {
     case O0:
         *vb_add(args, 1) = "-O0";
@@ -109,7 +111,7 @@ fn void compile_c(const CompileOptions *const options, char** envp)
 
     *vb_add(args, 1) = "-march=native";
 
-    if (options->error_on_warning)
+    if (options.error_on_warning)
     {
         *vb_add(args, 1) = "-Werror";
     }
@@ -134,12 +136,12 @@ fn void compile_c(const CompileOptions *const options, char** envp)
     };
     memcpy(vb_add(args, array_length(general_options)), general_options, sizeof(general_options));
 
-    if (!is_debug(options->optimization_mode, options->debug_info))
+    if (!is_debug(options.optimization_mode, options.debug_info))
     {
         *vb_add(args, 1) = "-DNDEBUG=1";
     }
 
-    if (options->linkage == LINKAGE_STATIC)
+    if (options.linkage == LINKAGE_STATIC)
     {
         char* static_options[] = { "-ffreestanding", "-nostdlib", "-static", "-DSTATIC", "-lgcc" };
         memcpy(vb_add(args, array_length(static_options)), static_options, sizeof(static_options));
@@ -147,7 +149,7 @@ fn void compile_c(const CompileOptions *const options, char** envp)
 
     // *vb_add(args, 1) = "-DSILENT";
 
-    if (options->compiler == clang)
+    if (options.compiler == clang)
     {
         *vb_add(args, 1) = "-MJ";
         *vb_add(args, 1) = build_dir "/" "compile_commands.json";
@@ -155,7 +157,7 @@ fn void compile_c(const CompileOptions *const options, char** envp)
 
     *vb_add(args, 1) = 0;
 
-    run_command((CStringSlice) { .pointer = args->pointer, .length = args->length }, envp);
+    run_command(arena, (CStringSlice) { .pointer = args->pointer, .length = args->length }, envp);
 }
 
 typedef enum CompilerBackend
@@ -167,9 +169,9 @@ typedef enum CompilerBackend
 } CompilerBackend;
 declare_slice(CompilerBackend);
 
-fn void compile_and_run(const CompileOptions* const options, char** envp, CompilerBackend compiler_backend, u8 debug, char* nest_source_path)
+fn void compile_and_run(Arena* arena, CompileOptions options, char** envp, CompilerBackend compiler_backend, u8 debug, char* nest_source_path)
 {
-    compile_c(options, envp);
+    compile_c(arena, options, envp);
     CStringSlice args = {};
     char* compiler_backend_string;
     switch (compiler_backend)
@@ -188,14 +190,20 @@ fn void compile_and_run(const CompileOptions* const options, char** envp, Compil
     }
 
 #define common_compile_and_run_args \
-                options->out_path, \
+                options.out_path, \
                 nest_source_path, \
                 compiler_backend_string, \
                 0,
 
     if (debug)
     {
-#ifdef __linux__
+#if _WIN32
+        args = (CStringSlice) array_to_slice(((char*[]){ 
+            "C:\\Users\\David\\Downloads\\remedybg_0_4_0_7\\remedybg.exe",
+            "-g",
+            common_compile_and_run_args 
+        }));
+#elif defined(__linux__)
         args = (CStringSlice) array_to_slice(((char*[]){ 
             "/home/david/source/gf/gf2",
             "-ex",
@@ -222,7 +230,7 @@ fn void compile_and_run(const CompileOptions* const options, char** envp, Compil
         }));
     }
 
-    run_command(args, envp);
+    run_command(arena, args, envp);
 }
 
 typedef enum Command : u8
@@ -298,16 +306,20 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
             print("TESTS (linkage={s}, optimization={s})\n", linkage_string, optimization_string);
             print("===========================\n\n");
 
-            String compiler_path = arena_join_string(arena, ((Slice(String)) array_to_slice(((String[]){
-                strlit(build_dir "/" "nest"),
+            String compiler_path_split[] = {
+                strlit("./" build_dir "/" "nest"),
                 strlit("_"),
                 optimization_string,
                 strlit("_"),
                 linkage_string,
-            }))));
+#if _WIN32
+                strlit(".exe"),
+#endif
+            };
+            String compiler_path = arena_join_string(arena, ((Slice(String)) array_to_slice(compiler_path_split)));
             compile_options.out_path = string_to_c(compiler_path);
 
-            compile_c(&compile_options, envp);
+            compile_c(arena, compile_options, envp);
 
             print("\n===========================\n");
             print("COMPILER BUILD [OK]\n");
@@ -346,19 +358,23 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
                         0,
                     };
 
-                    run_command((CStringSlice) array_to_slice(arguments), envp);
+                    run_command(arena, (CStringSlice) array_to_slice(arguments), envp);
 
                     if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
                     {
-                        String out_program = arena_join_string(arena, ((Slice(String)) array_to_slice(((String[]){
-                                            strlit(nest_dir "/"),
-                                            test_name,
-                                            }))));
+                        String path_split[] = {
+                            strlit("./" nest_dir "/"),
+                            test_name,
+#if _WIN32
+                            strlit(".exe"),
+#endif
+                        };
+                        String out_program = arena_join_string(arena, ((Slice(String)) array_to_slice(path_split)));
                         char* run_arguments[] = {
                             string_to_c(out_program),
                             0,
                         };
-                        run_command((CStringSlice) array_to_slice(run_arguments), envp);
+                        run_command(arena, (CStringSlice) array_to_slice(run_arguments), envp);
                     }
                 }
             }
@@ -373,6 +389,8 @@ fn void entry_point(int argc, char* argv[], char* envp[])
         print("Expected some arguments\n");
         fail();
     }
+
+    Arena* arena = arena_init_default(KB(64));
 
     CompilerBackend preferred_compiler_backend = COMPILER_BACKEND_COUNT;
     Command command = COMMAND_COUNT;
@@ -418,7 +436,16 @@ fn void entry_point(int argc, char* argv[], char* envp[])
     {
         auto* c_argument = argv[index];
         auto argument = cstr(c_argument);
-        String expected_starts[] = { strlit("tests/"), strlit("src/") };
+        String expected_starts[] = {
+            strlit("tests/"),
+            strlit("tests\\"),
+            strlit("./tests/"),
+            strlit(".\\tests\\"),
+            strlit("src/"),
+            strlit("src\\"),
+            strlit("./src/"),
+            strlit(".\\src\\"),
+        };
 
         for (u32 i = 0; i < array_length(expected_starts); i += 1)
         {
@@ -450,7 +477,7 @@ fn void entry_point(int argc, char* argv[], char* envp[])
     {
         if (preferred_compiler_backend == COMPILER_BACKEND_COUNT)
         {
-            preferred_compiler_backend = COMPILER_BACKEND_INTERPRETER;
+            preferred_compiler_backend = COMPILER_BACKEND_MACHINE;
         }
     }
 
@@ -465,9 +492,19 @@ fn void entry_point(int argc, char* argv[], char* envp[])
         // Test always with dynamic linkage because it's more trustworthy
         Linkage linkage = LINKAGE_DYNAMIC;
 
-        compile_and_run(&(CompileOptions) {
+        compile_and_run(arena, (CompileOptions) {
             .in_path = compiler_source_path,
-            .out_path = linkage == LINKAGE_DYNAMIC ? (build_dir "/" "nest_O0_dynamic") : (build_dir "/" "nest_O0_static"),
+            .out_path = linkage == LINKAGE_DYNAMIC ? (
+                    build_dir "/" "nest_O0_dynamic"
+#if _WIN32
+                        ".exe"
+#endif
+                    ) : (
+                        build_dir "/" "nest_O0_static"
+#if _WIN32
+                        ".exe"
+#endif
+                        ),
             .compiler = default_compiler,
             .debug_info = 1,
             .error_on_warning = 0,
@@ -477,7 +514,6 @@ fn void entry_point(int argc, char* argv[], char* envp[])
         break;
     case COMMAND_RUN_TESTS:
         {
-            Arena* arena = arena_init_default(KB(64));
             Linkage all_linkages[] = {
                 LINKAGE_DYNAMIC,
 #ifdef __linux__
@@ -513,9 +549,7 @@ fn void entry_point(int argc, char* argv[], char* envp[])
             CompilerBackend all_compiler_backends[] = {
                 // COMPILER_BACKEND_INTERPRETER,
                 // COMPILER_BACKEND_C,
-#ifdef __linux__
                 COMPILER_BACKEND_MACHINE,
-#endif
             };
 
             Slice(Linkage) linkage_selection;
@@ -557,7 +591,7 @@ fn void entry_point(int argc, char* argv[], char* envp[])
             }, envp);
         } break;
     case COMMAND_COMPILE:
-        compile_c(&(CompileOptions) {
+        compile_c(arena, (CompileOptions) {
             .in_path = compiler_source_path,
             .out_path = build_dir "/" "nest_O0_static",
             .compiler = default_compiler,
