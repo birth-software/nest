@@ -365,11 +365,11 @@ typedef enum ElfProgramHeaderType : u32
     PT_SHLIB = 5,
     PT_PHDR = 6,
     PT_TLS = 7,
-    PT_GNU_EH_FRAME	= 0x6474e550, /* GCC .eh_frame_hdr segment */
-    PT_GNU_STACK	= 0x6474e551, /* Indicates stack executability */
-    PT_GNU_RELRO	= 0x6474e552, /* Read-only after relocation */
-    PT_GNU_PROPERTY	= 0x6474e553, /* GNU property */
-    PT_GNU_SFRAME	= 0x6474e554, /* SFrame segment.  */
+    PT_GNU_EH_FRAME = 0x6474e550, /* GCC .eh_frame_hdr segment */
+    PT_GNU_STACK = 0x6474e551, /* Indicates stack executability */
+    PT_GNU_RELRO = 0x6474e552, /* Read-only after relocation */
+    PT_GNU_PROPERTY = 0x6474e553, /* GNU property */
+    PT_GNU_SFRAME = 0x6474e554, /* SFrame segment.  */
 } ElfProgramHeaderType;
 
 STRUCT(ElfProgramHeaderFlags)
@@ -7960,10 +7960,13 @@ STRUCT(SymbolRelocation)
 };
 decl_vb(SymbolRelocation);
 
-may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
+STRUCT(FileBuffer)
 {
-    unused(thread);
+    VirtualBuffer(u8) buffer;
+};
 
+may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
+{
     ELFBuilder builder_stack = {};
     ELFBuilder* restrict builder = &builder_stack;
     // Initialization
@@ -8595,14 +8598,14 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
             0x48, 0x83, 0xC4, 0x08,
             0xC3, 
         };
-        // 1000:	f3 0f 1e fa          	endbr64
-        // 1004:	48 83 ec 08          	sub    rsp,0x8
-        // 1008:	48 8b 05 c1 2f 00 00 	mov    rax,QWORD PTR [rip+0x2fc1]        # 3fd0 <__gmon_start__@Base>
-        // 100f:	48 85 c0             	test   rax,rax
-        // 1012:	74 02                	je     1016 <_init+0x16>
-        // 1014:	ff d0                	call   rax
-        // 1016:	48 83 c4 08          	add    rsp,0x8
-        // 101a:	c3                   	ret
+        // 1000: f3 0f 1e fa           endbr64
+        // 1004: 48 83 ec 08           sub    rsp,0x8
+        // 1008: 48 8b 05 c1 2f 00 00  mov    rax,QWORD PTR [rip+0x2fc1]        # 3fd0 <__gmon_start__@Base>
+        // 100f: 48 85 c0              test   rax,rax
+        // 1012: 74 02                 je     1016 <_init+0x16>
+        // 1014: ff d0                 call   rax
+        // 1016: 48 83 c4 08           add    rsp,0x8
+        // 101a: c3                    ret
 
         *vb_add(&symbol_relocations, 1) = (SymbolRelocation){
             .name = strlit("__gmon_start__"),
@@ -8679,19 +8682,19 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                         .offset = offset + 0x1f + 2,
                     };
 
-                    // 1020:	f3 0f 1e fa          	endbr64
-                    // 1024:	31 ed                	xor    ebp,ebp
-                    // 1026:	49 89 d1             	mov    r9,rdx
-                    // 1029:	5e                   	pop    rsi
-                    // 102a:	48 89 e2             	mov    rdx,rsp
-                    // 102d:	48 83 e4 f0          	and    rsp,0xfffffffffffffff0
-                    // 1031:	50                   	push   rax
-                    // 1032:	54                   	push   rsp
-                    // 1033:	45 31 c0             	xor    r8d,r8d
-                    // 1036:	31 c9                	xor    ecx,ecx
-                    // 1038:	48 8d 3d dd 00 00 00 	lea    rdi,[rip+0xdd]        # 111c <main>
-                    // 103f:	ff 15 7b 2f 00 00    	call   QWORD PTR [rip+0x2f7b]        # 3fc0 <__libc_start_main@GLIBC_2.34>
-                    // 1045:	f4                   	hlt
+                    // 1020: f3 0f 1e fa           endbr64
+                    // 1024: 31 ed                 xor    ebp,ebp
+                    // 1026: 49 89 d1              mov    r9,rdx
+                    // 1029: 5e                    pop    rsi
+                    // 102a: 48 89 e2              mov    rdx,rsp
+                    // 102d: 48 83 e4 f0           and    rsp,0xfffffffffffffff0
+                    // 1031: 50                    push   rax
+                    // 1032: 54                    push   rsp
+                    // 1033: 45 31 c0              xor    r8d,r8d
+                    // 1036: 31 c9                 xor    ecx,ecx
+                    // 1038: 48 8d 3d dd 00 00 00  lea    rdi,[rip+0xdd]        # 111c <main>
+                    // 103f: ff 15 7b 2f 00 00     call   QWORD PTR [rip+0x2f7b]        # 3fc0 <__libc_start_main@GLIBC_2.34>
+                    // 1045: f4                    hlt
 
                     _start_size = sizeof(data);
                     memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
@@ -8734,17 +8737,17 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .offset = offset + 0x63 - 0x20 + 3,
             };
 
-            // 1050:	48 8d 3d b9 2f 00 00 	lea    rdi,[rip+0x2fb9]        # 4010 <__TMC_END__>
-            // 1057:	48 8d 05 b2 2f 00 00 	lea    rax,[rip+0x2fb2]        # 4010 <__TMC_END__>
-            // 105e:	48 39 f8             	cmp    rax,rdi
-            // 1061:	74 15                	je     1078 <_start+0x58>
-            // 1063:	48 8b 05 5e 2f 00 00 	mov    rax,QWORD PTR [rip+0x2f5e]        # 3fc8 <_ITM_deregisterTMCloneTable@Base>
-            // 106a:	48 85 c0             	test   rax,rax
-            // 106d:	74 09                	je     1078 <_start+0x58>
-            // 106f:	ff e0                	jmp    rax
-            // 1071:	0f 1f 80 00 00 00 00 	nop    DWORD PTR [rax+0x0]
-            // 1078:	c3                   	ret
-            // 1079:	0f 1f 80 00 00 00 00 	nop    DWORD PTR [rax+0x0]
+            // 1050: 48 8d 3d b9 2f 00 00  lea    rdi,[rip+0x2fb9]        # 4010 <__TMC_END__>
+            // 1057: 48 8d 05 b2 2f 00 00  lea    rax,[rip+0x2fb2]        # 4010 <__TMC_END__>
+            // 105e: 48 39 f8              cmp    rax,rdi
+            // 1061: 74 15                 je     1078 <_start+0x58>
+            // 1063: 48 8b 05 5e 2f 00 00  mov    rax,QWORD PTR [rip+0x2f5e]        # 3fc8 <_ITM_deregisterTMCloneTable@Base>
+            // 106a: 48 85 c0              test   rax,rax
+            // 106d: 74 09                 je     1078 <_start+0x58>
+            // 106f: ff e0                 jmp    rax
+            // 1071: 0f 1f 80 00 00 00 00  nop    DWORD PTR [rax+0x0]
+            // 1078: c3                    ret
+            // 1079: 0f 1f 80 00 00 00 00  nop    DWORD PTR [rax+0x0]
 
             memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
         }
@@ -8770,22 +8773,22 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .offset = offset + 0xa4 - 0x20 + 3,
             };
 
-            // 1080:	48 8d 3d 89 2f 00 00 	lea    rdi,[rip+0x2f89]        # 4010 <__TMC_END__>
-            // 1087:	48 8d 35 82 2f 00 00 	lea    rsi,[rip+0x2f82]        # 4010 <__TMC_END__>
-            // 108e:	48 29 fe             	sub    rsi,rdi
-            // 1091:	48 89 f0             	mov    rax,rsi
-            // 1094:	48 c1 ee 3f          	shr    rsi,0x3f
-            // 1098:	48 c1 f8 03          	sar    rax,0x3
-            // 109c:	48 01 c6             	add    rsi,rax
-            // 109f:	48 d1 fe             	sar    rsi,1
-            // 10a2:	74 14                	je     10b8 <_start+0x98>
-            // 10a4:	48 8b 05 2d 2f 00 00 	mov    rax,QWORD PTR [rip+0x2f2d]        # 3fd8 <_ITM_registerTMCloneTable@Base>
-            // 10ab:	48 85 c0             	test   rax,rax
-            // 10ae:	74 08                	je     10b8 <_start+0x98>
-            // 10b0:	ff e0                	jmp    rax
-            // 10b2:	66 0f 1f 44 00 00    	nop    WORD PTR [rax+rax*1+0x0]
-            // 10b8:	c3                   	ret
-            // 10b9:	0f 1f 80 00 00 00 00 	nop    DWORD PTR [rax+0x0]
+            // 1080: 48 8d 3d 89 2f 00 00  lea    rdi,[rip+0x2f89]        # 4010 <__TMC_END__>
+            // 1087: 48 8d 35 82 2f 00 00  lea    rsi,[rip+0x2f82]        # 4010 <__TMC_END__>
+            // 108e: 48 29 fe              sub    rsi,rdi
+            // 1091: 48 89 f0              mov    rax,rsi
+            // 1094: 48 c1 ee 3f           shr    rsi,0x3f
+            // 1098: 48 c1 f8 03           sar    rax,0x3
+            // 109c: 48 01 c6              add    rsi,rax
+            // 109f: 48 d1 fe              sar    rsi,1
+            // 10a2: 74 14                 je     10b8 <_start+0x98>
+            // 10a4: 48 8b 05 2d 2f 00 00  mov    rax,QWORD PTR [rip+0x2f2d]        # 3fd8 <_ITM_registerTMCloneTable@Base>
+            // 10ab: 48 85 c0              test   rax,rax
+            // 10ae: 74 08                 je     10b8 <_start+0x98>
+            // 10b0: ff e0                 jmp    rax
+            // 10b2: 66 0f 1f 44 00 00     nop    WORD PTR [rax+rax*1+0x0]
+            // 10b8: c3                    ret
+            // 10b9: 0f 1f 80 00 00 00 00  nop    DWORD PTR [rax+0x0]
 
             memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
         }
@@ -8836,26 +8839,26 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 .extra_bytes = 1,
             };
 
-            // 10c0:	f3 0f 1e fa          	endbr64
-            // 10c4:	80 3d 45 2f 00 00 00 	cmp    BYTE PTR [rip+0x2f45],0x0        # 4010 <__TMC_END__>
-            // 10cb:	75 33                	jne    1100 <_start+0xe0>
-            // 10cd:	55                   	push   rbp
-            // 10ce:	48 83 3d 0a 2f 00 00 	cmp    QWORD PTR [rip+0x2f0a],0x0        # 3fe0 <__cxa_finalize@GLIBC_2.2.5>
-            // 10d5:	00 
-            // 10d6:	48 89 e5             	mov    rbp,rsp
-            // 10d9:	74 0d                	je     10e8 <_start+0xc8>
-            // 10db:	48 8b 3d 26 2f 00 00 	mov    rdi,QWORD PTR [rip+0x2f26]        # 4008 <__dso_handle>
-            // 10e2:	ff 15 f8 2e 00 00    	call   QWORD PTR [rip+0x2ef8]        # 3fe0 <__cxa_finalize@GLIBC_2.2.5>
-            // 10e8:	e8 63 ff ff ff       	call   1050 <_start+0x30>
-            // 10ed:	c6 05 1c 2f 00 00 01 	mov    BYTE PTR [rip+0x2f1c],0x1        # 4010 <__TMC_END__>
-            // 10f4:	5d                   	pop    rbp
-            // 10f5:	c3                   	ret
-            // 10f6:	66 2e 0f 1f 84 00 00 	cs nop WORD PTR [rax+rax*1+0x0]
-            // 10fd:	00 00 00 
-            // 1100:	c3                   	ret
-            // 1101:	66 66 2e 0f 1f 84 00 	data16 cs nop WORD PTR [rax+rax*1+0x0]
-            // 1108:	00 00 00 00 
-            // 110c:	0f 1f 40 00          	nop    DWORD PTR [rax+0x0]
+            // 10c0: f3 0f 1e fa           endbr64
+            // 10c4: 80 3d 45 2f 00 00 00  cmp    BYTE PTR [rip+0x2f45],0x0        # 4010 <__TMC_END__>
+            // 10cb: 75 33                 jne    1100 <_start+0xe0>
+            // 10cd: 55                    push   rbp
+            // 10ce: 48 83 3d 0a 2f 00 00  cmp    QWORD PTR [rip+0x2f0a],0x0        # 3fe0 <__cxa_finalize@GLIBC_2.2.5>
+            // 10d5: 00 
+            // 10d6: 48 89 e5              mov    rbp,rsp
+            // 10d9: 74 0d                 je     10e8 <_start+0xc8>
+            // 10db: 48 8b 3d 26 2f 00 00  mov    rdi,QWORD PTR [rip+0x2f26]        # 4008 <__dso_handle>
+            // 10e2: ff 15 f8 2e 00 00     call   QWORD PTR [rip+0x2ef8]        # 3fe0 <__cxa_finalize@GLIBC_2.2.5>
+            // 10e8: e8 63 ff ff ff        call   1050 <_start+0x30>
+            // 10ed: c6 05 1c 2f 00 00 01  mov    BYTE PTR [rip+0x2f1c],0x1        # 4010 <__TMC_END__>
+            // 10f4: 5d                    pop    rbp
+            // 10f5: c3                    ret
+            // 10f6: 66 2e 0f 1f 84 00 00  cs nop WORD PTR [rax+rax*1+0x0]
+            // 10fd: 00 00 00 
+            // 1100: c3                    ret
+            // 1101: 66 66 2e 0f 1f 84 00  data16 cs nop WORD PTR [rax+rax*1+0x0]
+            // 1108: 00 00 00 00 
+            // 110c: 0f 1f 40 00           nop    DWORD PTR [rax+0x0]
 
             memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
         }
@@ -8868,9 +8871,9 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
                 0x0F, 0x1F, 0x00,
             };
 
-            // 1110:	f3 0f 1e fa          	endbr64
-            // 1114:	e9 67 ff ff ff       	jmp    1080 <_start+0x60>
-            // 1119:	0f 1f 00             	nop    DWORD PTR [rax]
+            // 1110: f3 0f 1e fa           endbr64
+            // 1114: e9 67 ff ff ff        jmp    1080 <_start+0x60>
+            // 1119: 0f 1f 00              nop    DWORD PTR [rax]
 
             memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
         }
@@ -8920,10 +8923,10 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
             0xC3,
         };
 
-        // 1120:	f3 0f 1e fa          	endbr64
-        // 1124:	48 83 ec 08          	sub    rsp,0x8
-        // 1128:	48 83 c4 08          	add    rsp,0x8
-        // 112c:	c3                   	ret
+        // 1120: f3 0f 1e fa           endbr64
+        // 1124: 48 83 ec 08           sub    rsp,0x8
+        // 1128: 48 83 c4 08           add    rsp,0x8
+        // 112c: c3                    ret
 
         u32 size = sizeof(data);
         memcpy(vb_add(&builder->file, size), data, size);
@@ -10672,17 +10675,7 @@ may_be_unused fn void write_elf(Thread* thread, ObjectOptions options)
 
     assert(dynamic_relocation_count == expected_dynamic_relocation_count);
 
-    {
-        auto fd = os_file_open(options.exe_path, (OSFileOpenFlags) {
-            .write = 1,
-            .truncate = 1,
-            .create = 1,
-            .executable = 1,
-        });
-        assert(os_file_descriptor_is_valid(fd));
-        os_file_write(fd, (String) { builder->file.pointer, builder->file.length });
-        os_file_close(fd);
-    }
+    return (String) { builder->file.pointer, builder->file.length };
 }
 
 STRUCT(DOSHeader)
@@ -10909,7 +10902,7 @@ fn COFFSectionName coff_section_name(String name)
     return result;
 }
 
-may_be_unused fn void write_pe(Thread* thread, ObjectOptions options)
+may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 {
     VirtualBuffer(u8) file = {};
     auto* mz = "MZ";
@@ -11138,36 +11131,7 @@ may_be_unused fn void write_pe(Thread* thread, ObjectOptions options)
     unused(thread);
 #endif
 
-    {
-        auto fd = os_file_open(options.exe_path, (OSFileOpenFlags) {
-            .write = 1,
-            .truncate = 1,
-            .create = 1,
-            .executable = 1,
-        });
-#if _WIN32
-        if (!os_file_descriptor_is_valid(fd))
-        {
-            auto err = GetLastError();
-            LPSTR lpMsgBuf;
-            DWORD bufSize = FormatMessageA(
-                    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                    NULL,
-                    err,
-                    LANG_NEUTRAL, // Use default language
-                    (LPSTR)&lpMsgBuf,
-                    0,
-                    NULL
-                    );
-            unused(bufSize);
-            print("Error opening file \"{s}\": {cstr}\n", options.exe_path, lpMsgBuf);
-            fail();
-        }
-#endif
-        assert(os_file_descriptor_is_valid(fd));
-        os_file_write(fd, (String) { file.pointer, file.length });
-        os_file_close(fd);
-    }
+    return (String){ file.pointer, file.length };
 }
 
 fn void subsume_node_without_killing(Thread* thread, NodeIndex old_node_index, NodeIndex new_node_index)
@@ -13378,12 +13342,512 @@ fn u8 operand_equal(MachineOperand a, MachineOperand b)
     return (a.id == MACHINE_OPERAND_GPR || a.id == MACHINE_OPERAND_XMM) ? a.register_value == b.register_value : 0;
 }
 
-may_be_unused fn void write_macho(Thread* restrict thread, const ObjectOptions * const restrict options, char** envp)
+typedef enum MachOCpuType : u32
+{
+    MACHO_CPU_X86 = 7,
+    MACHO_CPU_ARM = 12,
+    MACHO_CPU_X86_64 = MACHO_CPU_X86 | 0x1000000,
+    MACHO_CPU_ARM64 = MACHO_CPU_ARM | 0x1000000,
+    MACHO_CPU_ANY = 0xffffffff,
+} MachOCpuType;
+
+typedef enum MachOFileType : u32
+{
+    MACHO_FILE_OBJECT = 1,
+    MACHO_FILE_EXECUTABLE = 2,
+    MACHO_FILE_FVM_LIB = 3,
+    MACHO_FILE_CORE = 4,
+    MACHO_FILE_PRELOAD = 5,
+    MACHO_FILE_DYLIB = 6,
+    MACHO_FILE_DYLINKER = 7,
+    MACHO_FILE_BUNDLE = 8,
+    MACHO_FILE_DYLIB_STUB = 9,
+    MACHO_FILE_DSYM = 10,
+    MACHO_FILE_KEXT_BUNDLE = 11,
+} MachOFileType;
+
+STRUCT(MachOFlags)
+{
+    u32 no_undefined:1;
+    u32 incremental_link:1;
+    u32 dyld_link:1;
+    u32 binary_data_load:1;
+    u32 prebound:1;
+    u32 split_segments:1;
+    u32 lazy_init:1;
+    u32 two_level:1;
+    u32 force_flat:1;
+    u32 no_multi_definitions:1;
+    u32 no_fix_prebinding:1;
+    u32 prebindable:1;
+    u32 all_mods_bound:1;
+    u32 sub_sections_via_symbols:1;
+    u32 canonical:1;
+    u32 weak_defines:1;
+    u32 binds_to_weak:1;
+    u32 allow_stack_execution:1;
+    u32 root_safe:1;
+    u32 setuid_safe:1;
+    u32 no_reexported_dylibs:1;
+    u32 pie:1;
+    u32 dead_strippable_dylib:1;
+    u32 has_tlv_descriptors:1;
+    u32 no_heap_execution:1;
+    u32 app_extension_safe:1;
+    u32 n_list_out_of_sync_with_dyldinof:1;
+    u32 simulator_support:1;
+    u32 padding:3;
+    u32 dyld_cache:1;
+};
+
+static_assert(sizeof(MachOFlags) == sizeof(u32));
+
+STRUCT(MachOHeader)
+{
+    u32 magic;
+    MachOCpuType cpu_type;
+    u32 sub_cpu_type:24;
+    u32 padding:7;
+    u32 lib64:1;
+    MachOFileType file_type;
+    u32 command_count;
+    u32 command_total_size;
+    MachOFlags flags;
+    u32 reserved;
+};
+
+static_assert(sizeof(MachOHeader) == 0x20);
+
+typedef enum MachOLoadCommandId : u32
+{
+    LC_SEGMENT = 0x00000001,
+    LC_SYMTAB = 0x00000002,
+    LC_SYMSEG = 0x00000003,
+    LC_THREAD = 0x00000004,
+    LC_UNIXTHREAD = 0x00000005,
+    LC_LOADFVMLIB = 0x00000006,
+    LC_IDFVMLIB = 0x00000007,
+    LC_IDENT = 0x00000008,
+    LC_FVMFILE = 0x00000009,
+    LC_PREPAGE = 0x0000000A,
+    LC_DYSYMTAB = 0x0000000B,
+    LC_LOAD_DYLIB = 0x0000000C,
+    LC_ID_DYLIB = 0x0000000D,
+    LC_LOAD_DYLINKER = 0x0000000E,
+    LC_ID_DYLINKER = 0x0000000F,
+    LC_PREBOUND_DYLIB = 0x00000010,
+    LC_ROUTINES = 0x00000011,
+    LC_SUB_FRAMEWORK = 0x00000012,
+    LC_SUB_UMBRELLA = 0x00000013,
+    LC_SUB_CLIENT = 0x00000014,
+    LC_SUB_LIBRARY = 0x00000015,
+    LC_TWOLEVEL_HINTS = 0x00000016,
+    LC_PREBIND_CKSUM = 0x00000017,
+    LC_LOAD_WEAK_DYLIB = 0x80000018,
+    LC_SEGMENT_64 = 0x00000019,
+    LC_ROUTINES_64 = 0x0000001A,
+    LC_UUID = 0x0000001B,
+    LC_RPATH = 0x8000001C,
+    LC_CODE_SIGNATURE = 0x0000001D,
+    LC_SEGMENT_SPLIT_INFO = 0x0000001E,
+    LC_REEXPORT_DYLIB = 0x8000001F,
+    LC_LAZY_LOAD_DYLIB = 0x00000020,
+    LC_ENCRYPTION_INFO = 0x00000021,
+    LC_DYLD_INFO = 0x00000022,
+    LC_DYLD_INFO_ONLY = 0x80000022,
+    LC_LOAD_UPWARD_DYLIB = 0x80000023,
+    LC_VERSION_MIN_MACOSX = 0x00000024,
+    LC_VERSION_MIN_IPHONEOS = 0x00000025,
+    LC_FUNCTION_STARTS = 0x00000026,
+    LC_DYLD_ENVIRONMENT = 0x00000027,
+    LC_MAIN = 0x80000028,
+    LC_DATA_IN_CODE = 0x00000029,
+    LC_SOURCE_VERSION = 0x0000002A,
+    LC_DYLIB_CODE_SIGN_DRS = 0x0000002B,
+    LC_ENCRYPTION_INFO_64 = 0x0000002C,
+    LC_LINKER_OPTION = 0x0000002D,
+    LC_LINKER_OPTIMIZATION_HINT = 0x0000002E,
+    LC_VERSION_MIN_TVOS = 0x0000002F,
+    LC_VERSION_MIN_WATCHOS = 0x00000030,
+    LC_NOTE = 0x00000031,
+    LC_BUILD_VERSION = 0x00000032,
+    LC_DYLD_EXPORTS_TRIE = 0x80000033,
+    LC_DYLD_CHAINED_FIXUPS = 0x80000034,
+    LC_FILESET_ENTRY = 0x80000035,
+    LC_ATOM_INFO = 0x00000036,
+} MachOLoadCommandId;
+
+STRUCT(MachOName16)
+{
+    u8 name[16];
+};
+
+fn MachOName16 macho_name16(String string)
+{
+    MachOName16 result = {};
+    assert(string.length <= array_length(result.name));
+    memcpy(result.name, string.pointer, string.length);
+
+    return result;
+}
+
+STRUCT(MachOSegment)
+{
+    MachOName16 name;
+    u64 memory_address;
+    u64 memory_size;
+    u64 file_offset;
+    u64 file_size;
+    u32 max_protection;
+    u32 initial_protection;
+    u32 section_count;
+    u32 flags;
+};
+static_assert(sizeof(MachOSegment) == 64);
+
+STRUCT(MachOCommand)
+{
+    MachOLoadCommandId id;
+    u32 command_size;
+};
+static_assert(sizeof(MachOCommand) == 8);
+
+STRUCT(MachOSection)
+{
+    MachOName16 section_name;
+    MachOName16 segment_name;
+    u64 address;
+    u64 size;
+    u32 offset;
+    u32 alignment;
+    u32 relocation_offset;
+    u32 relocation_count;
+    u32 flags;
+    u8 reserved[12];
+};
+static_assert(sizeof(MachOSection) == 0x50);
+
+#define vb_copy_struct(vb, s) *vb_add_struct(&file, typeof(s)) = s
+
+may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions options)
 {
     unused(thread);
     unused(options);
-    unused(envp);
-    todo();
+    VirtualBuffer(u8) file = {};
+    MachOHeader header = {
+        .magic = 0xfeedfacf,
+        .cpu_type = MACHO_CPU_ARM64,
+        .file_type = MACHO_FILE_EXECUTABLE,
+        .command_count = 15,
+        .command_total_size = 688,
+        .flags = {
+            .no_undefined = 1, 
+            .dyld_link = 1,
+            .two_level = 1,
+            .pie = 1,
+        },
+    };
+    vb_copy_struct(&file, header);
+
+    MachOCommand page_zero_command = {
+        .id = LC_SEGMENT_64,
+        .command_size = sizeof(MachOCommand) + sizeof(MachOSegment),
+    };
+    vb_copy_struct(&file, page_zero_command);
+
+    MachOSegment page_zero_segment = {
+        .name = macho_name16(strlit("__PAGEZERO")),
+        .memory_size = GB(4),
+    };
+    vb_copy_struct(&file, page_zero_segment);
+
+    MachOCommand text_command = {
+        .id = LC_SEGMENT_64,
+        .command_size = 232,
+    };
+    vb_copy_struct(&file, text_command);
+
+    MachOSection text_section = {
+        .section_name = macho_name16(strlit("__text")),
+        .segment_name = macho_name16(strlit("__TEXT")),
+        .address = 0x100003fa0,
+        .size = 8,
+        .offset = 16288,
+        .alignment = 2,
+        .relocation_offset = 0,
+        .relocation_count = 0,
+        .flags = 0x80000400,
+    };
+
+    MachOSection unwind_info_section = {
+        .section_name = macho_name16(strlit("__unwind_info")),
+        .segment_name = macho_name16(strlit("__TEXT")),
+        .address = 0x100003fa8,
+        .size = 88,
+        .offset = 16296,
+        .alignment = 2,
+        .relocation_offset = 0,
+        .relocation_count = 0,
+        .flags = 0,
+    };
+
+    MachOSegment text_segment = {
+        .name = macho_name16(strlit("__TEXT")),
+        .memory_address = GB(4),
+        .memory_size = KB(16),
+        .file_offset = 0,
+        .file_size = KB(16),
+        .max_protection = 5,
+        .initial_protection = 5,
+        .section_count = 2,
+        .flags = 0,
+    };
+
+    vb_copy_struct(&file, text_segment);
+
+    assert(file.length == 0xb0);
+    vb_copy_struct(&file, text_section);
+    vb_align(&file, 0x10);
+    vb_copy_struct(&file, unwind_info_section);
+
+    MachOCommand linkedit_command = {
+        .id = LC_SEGMENT_64,
+        .command_size = sizeof(MachOCommand) + sizeof(MachOSegment),
+    };
+    vb_copy_struct(&file, linkedit_command);
+
+    MachOSegment linkedit_segment = {
+        .name = macho_name16(strlit("__LINKEDIT")),
+        .memory_address = 0x100004000,
+        .memory_size = KB(16),
+        .file_offset = KB(16),
+        .file_size = 688,
+        .max_protection = 1,
+        .initial_protection = 1,
+        .section_count = 0,
+        .flags = 0,
+    };
+    vb_copy_struct(&file, linkedit_segment);
+
+    MachOCommand chained_fixups_command = {
+        .id = LC_DYLD_CHAINED_FIXUPS,
+        .command_size = 16,
+    };
+    vb_copy_struct(&file, chained_fixups_command);
+
+    {
+        u8 blob[] = { 0x00, 0x40, 0x00, 0x00, 0x38, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand exports_trie_command = {
+        .id = LC_DYLD_EXPORTS_TRIE,
+        .command_size = 16,
+    };
+    vb_copy_struct(&file, exports_trie_command);
+
+    {
+        u8 blob[] = { 0x38, 0x40, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand symtab_command = {
+        .id = LC_SYMTAB,
+        .command_size = 24,
+    };
+    vb_copy_struct(&file, symtab_command);
+
+    {
+        u8 blob[] = { 0x70, 0x40, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, 0x20, 0x41, 0x00, 0x00, 0x68, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand dysymtab_command = {
+        .id = LC_DYSYMTAB,
+        .command_size = 80,
+    };
+    vb_copy_struct(&file, dysymtab_command);
+
+    {
+        u8 blob[] = {
+            0x00, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+            0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand load_dylinker_command = {
+        .id = LC_LOAD_DYLINKER,
+        .command_size = 32,
+    };
+    vb_copy_struct(&file, load_dylinker_command);
+
+    { 
+        u8 blob[] = { 0x0C, 0x00, 0x00, 0x00, 0x2F, 0x75, 0x73, 0x72, 0x2F, 0x6C, 0x69, 0x62, 0x2F, 0x64, 0x79, 0x6C, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand uuid_command = {
+        .id = LC_UUID,
+        .command_size = 24,
+    };
+    vb_copy_struct(&file, uuid_command);
+
+    {
+        u8 uuid[] = { 0x9C, 0x6F, 0xC9, 0x12, 0xED, 0x7F, 0x39, 0x3A, 0x99, 0xA7, 0x93, 0x4B, 0xF6, 0xD1, 0x4D, 0xA1, };
+        vb_add_array(&file, uuid);
+    }
+
+    MachOCommand build_version_command = {
+        .id = LC_BUILD_VERSION,
+        .command_size = 32,
+    };
+    vb_copy_struct(&file, build_version_command);
+
+    {
+        u8 blob[] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x03, 0x07, 0x5B, 0x04, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand source_version_command = {
+        .id = LC_SOURCE_VERSION,
+        .command_size = 16,
+    };
+    vb_copy_struct(&file, source_version_command);
+
+    {
+        u8 blob[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand main_command = {
+        .id = LC_MAIN,
+        .command_size = 24,
+    };
+    vb_copy_struct(&file, main_command);
+
+    {
+        u8 blob[] = { 0xA0, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand function_starts_command = {
+        .id = LC_FUNCTION_STARTS,
+        .command_size = 16,
+    };
+    vb_copy_struct(&file, function_starts_command);
+
+    {
+        u8 blob[] = { 0x68, 0x40, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand data_in_code_command = {
+        .id = LC_DATA_IN_CODE,
+        .command_size = 16,
+    };
+    vb_copy_struct(&file, data_in_code_command);
+    {
+        u8 blob[] = { 0x70, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        vb_add_array(&file, blob);
+    }
+
+    MachOCommand code_signature_command = {
+        .id = LC_CODE_SIGNATURE,
+        .command_size = 16,
+    };
+    vb_copy_struct(&file, code_signature_command);
+
+    {
+        u8 blob[] = {
+            0x90, 0x41, 0x00, 0x00, 0x20, 0x01, 0x00, 0x00, 
+        };
+        vb_add_array(&file, blob);
+    }
+
+    // Pad
+    unused(vb_add(&file, text_section.offset - file.length));
+
+    u8 text_section_content[] = { 0x00, 0x00, 0x80, 0x52, 0xC0, 0x03, 0x5F, 0xD6, };
+    vb_add_array(&file, text_section_content);
+
+    u8 unwind_info_section_content[] = {
+        0x01, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xA0, 0x3F, 0x00, 0x00, 
+        0x40, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0xA8, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x03, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x01, 0x00, 0x10, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 
+    };
+    vb_add_array(&file, unwind_info_section_content);
+
+    vb_align(&file, 0x4000);
+
+    u8 linkedit_segment_content[] = {
+        0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x5F, 0x00, 0x12, 0x00, 0x00, 0x00, 
+        0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0xA0, 0x7F, 0x00, 0x00, 0x02, 0x5F, 0x6D, 0x68, 0x5F, 
+        0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x5F, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x00, 0x09, 
+        0x6D, 0x61, 0x69, 0x6E, 0x00, 0x0D, 0x00, 0x00, 0xA0, 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x01, 0x00, 0x00, 0x00, 0x64, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x1C, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x32, 0x00, 0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x42, 0x00, 0x00, 0x00, 0x66, 0x00, 0x01, 0x00, 0xC1, 0x6A, 0x00, 0x67, 0x00, 0x00, 0x00, 0x00, 
+        0x01, 0x00, 0x00, 0x00, 0x2E, 0x01, 0x00, 0x00, 0xA0, 0x3F, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 
+        0x16, 0x00, 0x00, 0x00, 0x24, 0x01, 0x00, 0x00, 0xA0, 0x3F, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 
+        0x01, 0x00, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x01, 0x00, 0x00, 0x00, 0x4E, 0x01, 0x00, 0x00, 0xA0, 0x3F, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 
+        0x01, 0x00, 0x00, 0x00, 0x64, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x02, 0x00, 0x00, 0x00, 0x0F, 0x01, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 
+        0x16, 0x00, 0x00, 0x00, 0x0F, 0x01, 0x00, 0x00, 0xA0, 0x3F, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 
+        0x20, 0x00, 0x5F, 0x5F, 0x6D, 0x68, 0x5F, 0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x65, 0x5F, 0x68, 
+        0x65, 0x61, 0x64, 0x65, 0x72, 0x00, 0x5F, 0x6D, 0x61, 0x69, 0x6E, 0x00, 0x2F, 0x55, 0x73, 0x65, 
+        0x72, 0x73, 0x2F, 0x64, 0x61, 0x76, 0x69, 0x64, 0x2F, 0x6D, 0x69, 0x6E, 0x69, 0x6D, 0x61, 0x6C, 
+        0x2F, 0x00, 0x6D, 0x69, 0x6E, 0x69, 0x6D, 0x61, 0x6C, 0x5F, 0x6D, 0x61, 0x63, 0x6F, 0x73, 0x2E, 
+        0x63, 0x00, 0x2F, 0x55, 0x73, 0x65, 0x72, 0x73, 0x2F, 0x64, 0x61, 0x76, 0x69, 0x64, 0x2F, 0x6D, 
+        0x69, 0x6E, 0x69, 0x6D, 0x61, 0x6C, 0x2F, 0x6D, 0x69, 0x6E, 0x69, 0x6D, 0x61, 0x6C, 0x5F, 0x6D, 
+        0x61, 0x63, 0x6F, 0x73, 0x2E, 0x6F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0xFA, 0xDE, 0x0C, 0xC0, 0x00, 0x00, 0x01, 0x1A, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x14, 0xFA, 0xDE, 0x0C, 0x02, 0x00, 0x00, 0x01, 0x06, 0x00, 0x02, 0x04, 0x00, 
+        0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x66, 0x00, 0x00, 0x00, 0x58, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x41, 0x90, 0x20, 0x02, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+        0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6D, 0x69, 0x6E, 0x69, 
+        0x6D, 0x61, 0x6C, 0x5F, 0x6D, 0x61, 0x63, 0x6F, 0x73, 0x00, 0x29, 0x0B, 0x00, 0xDF, 0x14, 0xC1, 
+        0xD7, 0x61, 0x76, 0xD6, 0xF1, 0xC4, 0x26, 0x31, 0xFC, 0xD7, 0x84, 0x22, 0x15, 0x80, 0xEB, 0xF4, 
+        0x62, 0x35, 0xD2, 0xC9, 0xF0, 0xE4, 0xA7, 0x6B, 0x9E, 0x1D, 0xAD, 0x7F, 0xAC, 0xB2, 0x58, 0x6F, 
+        0xC6, 0xE9, 0x66, 0xC0, 0x04, 0xD7, 0xD1, 0xD1, 0x6B, 0x02, 0x4F, 0x58, 0x05, 0xFF, 0x7C, 0xB4, 
+        0x7C, 0x7A, 0x85, 0xDA, 0xBD, 0x8B, 0x48, 0x89, 0x2C, 0xA7, 0xAD, 0x7F, 0xAC, 0xB2, 0x58, 0x6F, 
+        0xC6, 0xE9, 0x66, 0xC0, 0x04, 0xD7, 0xD1, 0xD1, 0x6B, 0x02, 0x4F, 0x58, 0x05, 0xFF, 0x7C, 0xB4, 
+        0x7C, 0x7A, 0x85, 0xDA, 0xBD, 0x8B, 0x48, 0x89, 0x2C, 0xA7, 0xB2, 0x8A, 0x42, 0xCA, 0x3E, 0x6B, 
+        0xB1, 0x77, 0x13, 0x4F, 0xAB, 0xB6, 0xBD, 0xE2, 0x2E, 0xFD, 0xD4, 0x30, 0x73, 0x08, 0x83, 0x9F, 
+        0xEC, 0x51, 0x51, 0x2E, 0xCD, 0x15, 0xD0, 0xA2, 0x37, 0x03, 0x4F, 0x6C, 0xF0, 0xCF, 0x98, 0xAE, 
+        0x46, 0xE9, 0x51, 0x8A, 0x78, 0xC3, 0x8A, 0x49, 0xF4, 0xA0, 0xBC, 0x62, 0x94, 0x68, 0xFD, 0xDE, 
+        0xA6, 0x9A, 0x08, 0xAD, 0x02, 0xF7, 0x1C, 0xD4, 0x19, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+    };
+
+    vb_add_array(&file, linkedit_segment_content);
+
+#define CHECK 0
+#if CHECK
+    auto foo = file_read(thread->arena, strlit("C:/Users/David/dev/minimal_macos/minimal_macos"));
+    assert(file.length == foo.length);
+
+    for (u32 i = 0; i < file.length; i += 1)
+    {
+        auto mine = file.pointer[i];
+        auto original = foo.pointer[i];
+        assert(mine == original);
+    }
+#endif
+
+    return (String) { file.pointer, file.length };
 }
 
 fn void code_generation(Thread* restrict thread, CodegenOptions options)
@@ -14179,21 +14643,54 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     case COMPILER_BACKEND_MACHINE:
         {
             auto code_slice = (Slice(u8)) { .pointer = code.pointer, .length = code.length, };
-            auto object_options = (ObjectOptions) {
+            auto options = (ObjectOptions) {
                 .object_path = object_path,
                 .exe_path = exe_path,
                 .code = code_slice,
                 .dynamic = 1,
             };
+            String executable = 
 #if _WIN32
-            write_pe(thread, object_options);
+            write_pe(thread, options);
 #elif defined(__APPLE__)
-            write_macho(thread, object_options, envp);
+            write_macho(thread, options);
 #elif defined(__linux__)
-            write_elf(thread, object_options);
+            write_elf(thread, options);
 #else
             todo();
 #endif
+
+            {
+                auto fd = os_file_open(options.exe_path, (OSFileOpenFlags) {
+                        .write = 1,
+                        .truncate = 1,
+                        .create = 1,
+                        .executable = 1,
+                        });
+#if _WIN32
+                if (!os_file_descriptor_is_valid(fd))
+                {
+                    auto err = GetLastError();
+                    LPSTR lpMsgBuf;
+                    DWORD bufSize = FormatMessageA(
+                            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                            NULL,
+                            err,
+                            LANG_NEUTRAL, // Use default language
+                            (LPSTR)&lpMsgBuf,
+                            0,
+                            NULL
+                            );
+                    unused(bufSize);
+                    print("Error opening file \"{s}\": {cstr}\n", options.exe_path, lpMsgBuf);
+                    fail();
+                }
+#endif
+                assert(os_file_descriptor_is_valid(fd));
+                os_file_write(fd, (String) { executable.pointer, executable.length });
+                os_file_close(fd);
+            }
+
         } break;
     }
 }

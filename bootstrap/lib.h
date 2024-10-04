@@ -3061,6 +3061,19 @@ may_be_unused fn void run_command(Arena* arena, CStringSlice arguments, char* en
     if (CreateProcessA(0, bytes, 0, 0, handle_inheritance, 0, 0, 0, &startup_info, &process_information))
     {
         WaitForSingleObject(process_information.hProcess, INFINITE);
+        DWORD exit_code;
+        if (GetExitCodeProcess(process_information.hProcess, &exit_code))
+        {
+            if (exit_code != 0)
+            {
+                fail();
+            }
+        }
+        else
+        {
+            fail();
+        }
+
         CloseHandle(process_information.hProcess);
         CloseHandle(process_information.hThread);
     }
@@ -3232,7 +3245,6 @@ may_be_unused fn u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
 #define vb_to_bytes(vb) (Slice(u8)) { .pointer = (u8*)((vb).pointer), .length = sizeof(*((vb).pointer)) * (vb).length, }
 #define vb_ensure_capacity(a, count) vb_generic_ensure_capacity((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
 #define vb_add_array(vb, arr) memcpy(vb_add(vb, sizeof(arr)), arr, sizeof(arr))
-
 
 may_be_unused fn Hash32 hash32_fib_end(Hash32 hash)
 {

@@ -18,18 +18,18 @@ jobs:
       - name: Build and test
         run: |
           ./project.sh test all
-  # macos_build_and_test:
-  #   runs-on: macos-latest
-  #   timeout-minutes: 15
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #     - name: Install LLVM
-  #       run: |
-  #         brew list llvm || brew install llvm
-  #     - name: Build and test
-  #       run: |
-  #         ./project.sh test all
+  macos_build_and_test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install LLVM
+        run: |
+          brew list llvm || brew install llvm
+      - name: Build and test
+        run: |
+          ./project.sh test all
   windows_build_and_test:
     runs-on: windows-latest
     timeout-minutes: 15
