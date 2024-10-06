@@ -738,6 +738,7 @@ fn u64 strlen (const char* c_string)
 #define strlit(s) (String){ .pointer = (u8*)(s), .length = strlit_len(s), }
 #define ch_to_str(ch) (String){ .pointer = &ch, .length = 1 }
 #define array_to_slice(arr) { .pointer = (arr), .length = array_length(arr) }
+#define array_to_bytes(arr) { .pointer = (u8*)(arr), .length = sizeof(arr) }
 #define pointer_to_bytes(p) (String) { .pointer = (u8*)(p), .length = sizeof(*p) }
 #define struct_to_bytes(s) pointer_to_bytes(&(s))
 #define string_to_c(s) ((char*)((s).pointer))
@@ -3240,6 +3241,7 @@ may_be_unused fn u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
 
 #define vb_add(a, count) (typeof((a)->pointer)) vb_generic_add((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
 #define vb_add_struct(a, S) (S*) vb_generic_add(a, 1, sizeof(S))
+#define vb_copy_struct(vb, s) *vb_add_struct(vb, typeof(s)) = s
 #define vb_append_struct(a, T, s) *(vb_add_struct(a, T)) = s
 #define vb_append_one(a, item) (typeof((a)->pointer)) vb_generic_append((VirtualBuffer(u8)*)(a), &(item), sizeof(*((a)->pointer)), 1)
 #define vb_to_bytes(vb) (Slice(u8)) { .pointer = (u8*)((vb).pointer), .length = sizeof(*((vb).pointer)) * (vb).length, }
