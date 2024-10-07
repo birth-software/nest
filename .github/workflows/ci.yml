@@ -21,7 +21,7 @@ jobs:
         run: |
           ./project.sh test all
   macos_build_and_test:
-    runs-on: macos-latest
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - name: Checkout
