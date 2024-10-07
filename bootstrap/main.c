@@ -28,44 +28,6 @@ STRUCT(GetOrPut(T)) \
 
 auto compiler_name = strlit("nest");
 
-fn String file_read(Arena* arena, String path)
-{
-    String result = {};
-    auto file_descriptor = os_file_open(path, (OSFileOpenFlags) {
-        .read = 1,
-        .write = 0,
-        .create = 0,
-        .truncate = 0,
-        .executable = 0,
-    });
-
-    if (os_file_descriptor_is_valid(file_descriptor))
-    {
-        auto file_size = os_file_get_size(file_descriptor);
-        if (file_size > 0)
-        {
-            result = (String){
-                .pointer = arena_allocate_bytes(arena, file_size, 64),
-                    .length = file_size,
-            };
-
-            // TODO: big files
-            // TODO: result codes
-            os_file_read(file_descriptor, result, file_size);
-        }
-        else
-        {
-            result.pointer = (u8*)&result;
-        }
-
-        // TODO: check result
-        os_file_close(file_descriptor);
-    }
-
-
-    return result;
-}
-
 fn void print_string(String message)
 {
 #ifndef SILENT
@@ -3129,6 +3091,7 @@ STRUCT(InternPoolInterface)
 
 fn s64 ip_find_slot_debug_type(GenericInternPool* generic_pool, Thread* thread, Hash32 hash, u32 raw_item_index, u32 saved_index, u32 slots_ahead)
 {
+    assert(hash != 0);
     auto* pool = (InternPool(DebugType)*)generic_pool;
     assert(pool == &thread->interned.debug_types);
     auto* ptr = pool->pointer;
@@ -3136,12 +3099,14 @@ fn s64 ip_find_slot_debug_type(GenericInternPool* generic_pool, Thread* thread, 
     s64 result = -1;
 
     unused(raw_item_index);
+    print("[IP FIND SLOT DEBUG TYPE] Finding slot for debug type: { hash: 0x{u32:x}, raw: {u32}, saved: {u32}, slots_ahead: {u32}\n");
 
     for (auto index = saved_index; index < saved_index + slots_ahead; index += 1)
     {
         auto typed_index = ptr[index];
         auto debug_type = thread_debug_type_get(thread, typed_index);
         auto existing_hash = debug_type_hash(thread, debug_type);
+        print("Comparing with existing hash 0x{u32:x}\n", existing_hash);
         if (existing_hash == hash)
         {
             todo();
@@ -7022,7 +6987,7 @@ fn void thread_init(Thread* thread)
     }
 
     DebugType integer_type;
-    memset(&integer_type, 0, sizeof(u8));
+    memset(&integer_type, 0, sizeof(integer_type));
     auto* it = &thread->types.debug.integer.array[0];
 
     for (u8 signedness = 0; signedness <= 1; signedness += 1)

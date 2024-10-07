@@ -2274,6 +2274,28 @@ global const u64 DOUBLE_POW5_SPLIT[DOUBLE_POW5_TABLE_SIZE][2] =
     {  3278889188817135834u, 1424047269444608885u }, {  8710297504448807696u, 1780059086805761106u }
 };
 
+fn uint32_t pow5_factor(uint64_t value)
+{
+  const uint64_t m_inv_5 = 14757395258967641293u; // 5 * m_inv_5 = 1 (mod 2^64)
+  const uint64_t n_div_5 = 3689348814741910323u;  // #{ n | n = 0 (mod 2^64) } = 2^64 / 5
+  uint32_t count = 0;
+  for (;;) {
+    assert(value != 0);
+    value *= m_inv_5;
+    if (value > n_div_5)
+      break;
+    ++count;
+  }
+  return count;
+}
+
+// Returns true if value is divisible by 5^p.
+fn bool multiple_of_power_of_5(const uint64_t value, const uint32_t p)
+{
+  // I tried a case distinction on p, but there was no performance difference.
+  return pow5_factor(value) >= p;
+}
+
 // Returns true if value is divisible by 2^p.
 fn u8 multiple_of_power_of_2(const u64 value, const u32 p) {
   assert(value != 0);
@@ -2327,8 +2349,8 @@ may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
         e2 = 1 - double_bias - double_mantissa_bits - 2;
     }
 
-    // u8 is_even = (m2 & 1) == 0;
-    // auto accept_bounds = is_even;
+    u8 is_even = (m2 & 1) == 0;
+    auto accept_bounds = is_even;
 
     u64 mv = 4 * m2;
     u32 mm_shift = (ieee_mantissa != 0) | (ieee_exponent <= 1);
@@ -2347,8 +2369,19 @@ may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
         vr = mul_shift_all_64(m2, DOUBLE_POW5_INV_SPLIT[q], i, &vp, &vm, mm_shift);
         if (q <= 21)
         {
-            os_file_write(stdout_get(), strlit("q <= 21"));
-            __builtin_trap();
+            u32 mv_mod_5 = ((u32)mv) - 5 * ((u32)div5(mv));
+            if (mv_mod_5 == 0)
+            {
+                vr_is_trailing_zeroes = multiple_of_power_of_5(mv, q);
+            }
+            else if (accept_bounds)
+            {
+                vm_is_trailing_zeroes = multiple_of_power_of_5(mv - 1 - mm_shift, q);
+            }
+            else
+            {
+                vp -= multiple_of_power_of_5(mv + 2, q);
+            }
         }
     }
     else
@@ -2362,8 +2395,15 @@ may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
 
         if (q <= 1)
         {
-            os_file_write(stdout_get(), strlit("q <= 1"));
-            __builtin_trap();
+            vr_is_trailing_zeroes = 1;
+            if (accept_bounds)
+            {
+                vm_is_trailing_zeroes = mm_shift == 1;
+            }
+            else
+            {
+                vp -= 1;
+            }
         }
         else if (q < 63)
         {
@@ -2373,11 +2413,63 @@ may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
 
     s32 removed = 0;
     u64 output;
+    u8 last_removed_digit = 0;
 
     if (vm_is_trailing_zeroes | vr_is_trailing_zeroes)
     {
-        os_file_write(stdout_get(), strlit("vm_is_trailing_zeroes | vr_is_trailing_zeroes"));
-        __builtin_trap();
+        while (1)
+        {
+            u64 vp_div10 = div10(vp);
+            u64 vm_div10 = div10(vm);
+
+            if (vp_div10 <= vm_div10)
+            {
+                break;
+            }
+
+            u32 vm_mod10 = ((u32)vm) - 10 * ((u32)vm_div10);
+            u32 vr_div10 = div10(vr);
+            u32 vr_mod10 = ((u32)vr) - 10 * ((u32)vr_div10);
+            vm_is_trailing_zeroes &= vm_mod10 == 0;
+            vr_is_trailing_zeroes &= last_removed_digit == 0;
+            last_removed_digit = (u8)vr_mod10;
+            vr = vr_div10;
+            vp = vp_div10;
+            vm = vm_div10;
+            removed += 1;
+        }
+
+        if (vm_is_trailing_zeroes)
+        {
+            while (1)
+            {
+                const uint64_t vm_div10 = div10(vm);
+                const uint32_t vm_mod10 = ((uint32_t) vm) - 10 * ((uint32_t) vm_div10);
+
+                if (vm_mod10 != 0)
+                {
+                    break;
+                }
+
+                const uint64_t vp_div10 = div10(vp);
+                const uint64_t vr_div10 = div10(vr);
+                const uint32_t vr_mod10 = ((uint32_t) vr) - 10 * ((uint32_t) vr_div10);
+                vr_is_trailing_zeroes &= last_removed_digit == 0;
+                last_removed_digit = (uint8_t) vr_mod10;
+                vr = vr_div10;
+                vp = vp_div10;
+                vm = vm_div10;
+                removed += 1;
+            }
+        }
+
+        if (vr_is_trailing_zeroes && last_removed_digit == 5 && vr % 2 == 0)
+        {
+            // Round even if the exact number is .....50..0.
+            last_removed_digit = 4;
+        }
+        // We need to take vr + 1 if vr is outside bounds or we need to round up.
+        output = vr + ((vr == vm && (!accept_bounds || !vm_is_trailing_zeroes)) || last_removed_digit >= 5);
     }
     else
     {
@@ -2614,190 +2706,223 @@ may_be_unused fn void print(const char* format, ...)
 
                                     if (ieee_exponent == (((u32)1 << double_exponent_bits) - 1) || (ieee_exponent == 0 && ieee_mantissa == 0))
                                     {
-                                        os_file_write(stdout_get(), strlit("ieee_exponent == (((u32)1 << double_exponent_bits) - 1) || (ieee_exponent == 0 && ieee_mantissa == 0)"));
-                                        __builtin_trap();
-                                    }
+                                        if (ieee_mantissa)
+                                        {
+                                            auto nan = strlit("NaN");
+                                            memcpy(&buffer.pointer[buffer_i], nan.pointer, nan.length);
+                                            buffer_i += nan.length;
+                                        }
+                                        else
+                                        {
+                                            if (ieee_sign)
+                                            {
+                                                buffer.pointer[buffer_i] = '-';
+                                                buffer_i += 1;
+                                            }
 
-                                    auto small_int_result = small_int(ieee_mantissa, ieee_exponent);
-                                    Double result;
-                                    if (small_int_result.is_small_int)
-                                    {
-                                        os_file_write(stdout_get(), strlit("small_int_result.is_small_int"));
-                                        __builtin_trap();
+                                            if (ieee_exponent)
+                                            {
+                                                auto inf = strlit("Infinity");
+                                                memcpy(&buffer.pointer[buffer_i], inf.pointer, inf.length);
+                                                buffer_i += inf.length;
+                                            }
+                                            else
+                                            {
+                                                auto e0 = strlit("0E0");
+                                                memcpy(&buffer.pointer[buffer_i], e0.pointer, e0.length);
+                                                buffer_i += e0.length;
+                                            }
+                                        }
                                     }
                                     else
                                     {
-                                        result = double_transform(ieee_mantissa, ieee_exponent);
-                                    }
-
-                                    typedef enum FloatFormat
-                                    {
-                                        FLOAT_FORMAT_DECIMAL,
-                                        FLOAT_FORMAT_SCIENTIFIC,
-                                    } FloatFormat;
-
-                                    FloatFormat format = FLOAT_FORMAT_DECIMAL;
-                                    u64 output = result.mantissa;
-                                    u32 olength = decimalLength17(output);
-
-                                    // Sign
-                                    buffer.pointer[buffer_i] = '-';
-                                    buffer_i += ieee_sign;
-
-                                    switch (format)
-                                    {
-                                        case FLOAT_FORMAT_SCIENTIFIC:
+                                        auto small_int_result = small_int(ieee_mantissa, ieee_exponent);
+                                        Double result;
+                                        if (small_int_result.is_small_int)
+                                        {
+                                            while (1)
                                             {
-                                                u32 i = 0;
+                                                u64 q = div10(small_int_result.mantissa);
+                                                u32 r = ((u32)small_int_result.mantissa) - 10 * ((u32)q);
 
-                                                if ((output >> 32) != 0)
+                                                if (r != 0)
                                                 {
-                                                    u64 q = div1e8(output);
-                                                    u32 output2 = ((u32)output) - 100000000 * ((u32)q);
-                                                    output = q;
-
-                                                    u32 c = output % 10000;
-                                                    output2 /= 10000;
-
-                                                    const uint32_t d = output2 % 10000;
-                                                    const uint32_t c0 = (c % 100) << 1;
-                                                    const uint32_t c1 = (c / 100) << 1;
-                                                    const uint32_t d0 = (d % 100) << 1;
-                                                    const uint32_t d1 = (d / 100) << 1;
-
-                                                    auto base_index = buffer_i + olength;
-                                                    auto base = buffer.pointer + base_index;
-                                                    memcpy(base - 1, DIGIT_TABLE + c0, 2);
-                                                    memcpy(base - 3, DIGIT_TABLE + c1, 2);
-                                                    memcpy(base - 5, DIGIT_TABLE + d0, 2);
-                                                    memcpy(base - 7, DIGIT_TABLE + d1, 2);
-
-                                                    i += 8;
+                                                    break;
                                                 }
 
-                                                auto output2 = (u32) output;
+                                                small_int_result.mantissa = q;
+                                                small_int_result.exponent += 1;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            result = double_transform(ieee_mantissa, ieee_exponent);
+                                        }
 
-                                                while (output2 >= 10000)
-                                                {
-#ifdef __clang__
-                                                    const u32 c = output2 - 10000 * (output2 / 10000);
-#else
-                                                    const uint32_t c = output2 % 10000;
-#endif
-                                                    output2 /= 10000;
-                                                    const u32 c0 = (c % 100) << 1;
-                                                    const u32 c1 = (c / 100) << 1;
-                                                    auto base_index = buffer_i + olength - i;
-                                                    memcpy(buffer.pointer + base_index - 1, DIGIT_TABLE + c0, 2);
-                                                    memcpy(buffer.pointer + base_index - 3, DIGIT_TABLE + c1, 2);
+                                        typedef enum FloatFormat
+                                        {
+                                            FLOAT_FORMAT_DECIMAL,
+                                            FLOAT_FORMAT_SCIENTIFIC,
+                                        } FloatFormat;
 
-                                                    i += 4;
-                                                }
+                                        FloatFormat format = FLOAT_FORMAT_DECIMAL;
+                                        u64 output = result.mantissa;
+                                        u32 olength = decimalLength17(output);
 
-                                                if (output2 >= 100)
-                                                {
-                                                    const u32 c = (output2 % 100) << 1;
-                                                    output2 /= 100;
-                                                    memcpy(buffer.pointer + buffer_i + olength - i - 1, DIGIT_TABLE + c, 2);
-                                                    i += 2;
-                                                }
+                                        // Sign
+                                        buffer.pointer[buffer_i] = '-';
+                                        buffer_i += ieee_sign;
 
-                                                if (output2 >= 10)
+                                        switch (format)
+                                        {
+                                            case FLOAT_FORMAT_SCIENTIFIC:
                                                 {
-                                                    const uint32_t c = output2 << 1;
-                                                    // We can't use memcpy here: the decimal dot goes between these two digits.
-                                                    buffer.pointer[buffer_i + olength - i] = DIGIT_TABLE[c + 1];
-                                                    buffer.pointer[buffer_i] = DIGIT_TABLE[c];
-                                                }
-                                                else
-                                                {
-                                                    buffer.pointer[buffer_i] = (u8)output2 + '0';
-                                                }
+                                                    u32 i = 0;
 
-                                                // Print decimal point if needed.
-                                                if (olength > 1)
-                                                {
-                                                    buffer.pointer[buffer_i + 1] = '.';
-                                                    buffer_i += olength + 1;
-                                                } else {
-                                                    buffer_i += 1;
-                                                }
-
-                                                // Print the exponent.
-                                                buffer.pointer[buffer_i] = 'E';
-                                                buffer_i += 1;
-                                                int32_t exp = result.exponent + (int32_t) olength - 1;
-                                                if (exp < 0) {
-                                                    buffer.pointer[buffer_i] = '-';
-                                                    buffer_i += 1;
-                                                    exp = -exp;
-                                                }
-
-                                                if (exp >= 100)
-                                                {
-                                                    const int32_t c = exp % 10;
-                                                    memcpy(buffer.pointer + buffer_i, DIGIT_TABLE + 2 * (exp / 10), 2);
-                                                    buffer.pointer[buffer_i + 2] = (u8)c + '0';
-                                                    buffer_i += 3;
-                                                }
-                                                else if (exp >= 10)
-                                                {
-                                                    memcpy(buffer.pointer + buffer_i, DIGIT_TABLE + 2 * exp, 2);
-                                                    buffer_i += 2;
-                                                }
-                                                else
-                                                {
-                                                    buffer.pointer[buffer_i] = (u8)exp + '0';
-                                                    buffer_i += 1;
-                                                }
-                                            } break;
-                                        case FLOAT_FORMAT_DECIMAL:
-                                            {
-                                                if (result.exponent == (((u32)1 << double_exponent_bits) - 1))
-                                                {
-                                                    os_file_write(stdout_get(), strlit("result.exponent == (((u32)1 << double_exponent_bits) - 1)"));
-                                                    __builtin_trap();
-                                                }
-
-                                                auto dp_offset = result.exponent + cast(s32, u32, olength);
-
-                                                if (dp_offset <= 0)
-                                                {
-                                                    buffer.pointer[buffer_i] = '0';
-                                                    buffer.pointer[buffer_i + 1] = '.';
-                                                    buffer_i += 2;
-
-                                                    // auto dp_index = buffer_i;
-
-                                                    auto dp_poffset = (u32)(-dp_offset);
-                                                    memset(buffer.pointer + buffer_i, '0', dp_poffset);
-                                                    buffer_i += dp_poffset;
-                                                    write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, olength);
-                                                    buffer_i += olength;
-                                                }
-                                                else
-                                                {
-                                                    auto dp_uoffset = (u64)dp_offset;
-                                                    if (dp_uoffset >= olength)
+                                                    if ((output >> 32) != 0)
                                                     {
-                                                        write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, olength);
-                                                        buffer_i += olength;
-                                                        auto length = dp_uoffset - olength;
-                                                        auto memset_slice = s_get_slice(u8, buffer, buffer_i, buffer_i + length);
-                                                        memset(memset_slice.pointer, 0, length);
-                                                        buffer_i += length;
+                                                        u64 q = div1e8(output);
+                                                        u32 output2 = ((u32)output) - 100000000 * ((u32)q);
+                                                        output = q;
+
+                                                        u32 c = output % 10000;
+                                                        output2 /= 10000;
+
+                                                        const uint32_t d = output2 % 10000;
+                                                        const uint32_t c0 = (c % 100) << 1;
+                                                        const uint32_t c1 = (c / 100) << 1;
+                                                        const uint32_t d0 = (d % 100) << 1;
+                                                        const uint32_t d1 = (d / 100) << 1;
+
+                                                        auto base_index = buffer_i + olength;
+                                                        auto base = buffer.pointer + base_index;
+                                                        memcpy(base - 1, DIGIT_TABLE + c0, 2);
+                                                        memcpy(base - 3, DIGIT_TABLE + c1, 2);
+                                                        memcpy(base - 5, DIGIT_TABLE + d0, 2);
+                                                        memcpy(base - 7, DIGIT_TABLE + d1, 2);
+
+                                                        i += 8;
+                                                    }
+
+                                                    auto output2 = (u32) output;
+
+                                                    while (output2 >= 10000)
+                                                    {
+#ifdef __clang__
+                                                        const u32 c = output2 - 10000 * (output2 / 10000);
+#else
+                                                        const uint32_t c = output2 % 10000;
+#endif
+                                                        output2 /= 10000;
+                                                        const u32 c0 = (c % 100) << 1;
+                                                        const u32 c1 = (c / 100) << 1;
+                                                        auto base_index = buffer_i + olength - i;
+                                                        memcpy(buffer.pointer + base_index - 1, DIGIT_TABLE + c0, 2);
+                                                        memcpy(buffer.pointer + base_index - 3, DIGIT_TABLE + c1, 2);
+
+                                                        i += 4;
+                                                    }
+
+                                                    if (output2 >= 100)
+                                                    {
+                                                        const u32 c = (output2 % 100) << 1;
+                                                        output2 /= 100;
+                                                        memcpy(buffer.pointer + buffer_i + olength - i - 1, DIGIT_TABLE + c, 2);
+                                                        i += 2;
+                                                    }
+
+                                                    if (output2 >= 10)
+                                                    {
+                                                        const uint32_t c = output2 << 1;
+                                                        // We can't use memcpy here: the decimal dot goes between these two digits.
+                                                        buffer.pointer[buffer_i + olength - i] = DIGIT_TABLE[c + 1];
+                                                        buffer.pointer[buffer_i] = DIGIT_TABLE[c];
                                                     }
                                                     else
                                                     {
-                                                        write_float_decimal(s_get_slice(u8, buffer, buffer_i + dp_uoffset + 1, buffer.length), &output, olength - dp_uoffset);
-                                                        buffer.pointer[buffer_i + dp_uoffset] = '.';
-                                                        // auto dp_index = buffer_i + dp_uoffset + 1;
-                                                        write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, dp_uoffset);
-                                                        buffer_i += olength + 1;
+                                                        buffer.pointer[buffer_i] = (u8)output2 + '0';
                                                     }
-                                                }
-                                            } break;
+
+                                                    // Print decimal point if needed.
+                                                    if (olength > 1)
+                                                    {
+                                                        buffer.pointer[buffer_i + 1] = '.';
+                                                        buffer_i += olength + 1;
+                                                    } else {
+                                                        buffer_i += 1;
+                                                    }
+
+                                                    // Print the exponent.
+                                                    buffer.pointer[buffer_i] = 'E';
+                                                    buffer_i += 1;
+                                                    int32_t exp = result.exponent + (int32_t) olength - 1;
+                                                    if (exp < 0) {
+                                                        buffer.pointer[buffer_i] = '-';
+                                                        buffer_i += 1;
+                                                        exp = -exp;
+                                                    }
+
+                                                    if (exp >= 100)
+                                                    {
+                                                        const int32_t c = exp % 10;
+                                                        memcpy(buffer.pointer + buffer_i, DIGIT_TABLE + 2 * (exp / 10), 2);
+                                                        buffer.pointer[buffer_i + 2] = (u8)c + '0';
+                                                        buffer_i += 3;
+                                                    }
+                                                    else if (exp >= 10)
+                                                    {
+                                                        memcpy(buffer.pointer + buffer_i, DIGIT_TABLE + 2 * exp, 2);
+                                                        buffer_i += 2;
+                                                    }
+                                                    else
+                                                    {
+                                                        buffer.pointer[buffer_i] = (u8)exp + '0';
+                                                        buffer_i += 1;
+                                                    }
+                                                } break;
+                                            case FLOAT_FORMAT_DECIMAL:
+                                                {
+                                                    auto dp_offset = result.exponent + cast(s32, u32, olength);
+
+                                                    if (dp_offset <= 0)
+                                                    {
+                                                        buffer.pointer[buffer_i] = '0';
+                                                        buffer.pointer[buffer_i + 1] = '.';
+                                                        buffer_i += 2;
+
+                                                        // auto dp_index = buffer_i;
+
+                                                        auto dp_poffset = (u32)(-dp_offset);
+                                                        memset(buffer.pointer + buffer_i, '0', dp_poffset);
+                                                        buffer_i += dp_poffset;
+                                                        write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, olength);
+                                                        buffer_i += olength;
+                                                    }
+                                                    else
+                                                    {
+                                                        auto dp_uoffset = (u64)dp_offset;
+                                                        if (dp_uoffset >= olength)
+                                                        {
+                                                            write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, olength);
+                                                            buffer_i += olength;
+                                                            auto length = dp_uoffset - olength;
+                                                            auto memset_slice = s_get_slice(u8, buffer, buffer_i, buffer_i + length);
+                                                            memset(memset_slice.pointer, 0, length);
+                                                            buffer_i += length;
+                                                        }
+                                                        else
+                                                        {
+                                                            write_float_decimal(s_get_slice(u8, buffer, buffer_i + dp_uoffset + 1, buffer.length), &output, olength - dp_uoffset);
+                                                            buffer.pointer[buffer_i + dp_uoffset] = '.';
+                                                            // auto dp_index = buffer_i + dp_uoffset + 1;
+                                                            write_float_decimal(s_get_slice(u8, buffer, buffer_i, buffer.length), &output, dp_uoffset);
+                                                            buffer_i += olength + 1;
+                                                        }
+                                                    }
+                                                } break;
+                                        }
                                     }
+
                                 }
                             } break;
                         case 's':
@@ -3013,6 +3138,45 @@ may_be_unused fn void arena_reset(Arena* arena)
 }
 
 #define transmute(D, source) *(D*)&source
+
+fn String file_read(Arena* arena, String path)
+{
+    String result = {};
+    auto file_descriptor = os_file_open(path, (OSFileOpenFlags) {
+        .truncate = 0,
+        .executable = 0,
+        .write = 0,
+        .read = 1,
+        .create = 0,
+    });
+
+    if (os_file_descriptor_is_valid(file_descriptor))
+    {
+        auto file_size = os_file_get_size(file_descriptor);
+        if (file_size > 0)
+        {
+            result = (String){
+                .pointer = arena_allocate_bytes(arena, file_size, 64),
+                    .length = file_size,
+            };
+
+            // TODO: big files
+            // TODO: result codes
+            os_file_read(file_descriptor, result, file_size);
+        }
+        else
+        {
+            result.pointer = (u8*)&result;
+        }
+
+        // TODO: check result
+        os_file_close(file_descriptor);
+    }
+
+
+    return result;
+}
+
 
 may_be_unused fn void run_command(Arena* arena, CStringSlice arguments, char* envp[])
 {
@@ -3289,13 +3453,13 @@ fn u64 vb_copy_string_zero_terminated(VirtualBuffer(u8)* buffer, String string)
 
 may_be_unused fn Hash32 hash32_fib_end(Hash32 hash)
 {
-    auto result = truncate(Hash32, (hash * 11400714819323198485ull) >> 32);
+    auto result = truncate(Hash32, ((hash + 1) * 11400714819323198485ull) >> 32);
     return result;
 }
 
 may_be_unused fn Hash32 hash64_fib_end(Hash64 hash)
 {
-    auto result = truncate(Hash32, (hash * 11400714819323198485ull) >> 32);
+    auto result = truncate(Hash32, ((hash + 1) * 11400714819323198485ull) >> 32);
     return result;
 }
 

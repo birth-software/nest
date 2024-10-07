@@ -21,7 +21,7 @@ jobs:
         run: |
           ./project.sh test all
   macos_build_and_test:
-    runs-on: macos-15
+    runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -32,7 +32,7 @@ jobs:
         run: sw_vers -productVersion
       - name: Install LLVM
         run: |
-          brew list llvm || brew install llvm
+          brew install llvm
       - name: Build and test
         run: |
           ./project.sh test all
