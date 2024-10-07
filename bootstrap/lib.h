@@ -2347,6 +2347,7 @@ may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
         vr = mul_shift_all_64(m2, DOUBLE_POW5_INV_SPLIT[q], i, &vp, &vm, mm_shift);
         if (q <= 21)
         {
+            os_file_write(stdout_get(), strlit("q <= 21"));
             __builtin_trap();
         }
     }
@@ -2361,6 +2362,7 @@ may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
 
         if (q <= 1)
         {
+            os_file_write(stdout_get(), strlit("q <= 1"));
             __builtin_trap();
         }
         else if (q < 63)
@@ -2374,6 +2376,7 @@ may_be_unused fn Double double_transform(u64 ieee_mantissa, u32 ieee_exponent)
 
     if (vm_is_trailing_zeroes | vr_is_trailing_zeroes)
     {
+        os_file_write(stdout_get(), strlit("vm_is_trailing_zeroes | vr_is_trailing_zeroes"));
         __builtin_trap();
     }
     else
@@ -2611,6 +2614,7 @@ may_be_unused fn void print(const char* format, ...)
 
                                     if (ieee_exponent == (((u32)1 << double_exponent_bits) - 1) || (ieee_exponent == 0 && ieee_mantissa == 0))
                                     {
+                                        os_file_write(stdout_get(), strlit("ieee_exponent == (((u32)1 << double_exponent_bits) - 1) || (ieee_exponent == 0 && ieee_mantissa == 0)"));
                                         __builtin_trap();
                                     }
 
@@ -2618,6 +2622,7 @@ may_be_unused fn void print(const char* format, ...)
                                     Double result;
                                     if (small_int_result.is_small_int)
                                     {
+                                        os_file_write(stdout_get(), strlit("small_int_result.is_small_int"));
                                         __builtin_trap();
                                     }
                                     else
@@ -2750,6 +2755,7 @@ may_be_unused fn void print(const char* format, ...)
                                             {
                                                 if (result.exponent == (((u32)1 << double_exponent_bits) - 1))
                                                 {
+                                                    os_file_write(stdout_get(), strlit("result.exponent == (((u32)1 << double_exponent_bits) - 1)"));
                                                     __builtin_trap();
                                                 }
 
