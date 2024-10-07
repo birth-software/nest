@@ -7219,66 +7219,6 @@ fn void vb_align(VirtualBuffer(u8)* buffer, u64 alignment)
     memset(pointer, 0, count);
 }
 
-// fn void elf_add_program_header_raw(ELFBuilder* restrict builder, ElfProgramHeader ph)
-// {
-//     assert(builder->program_header_i < builder->program_headers.length);
-//     auto* program_header = &builder->program_headers.pointer[builder->program_header_i];
-//     *program_header = ph;
-//     builder->program_header_i += 1;
-// }
-
-// fn u64 elf_add_section_no_copy_raw(ELFBuilder* restrict builder, ELFSectionCreate create)
-// {
-//     assert(create.size > 0);
-//     assert(create.name.pointer);
-//     assert(create.name.length);
-//     assert((builder->file.length & (create.alignment - 1)) == 0);
-//
-//     auto name_offset = builder->section_string_table.length;
-//     {
-//         memcpy(vb_add(&builder->section_string_table, create.name.length), create.name.pointer, create.name.length);
-//         *vb_add(&builder->section_string_table, 1) = 0;
-//     }
-//
-//     auto offset = builder->file.length;
-//
-//     auto sh = (ELFSectionHeader) {
-//         .name_offset = name_offset,
-//         .type = create.type,
-//         .flags = create.flags,
-//         .address = offset,
-//         .offset = offset,
-//         .size = create.size,
-//         .link = create.link,
-//         .info = create.info,
-//         .alignment = create.alignment,
-//         .entry_size = create.entry_size,
-//     };
-//
-//     *vb_add(&builder->section_headers, 1) = sh;
-//
-//     return offset;
-// }
-
-// fn u64 elf_add_section_no_copy(ELFBuilder* restrict builder, ELFSectionCreate create)
-// {
-//     assert(create.size > 0);
-//     vb_align(&builder->file, create.alignment);
-//     return elf_add_section_no_copy_raw(builder, create);
-// }
-
-// fn u64 elf_add_section_copy(ELFBuilder* restrict builder, ELFSectionCreate create, String content)
-// {
-//     assert(create.size == 0);
-//     assert(content.length > 0);
-//     create.size = content.length;
-//     auto result = elf_add_section_no_copy(builder, create);
-//
-//     memcpy(vb_add(&builder->file, content.length), content.pointer, content.length);
-//
-//     return result;
-// }
-
 STRUCT(ELFSegmentCreate)
 {
     ElfProgramHeaderType type;
@@ -7288,37 +7228,6 @@ STRUCT(ELFSegmentCreate)
     u64 offset;
 };
 
-// fn void elf_add_program_segment_no_copy_raw(ELFBuilder* restrict builder, ELFSegmentCreate create)
-// {
-//     assert((create.offset & (create.alignment - 1)) == 0);
-//
-//     elf_add_program_header_raw(builder, (ElfProgramHeader){
-//         .type = create.type,
-//         .flags = create.flags,
-//         .offset = create.offset,
-//         .virtual_address = create.offset,
-//         .physical_address = create.offset,
-//         .file_size = create.size,
-//         .memory_size = create.size,
-//         .alignment = create.alignment,
-//     });
-// }
-
-// fn void elf_fill_program_header(ElfProgramHeader* restrict ph, ELFSegmentCreate create)
-// {
-//     assert((create.offset & (create.alignment - 1)) == 0);
-//     *ph = (ElfProgramHeader){
-//         .type = create.type,
-//         .flags = create.flags,
-//         .offset = create.offset,
-//         .virtual_address = create.offset,
-//         .physical_address = create.offset,
-//         .file_size = create.size,
-//         .memory_size = create.size,
-//         .alignment = create.alignment,
-//     };
-// }
-
 STRUCT(ELFSegmentSectionCreate)
 {
     ELFSectionCreate section;
@@ -7327,147 +7236,17 @@ STRUCT(ELFSegmentSectionCreate)
     String content;
 };
 
-// fn u64 elf_add_both_segment_and_section(ELFBuilder* restrict builder, ELFSegmentSectionCreate create)
-// {
-//     assert(create.section.size == 0);
-//     assert(create.content.length > 0);
-//     create.section.size = create.content.length;
-//     vb_align(&builder->file, create.section.alignment);
-//     auto offset = elf_add_section_no_copy_raw(builder, create.section);
-//     ELFSegmentCreate segment = {
-//         .type = create.ph_type,
-//         .flags = create.ph_flags,
-//         .size = create.section.size,
-//         .alignment = create.section.alignment, 
-//         .offset = offset,
-//     };
-//     elf_add_program_segment_no_copy_raw(builder, segment);
-//     memcpy(vb_add(&builder->file, create.content.length), create.content.pointer, create.content.length);
-//
-//     return offset;
-// }
-
 typedef enum SymbolKind : u8
 {
     SYMBOL_TABLE_STATIC,
     SYMBOL_TABLE_DYNAMIC,
 } SymbolKind;
 
-// fn void st_add_symbol_raw(SymbolTable* restrict st, ELFSymbol symbol)
-// {
-//     *vb_add(&st->symbol_table, 1) = symbol;
-// }
-//
-// fn void st_add_symbol(SymbolTable* restrict st, ELFSymbol symbol, String name)
-// {
-//     symbol.name_offset = st_add_string(st, name);
-//
-//     st_add_symbol_raw(st, symbol);
-// }
-
 fn void st_init(SymbolTable* restrict section)
 {
     *vb_add(&section->string_table, 1) = 0;
     *vb_add(&section->symbol_table, 1) = (ELFSymbol) {};
 }
-
-// fn u32 elf_builder_add_string(ELFBuilder* builder, SymbolType symbol_type, String string)
-// {
-//     u32 name_offset = 0;
-//     if (string.length)
-//     {
-//         switch (symbol_type)
-//         {
-//             case SYMBOL_TABLE_STATIC:
-//                 {
-//                     name_offset = builder->string_table.length;
-//                     vb_append_bytes(&builder->string_table, string);
-//                     *vb_add(&builder->string_table, 1) = 0;
-//                 } break;
-//             case SYMBOL_TABLE_DYNAMIC:
-//                 {
-//                     name_offset = builder->dynamic_string_table.length;
-//                     vb_append_bytes(&builder->dynamic_string_table, string);
-//                     *vb_add(&builder->dynamic_string_table, 1) = 0;
-//                 } break;
-//         }
-//     }
-//
-//     return name_offset;
-// }
-
-// fn void elf_builder_add_symbol(ELFBuilder* builder, ELFSymbol symbol, SymbolType symbol_type, String string)
-// {
-//     symbol.name_offset = elf_builder_add_string(builder, symbol_type, string);
-//     switch (symbol_type)
-//     {
-//         case SYMBOL_TABLE_STATIC:
-//             {
-//                 *vb_add(&builder->symbol_table, 1) = symbol;
-//             } break;
-//         case SYMBOL_TABLE_DYNAMIC:
-//             {
-//                 *vb_add(&builder->dynamic_symbol_table, 1) = symbol;
-//             } break;
-//     }
-// }
-
-
-// fn ELFSectionHeader* elf_builder_add_section(ELFBuilder* builder, ELFSectionHeader section, String section_name, Slice(u8) content)
-// {
-// }
-
-// TODO: delete this. This was used in order to learn about ELF
-    // {
-    //     auto main_c_content = strlit("int main()\n{\n    return 0;\n}");
-    //     int fd = syscall_open("main.c", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    //     assert(fd != -1);
-    //     auto result = syscall_write(fd, main_c_content.pointer, main_c_content.length);
-    //     assert(result >= 0);
-    //     assert((u64)result == main_c_content.length);
-    //     syscall_close(fd);
-    // }
-
-    // {
-    //     char* command[] = {
-    //         clang_path,
-    //         "-c",
-    //         "main.c",
-    //         "-o",
-    //         "main.o",
-    //         "-Oz",
-    //         "-fno-exceptions",
-    //         "-fno-asynchronous-unwind-tables",
-    //         "-fno-addrsig",
-    //         "-fno-stack-protector",
-    //         "-fno-ident",
-    //         0,
-    //     };
-    //     run_command((CStringSlice) array_to_slice(command), envp);
-    // }
-    //
-    // {
-    //     char* command[] = {
-    //         "/usr/bin/objcopy",
-    //         "--remove-section",
-    //         ".note.GNU-stack",
-    //         "main.o",
-    //         "main2.o",
-    //         0,
-    //     };
-    //     run_command((CStringSlice) array_to_slice(command), envp);
-    // }
-    //
-    // {
-    //
-    //     main_o = file_read(thread->arena, strlit("main2.o"));
-    //     auto r1 = syscall_unlink("main.o");
-    //     assert(!r1);
-    //     auto r2 = syscall_unlink("main2.o");
-    //     assert(!r2);
-    //     auto r3 = syscall_unlink("main.c");
-    //     assert(!r3);
-    // }
 
 typedef enum SymbolTableKind
 {
@@ -7990,7 +7769,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     unused(strtab_section_name);
     unused(shstrtab_section_name);
 
-    auto* elf_header = vb_add_struct(&builder->file, ELFHeader);
+    auto* elf_header = vb_add_scalar(&builder->file, ELFHeader);
 
     // TODO: precompute properly how many program segments we are going to need
     u16 program_header_count = 13;
@@ -8022,9 +7801,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
 
-        auto content = strlit("/lib64/ld-linux-x86-64.so.2");
-        auto size = cast(u32, u64, content.length + 1);
-        memcpy(vb_add(&builder->file, size), content.pointer, size);
+        auto size = vb_copy_string_zero_terminated(&builder->file, strlit("/lib64/ld-linux-x86-64.so.2"));
 
         *section_header = (ELFSectionHeader)
         {
@@ -8058,7 +7835,6 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     u32 gnu_property_size = 0;
     u32 gnu_property_alignment = 0;
     auto gnu_string = strlit("GNU");
-    auto gnu_string_size = cast(u32, u64, gnu_string.length + 1);
     {
         // .note.gnu.property
         // Section #2
@@ -8071,18 +7847,17 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         gnu_property_offset = offset;
         auto gnu_property_section_name = elf_get_section_name(builder, strlit(".note.gnu.property"));
 
-        auto* ptr = vb_add_struct(&builder->file, ELFNoteHeader);
+        auto* ptr = vb_add_scalar(&builder->file, ELFNoteHeader);
         *ptr = (ELFNoteHeader)
         {
-            .name_size = gnu_string_size,
+            .name_size = cast(u32, u64, vb_copy_string_zero_terminated(&builder->file, gnu_string)),
             .descriptor_size = 16,
             .type = NT_GNU_PROPERTY_TYPE_0,
         };
-        memcpy(vb_add(&builder->file, gnu_string_size), gnu_string.pointer, gnu_string_size);
         u8 gnu_property_blob[] = { 0x02, 0x80, 0x00, 0xC0, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
         static_assert(array_length(gnu_property_blob) == 16);
 
-        memcpy(vb_add(&builder->file, sizeof(gnu_property_blob)), gnu_property_blob, sizeof(gnu_property_blob));
+        vb_copy_any_array(&builder->file, gnu_property_blob);
 
         gnu_property_size = builder->file.length - offset;
 
@@ -8120,7 +7895,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     //     auto offset = builder->file.length;
     //     gnu_build_id_offset = offset;
     //
-    //     gnu_build_id_header = vb_add_struct(&builder->file, ELFNoteHeader);
+    //     gnu_build_id_header = vb_add_scalar(&builder->file, ELFNoteHeader);
     //     gnu_build_id_string = vb_add(&builder->file, gnu_string_size);
     //     gnu_build_id_blob = vb_add(&builder->file, gnu_build_id_blob_size);
     //
@@ -8159,14 +7934,12 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto name = elf_get_section_name(builder, strlit(".note.ABI-tag"));
 
-        auto gnu_string = strlit("GNU");
-        auto gnu_string_size = cast(u32, u64, gnu_string.length + 1);
-        *vb_add_struct(&builder->file, ELFNoteHeader) = (ELFNoteHeader) {
-            .name_size = gnu_string_size,
+        auto* note_header = vb_add_scalar(&builder->file, ELFNoteHeader);
+        *note_header = (ELFNoteHeader) {
+            .name_size = cast(u32, u64, vb_copy_string_zero_terminated(&builder->file, gnu_string)),
             .descriptor_size = 16,
             .type = NT_GNU_ABI_TAG,
         };
-        memcpy(vb_add(&builder->file, gnu_string_size), gnu_string.pointer, gnu_string_size);
 
         u32 abi = ELF_ABI_SYSTEM_V;
         u32 major = 4;
@@ -8174,7 +7947,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         u32 patch = 0;
         u32 abi_content[] = { abi, major, minor, patch };
 
-        memcpy(vb_add(&builder->file, sizeof(abi_content)), abi_content, sizeof(abi_content));
+        vb_copy_any_array(&builder->file, abi_content);
 
         auto size = builder->file.length - offset;
 
@@ -8214,7 +7987,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto name = elf_get_section_name(builder, strlit(".gnu.hash"));
 
-        *vb_add_struct(&builder->file, ElfGnuHashHeader) = (ElfGnuHashHeader) {
+        *vb_add_scalar(&builder->file, ElfGnuHashHeader) = (ElfGnuHashHeader) {
             .bucket_count = 1,
             .symbol_offset = 1,
             .bloom_size = 1,
@@ -8222,13 +7995,10 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         };
 
         u64 bloom_filters[] = {0};
-        memcpy(vb_add(&builder->file, sizeof(bloom_filters)), bloom_filters, sizeof(bloom_filters));
+        vb_copy_any_array(&builder->file, bloom_filters);
 
         u32 buckets[] = {0};
-        memcpy(vb_add(&builder->file, sizeof(buckets)), buckets, sizeof(buckets));
-
-        // u32 hash_chains[] = {0};
-        // memcpy(vb_add(&builder->file, sizeof(hash_chains)), hash_chains, sizeof(hash_chains));
+        vb_copy_any_array(&builder->file, buckets);
 
         auto size = builder->file.length - offset;
 
@@ -8323,11 +8093,9 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 .size = 0,
             },
         };
-        memcpy(vb_add(&builder->dynamic_st.symbol_table, array_length(expected_symbols)), expected_symbols, sizeof(expected_symbols));
+        vb_copy_array(&builder->dynamic_st.symbol_table, expected_symbols);
         u32 size = builder->dynamic_st.symbol_table.length * sizeof(ELFSymbol);
-        // dynsym_size = size;
-
-        memcpy(vb_add(&builder->file, size), builder->dynamic_st.symbol_table.pointer, size);
+        vb_copy_any_slice(&builder->file, builder->dynamic_st.symbol_table);
 
         u64 entry_size = sizeof(ELFSymbol);
 
@@ -8363,7 +8131,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto size = builder->dynamic_st.string_table.length;
         dynstr_size = size;
-        memcpy(vb_add(&builder->file, size), builder->dynamic_st.string_table.pointer, size);
+        vb_copy_string(&builder->file, (String) { builder->dynamic_st.string_table.pointer, builder->dynamic_st.string_table.length });
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8407,8 +8175,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         };
 
         u32 size = sizeof(symbol_versions);
-
-        memcpy(vb_add(&builder->file, size), symbol_versions, size);
+        vb_copy_any_array(&builder->file, symbol_versions);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8480,7 +8247,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             auto req = &requirements[i];
             auto requirement = req->req;
             requirement.count = req->entry_count;
-            *vb_add_struct(&builder->file, ELFVersionRequirement) = requirement;
+            *vb_add_scalar(&builder->file, ELFVersionRequirement) = requirement;
 
             u32 entry_size = req->entry_count * sizeof(*req->entry_pointer);
             memcpy(vb_add(&builder->file, entry_size), req->entry_pointer, entry_size);
@@ -8698,14 +8465,14 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                     // 1045: f4                    hlt
 
                     _start_size = sizeof(data);
-                    memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+                    vb_copy_array(&builder->file, data);
                 }
                 // padding after _start (not counting for _start size)
                 {
                     u8 data[] = {
                         0x66, 0x2E, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 
                     };
-                    memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+                    vb_copy_array(&builder->file, data);
                 }
             }
         }
@@ -8750,7 +8517,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             // 1078: c3                    ret
             // 1079: 0f 1f 80 00 00 00 00  nop    DWORD PTR [rax+0x0]
 
-            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+            vb_copy_array(&builder->file, data);
         }
 
         {
@@ -8791,7 +8558,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             // 10b8: c3                    ret
             // 10b9: 0f 1f 80 00 00 00 00  nop    DWORD PTR [rax+0x0]
 
-            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+            vb_copy_array(&builder->file, data);
         }
 
         text_fini_array_offset = builder->file.length;
@@ -8861,7 +8628,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             // 1108: 00 00 00 00 
             // 110c: 0f 1f 40 00           nop    DWORD PTR [rax+0x0]
 
-            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+            vb_copy_array(&builder->file, data);
         }
 
         text_init_array_offset = builder->file.length;
@@ -8876,14 +8643,14 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             // 1114: e9 67 ff ff ff        jmp    1080 <_start+0x60>
             // 1119: 0f 1f 00              nop    DWORD PTR [rax]
 
-            memcpy(vb_add(&builder->file, sizeof(data)), data, sizeof(data));
+            vb_copy_array(&builder->file, data);
         }
 
         // TODO: fix this
         main_offset = builder->file.length;
         main_size = cast(u32, u64, options.code.length);
 
-        memcpy(vb_add(&builder->file, cast(u32, u64, options.code.length)), options.code.pointer, options.code.length);
+        vb_copy_string(&builder->file, options.code);
 
         auto size = builder->file.length - offset;
 
@@ -8930,7 +8697,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         // 112c: c3                    ret
 
         u32 size = sizeof(data);
-        memcpy(vb_add(&builder->file, size), data, size);
+        vb_copy_any_array(&builder->file, data);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -8989,7 +8756,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         _IO_stdin_used_size = sizeof(_IO_stdin_used);
 
         u32 size = sizeof(data);
-        memcpy(vb_add(&builder->file, size), data, size);
+        vb_copy_any_array(&builder->file, data);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9084,7 +8851,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         *vb_add(&builder->file, 1) = version;
         
         auto augmentation = strlit("zR");
-        memcpy(vb_add(&builder->file, cast(u32, u64, augmentation.length + 1)), augmentation.pointer, augmentation.length + 1);
+        vb_copy_string_zero_terminated(&builder->file, augmentation);
         
         u32 code_alignment_factor = 1;
         uleb128_encode(&builder->file, code_alignment_factor);
@@ -9123,7 +8890,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         // Start of FDE
         {
-            *vb_add_struct(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
+            *vb_add_scalar(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
                 .length = 0x14,
                 .pointer = 0x1c,
             };
@@ -9147,7 +8914,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         // Start of FDE
         {
-            *vb_add_struct(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
+            *vb_add_scalar(&builder->file, FrameDescriptorEntryHeader) = (FrameDescriptorEntryHeader) {
                 .length = 0x10,
                 .pointer = 0x34,
             };
@@ -9236,7 +9003,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         u32 size = sizeof(content);
         assert(init_array_size == size);
 
-        memcpy(vb_add(&builder->file, size), content, size);
+        vb_copy_any_array(&builder->file, content);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9280,7 +9047,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         u64 content[] = { text_fini_array_offset };
         u32 size = sizeof(content);
         assert(size == fini_array_size);
-        memcpy(vb_add(&builder->file, size), content, size);
+        vb_copy_any_array(&builder->file, content);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9358,7 +9125,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         u32 size = sizeof(dynamic_entries);
 
-        memcpy(vb_add(&builder->file, size), dynamic_entries, size);
+        vb_copy_any_array(&builder->file, dynamic_entries);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9430,7 +9197,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         u32 size = sizeof(entries);
 
-        memcpy(vb_add(&builder->file, size), entries, size);
+        vb_copy_any_array(&builder->file, entries);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9468,7 +9235,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         u32 size = sizeof(entries);
 
-        memcpy(vb_add(&builder->file, size), entries, size);
+        vb_copy_any_array(&builder->file, entries);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9580,7 +9347,8 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         __dso_handle_va = virtual_address + sizeof(u64);
         u64 entries[] = { 0, __dso_handle_va };
         u32 size = sizeof(entries);
-        memcpy(vb_add(&builder->file, size), entries, size);
+
+        vb_copy_any_array(&builder->file, entries);
         data_va_end = cast(u32, u64, data_va_start + size);
 
         *section_header = (ELFSectionHeader) {
@@ -9680,9 +9448,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     //     for (u32 i = 0; i < array_length(strings); i += 1)
     //     {
     //         String string = strings[i];
-    //         // Copy also null-terminated byte
-    //         auto string_size = string.length + 1;
-    //         memcpy(vb_add(&builder->file, string_size), string.pointer, string_size);
+    //         vb_copy_string_zero_terminated(&builder->file, string);
     //     }
     //
     //     auto size = builder->file.length - offset;
@@ -9738,7 +9504,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto name = elf_get_section_name(builder, strlit(".debug_info"));
 
-        auto* compilation_unit = vb_add_struct(&builder->file, typeof(DwarfCompilationUnit));
+        auto* compilation_unit = vb_add_scalar(&builder->file, typeof(DwarfCompilationUnit));
 
         // COMPILATION UNIT
         {
@@ -9748,9 +9514,8 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             {
                 // producer: strx1
                 auto string = compiler_name;
-                auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
+                vb_copy_string_zero_terminated(&debug_str, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9762,9 +9527,8 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             {
                 // file: strx1
                 auto string = strlit("first.nat");
-                auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
+                vb_copy_string_zero_terminated(&debug_str, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9779,9 +9543,8 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             // comp_dir: strx1
             {
                 auto string = strlit("/home/david/dev/nest/tests");
-                auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
+                vb_copy_string_zero_terminated(&debug_str, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9818,9 +9581,8 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             {
                 // name: strx1
                 auto string = strlit("main");
-                auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
+                vb_copy_string_zero_terminated(&builder->file, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9847,9 +9609,8 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             {
                 // name: strx1
                 auto string = strlit("s32");
-                auto string_size = string.length + 1;
                 auto string_offset = debug_str.length;
-                memcpy(vb_add(&debug_str, cast(u32, u64, string_size)), string.pointer, string_size);
+                vb_copy_string_zero_terminated(&builder->file, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
                 *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
@@ -9983,7 +9744,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto name = elf_get_section_name(builder, strlit(".debug_line"));
 
-        auto* header = vb_add_struct(&builder->file, DwarfLineHeader);
+        auto* header = vb_add_scalar(&builder->file, DwarfLineHeader);
         auto after_header_length = offset + offsetof(DwarfLineHeader, header_length) + sizeof(header->header_length);
 
         // standard opcode lengths
@@ -10043,8 +9804,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             auto directory_string_offset = debug_line_str.length;
             {
                 auto string = strlit("/home/david/dev/nest/tests");
-                auto string_size = string.length + 1;
-                memcpy(vb_add(&debug_line_str, cast(u32, u64, string_size)), string.pointer, string_size);
+                vb_copy_string_zero_terminated(&debug_line_str, string);
             }
             u32 paths[] = { directory_string_offset };
 
@@ -10054,7 +9814,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             for (u32 i = 0; i < directory_count; i += 1)
             {
                 auto directory_offset = paths[i];
-                *(u32*)(vb_add(&builder->file, sizeof(u32))) = directory_offset;
+                vb_copy_scalar(&builder->file, directory_offset);
             }
 
             FormatDescriptor filename_entry_formats[] = {
@@ -10088,8 +9848,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             auto filename_string_offset = debug_line_str.length;
             {
                 auto string = strlit("first.nat");
-                auto string_size = string.length + 1;
-                memcpy(vb_add(&debug_line_str, cast(u32, u64, string_size)), string.pointer, string_size);
+                vb_copy_string_zero_terminated(&debug_line_str, string);
             }
 
             FilenameEntry filenames[] = {
@@ -10107,7 +9866,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 auto filename = filenames[i];
                 *(u32*)vb_add(&builder->file, sizeof(u32)) = filename.filename;
                 uleb128_encode(&builder->file, filename.directory_index);
-                memcpy(vb_add(&builder->file, sizeof(filename.hash)), &filename.hash, sizeof(filename.hash));
+                vb_copy_array(&builder->file, filename.hash.hash);
             }
         }
 
@@ -10184,7 +9943,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto name = elf_get_section_name(builder, strlit(".debug_str"));
 
-        memcpy(vb_add(&builder->file, debug_str.length), debug_str.pointer, debug_str.length);
+        vb_copy_string(&builder->file, (String) { debug_str.pointer, debug_str.length });
 
         auto size = builder->file.length - offset;
 
@@ -10223,9 +9982,9 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             .address_size = 8,
             .segment_selector_size = 0,
         };
-        *vb_add_struct(&builder->file, typeof(header)) = header;
+        *vb_add_scalar(&builder->file, typeof(header)) = header;
 
-        memcpy(vb_add(&builder->file, sizeof(addresses)), addresses, sizeof(addresses));
+        vb_copy_any_array(&builder->file, addresses);
 
         auto size = builder->file.length - offset;
         assert(size == header.unit_length + length_size);
@@ -10255,7 +10014,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         auto name = elf_get_section_name(builder, strlit(".debug_line_str"));
 
         auto size = debug_line_str.length;
-        memcpy(vb_add(&builder->file, size), debug_line_str.pointer, size);
+        vb_copy_string(&builder->file, (String) { debug_line_str.pointer, debug_line_str.length });
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -10299,7 +10058,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             .length = cast(u32, u64, sizeof(DwarfDebugStrOffsetsHeader) - length_size + offset_array_size),
             .version = 5,
         };
-        *vb_add_struct(&builder->file, DwarfDebugStrOffsetsHeader) = header;
+        *vb_add_scalar(&builder->file, DwarfDebugStrOffsetsHeader) = header;
 
         memcpy(vb_add(&builder->file, offset_array_size), debug_str_offsets.pointer, offset_array_size);
 
@@ -10566,7 +10325,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             }
         }
 
-        memcpy(vb_add(&builder->static_st.symbol_table, array_length(symbols)), symbols, sizeof(symbols));
+        vb_copy_array(&builder->static_st.symbol_table, symbols);
 
         memcpy(vb_add(&builder->file, builder->static_st.symbol_table.length * sizeof(ELFSymbol)), builder->static_st.symbol_table.pointer, builder->static_st.symbol_table.length * sizeof(ELFSymbol));
 
@@ -10806,6 +10565,8 @@ STRUCT(COFFHeader)
     COFFCharacteristics characteristics;
 };
 
+static_assert(sizeof(COFFHeader) == 24);
+
 STRUCT(COFFOptionalHeader)
 {
     COFFOptionalHeaderFormat format;
@@ -10969,12 +10730,11 @@ fn void file_write_coff_rsds(VirtualBuffer(u8)* file, String guid, u32 age, Stri
         .signature = { 'R', 'S', 'D', 'S' },
         .age = age,
     };
-    memcpy(rsds.guid.data, guid.pointer, 16);
+    memcpy(rsds.guid.data, guid.pointer, sizeof(COFFGUID));
 
-    vb_copy_struct(file, rsds);
+    vb_copy_scalar(file, rsds);
 
-    auto string_size = cast(u32, u64, path.length + 1);
-    memcpy(vb_add(file, string_size), path.pointer, string_size);
+    vb_copy_string_zero_terminated(file, path);
 }
 
 STRUCT(COFFImportDirectory)
@@ -11006,10 +10766,8 @@ STRUCT(COFFImportName)
 
 fn void coff_import_name(VirtualBuffer(u8)* file, u16 hint, String name)
 {
-    vb_copy_struct(file, hint);
-
-    auto name_size = cast(u32, u64, name.length + 1);
-    memcpy(vb_add(file, name_size), name.pointer, name_size);
+    vb_copy_scalar(file, hint);
+    vb_copy_string_zero_terminated(file, name);
 }
 
 may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
@@ -11034,13 +10792,13 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         .overlay_number = 0,
         .coff_header_pointer = 208,
     };
-    vb_copy_struct(&file, dos_header);
+    vb_copy_scalar(&file, dos_header);
 
-    u8 code[] =  { 0x0E, 0x1F, 0xBA, 0x0E, 0x00, 0xB4, 0x09, 0xCD, 0x21, 0xB8, 0x01, 0x4C, 0xCD, 0x21, };
-    vb_add_array(&file, code);
+    u8 dos_code[] =  { 0x0E, 0x1F, 0xBA, 0x0E, 0x00, 0xB4, 0x09, 0xCD, 0x21, 0xB8, 0x01, 0x4C, 0xCD, 0x21, };
+    vb_copy_any_array(&file, dos_code);
 
-    auto str = strlit("This program cannot be run in DOS mode.\r\r\n");
-    memcpy(vb_add(&file, cast(u32, u64, str.length)), str.pointer, str.length);
+    auto dos_string = strlit("This program cannot be run in DOS mode.\r\r\n");
+    vb_copy_string(&file, dos_string);
     *vb_add(&file, 1) = '$';
 
     vb_align(&file, 8);
@@ -11052,7 +10810,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         0x52, 0x69, 0x63, 0x68, 0x99, 0x0B, 0x6B, 0x94, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
     };
-    vb_add_array(&file, rich_header);
+    vb_copy_any_array(&file, rich_header);
 
     COFFDataDirectory directories[] = {
         { .rva = 0, .size = 0, },
@@ -11073,6 +10831,9 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         { .rva = 0, .size = 0, },
     };
 
+    const u32 virtual_section_alignment = 0x1000;
+    const u32 file_section_alignment = 0x200;
+
     auto coff_optional_header = (COFFOptionalHeader) {
         .format = COFF_FORMAT_PE32_PLUS,
         .major_linker_version = 14,
@@ -11083,8 +10844,8 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         .entry_point_address = 0x1000,
         .code_offset = 0x1000,
         .image_offset = 0x140000000,
-        .virtual_section_alignment = 0x1000,
-        .file_section_alignment = 0x200,
+        .virtual_section_alignment = virtual_section_alignment,
+        .file_section_alignment = file_section_alignment,
         .major_operating_system_version = 6,
         .minor_operating_system_version = 0,
         .major_image_version = 0,
@@ -11110,16 +10871,17 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         .directory_count = array_length(directories),
     };
 
+    u16 section_count = 3;
     auto coff_header = (COFFHeader) {
         .signature = {
             .data = { 'P', 'E', 0, 0 },
         },
         .architecture = COFF_ARCH_AMD64,
-        .section_count = 3,
+        .section_count = section_count,
         .time_date_stamp = 1727882096,
         .symbol_table_pointer = 0,
         .symbol_count = 0,
-        .optional_header_size = 240,
+        .optional_header_size = sizeof(COFFOptionalHeader) + sizeof(directories),
         .characteristics = {
             .executable_image = 1,
             .large_address_aware = 1,
@@ -11127,165 +10889,213 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     };
 
     assert(file.length == 0xd0);
-    *vb_add_struct(&file, COFFHeader) = coff_header;
-    *vb_add_struct(&file, COFFOptionalHeader) = coff_optional_header;
+    *vb_add_scalar(&file, COFFHeader) = coff_header;
+    auto optional_header_offset = file.length;
+    *vb_add_scalar(&file, COFFOptionalHeader) = coff_optional_header;
     assert(file.length == 0x158);
-    vb_add_array(&file, directories);
+    vb_copy_any_array(&file, directories);
+    assert(file.length - optional_header_offset == coff_header.optional_header_size);
 
-    COFFSectionHeader section_headers[] = {
-        {
+    auto* section_headers = vb_add_any_array(&file, COFFSectionHeader, section_count);
+    u16 section_i = 0;
+    u32 rva = file.length;
+
+    // .text
+    auto* text_section_header = &section_headers[section_i];
+    section_i += 1;
+    {
+        rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+        vb_align(&file, file_section_alignment);
+        auto file_offset = file.length;
+        assert(file_offset == 0x400);
+        u8 text_content[] = { 0x48, 0x83, 0xEC, 0x28, 0x33, 0xC9, 0xFF, 0x15, 0xF4, 0x0F, 0x00, 0x00, 0x90, 0x48, 0x83, 0xC4, 0x28, 0xC3, };
+        auto entry_point_rva = rva;
+        vb_copy_any_array(&file, text_content);
+        auto virtual_size = file.length - file_offset;
+        vb_align(&file, file_section_alignment);
+        auto file_size = file.length - file_offset;
+
+        auto current_rva = rva;
+        rva += virtual_size;
+
+        *text_section_header = (COFFSectionHeader) {
             .name = coff_section_name(strlit(".text")),
-            .virtual_size = 18,
-            .rva = 0x1000,
-            .file_size = 0x200,
-            .file_offset = 1024,
+            .virtual_size = virtual_size,
+            .rva = current_rva,
+            .file_size = file_size,
+            .file_offset = file_offset,
             .flags = {
                 .contains_code = 1,
                 .execute = 1,
                 .read = 1,
             },
-        },
-        {
+        };
+    }
+
+    auto* rdata_section_header = &section_headers[section_i];
+    section_i += 1;
+    {
+        // .rdata
+        rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+        vb_align(&file, file_section_alignment);
+        auto file_offset = file.length;
+        assert(file_offset == 0x600);
+        u8 rdata_chunk_0[] = { 0xF0, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        vb_copy_any_array(&file, rdata_chunk_0);
+
+        COFFDebugDirectory debug_directory = {
+            .characteristics = 0,
+            .timestamp = 1727882096,
+            .major_version = 0,
+            .minor_version = 0,
+            .type = COFF_DEBUG_CODEVIEW,
+            .data_size = 60,
+            .data_rva = 0x2084,
+            .data_offset = 0x684,
+        };
+        vb_copy_scalar(&file, debug_directory);
+
+        u8 rdata_chunk_1[] = {
+            0x00, 0x00, 0x00, 0x00, 0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 
+            0x14, 0x00, 0x00, 0x00, 0xC0, 0x20, 0x00, 0x00, 0xC0, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x00, 0xDC, 0x00, 0x00, 0x00, 
+            0xD4, 0x20, 0x00, 0x00, 0xD4, 0x06, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x03, 0x80, 0x03, 0x80, 
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7C, 0x20, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 
+            0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
+        };
+        vb_copy_any_array(&file, rdata_chunk_1);
+
+        u8 rsds_guid[] = { 0x3D, 0x15, 0x84, 0x0A, 0xBC, 0x9F, 0xA1, 0x4B, 0x82, 0xB4, 0x94, 0xF1, 0x5B, 0x91, 0x63, 0x3A, };
+        u32 rsds_age = 3;
+        file_write_coff_rsds(&file, (String)array_to_slice(rsds_guid), rsds_age, strlit("C:\\Users\\David\\dev\\minimal\\main.pdb"));
+
+        u8 rdata_chunk_2[] = {
+            0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
+            0x2E, 0x74, 0x65, 0x78, 0x74, 0x24, 0x6D, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 
+            0x10, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x35, 0x00, 0x00, 0x00, 0x00, 
+            0x10, 0x20, 0x00, 0x00, 0x54, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
+            0x64, 0x20, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x76, 
+            0x6F, 0x6C, 0x74, 0x6D, 0x64, 0x00, 0x00, 0x00, 0x84, 0x20, 0x00, 0x00, 0x2C, 0x01, 0x00, 0x00, 
+            0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x7A, 0x7A, 0x7A, 0x64, 0x62, 0x67, 0x00, 0x00, 0x00, 
+            0xB0, 0x21, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2E, 0x78, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
+            0xB8, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x32, 
+            0x00, 0x00, 0x00, 0x00, 0xCC, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 
+            0x74, 0x61, 0x24, 0x33, 0x00, 0x00, 0x00, 0x00, 0xE0, 0x21, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 
+            0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x34, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x21, 0x00, 0x00, 
+            0x1C, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x36, 0x00, 0x00, 0x00, 0x00, 
+            0x00, 0x30, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x2E, 0x70, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
+            0x01, 0x04, 0x01, 0x00, 0x04, 0x42, 0x00, 0x00, 
+        };
+        vb_copy_any_array(&file, rdata_chunk_2);
+
+        assert(file.length == 0x7b8);
+        // IAT
+        COFFImportDirectory import_directories[] = {
+            {
+                .lookup_table_rva = 0x21e0,
+                .time_date_stamp = 0,
+                .forwarder_chain = 0,
+                .dll_name_rva = 0x21fe,
+                .address_table_rva = 0x2000,
+            },
+        };
+
+        assert(import_directories[array_length(import_directories) - 1].forwarder_chain == 0);
+        vb_copy_any_array(&file, import_directories);
+
+        u8 weird_padding[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        vb_copy_any_array(&file, weird_padding);
+
+        COFFImportLookup import_lookups[] = {
+            {
+                .name_table_rva = 0x21f0,
+            },
+        };
+        assert(array_length(import_directories) == array_length(import_lookups));
+        vb_copy_any_array(&file, import_lookups);
+
+        // This goes back to the first .rdata offset
+        // COFFImportAddress import_addresses[] = {
+        //     {
+        //         .name_table_rva = 0x21f0,
+        //     },
+        // };
+
+        vb_align(&file, 0x10);
+        assert(file.length == 0x7f0);
+
+        coff_import_name(&file, 376, strlit("ExitProcess"));
+
+        assert(file.length == 0x7fe);
+
+        auto dll_name = strlit("KERNEL32.dll");
+        vb_copy_string_zero_terminated(&file, dll_name);
+
+        *vb_add(&file, 1) = 0;
+
+        auto virtual_size = file.length - file_offset;
+        vb_align(&file, file_section_alignment);
+        auto file_size = file.length - file_offset;
+
+        auto current_rva = rva;
+        rva += virtual_size;
+
+        *rdata_section_header = (COFFSectionHeader) {
             .name = coff_section_name(strlit(".rdata")),
-            .virtual_size = 524,
-            .rva = 0x2000,
-            .file_size = 0x400,
-            .file_offset = 0x600,
+            .virtual_size = virtual_size,
+            .rva = current_rva,
+            .file_size = file_size,
+            .file_offset = file_offset,
             .flags = {
                 .contains_initialized_data = 1,
                 .read = 1,
             },
-        },
-        {
+        };
+    }
+
+    auto* pdata_section_header = &section_headers[section_i];
+    section_i += 1;
+    {
+        // .pdata content
+        vb_align(&file, file_section_alignment);
+        assert(file.length == 0xa00);
+        rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+
+        auto file_offset = file.length;
+
+        COFFExceptionTableEntry_x86_64 pdata_content[] = {
+            {
+                .start_rva = text_section_header->rva,
+                .end_rva = text_section_header->rva + text_section_header->virtual_size,
+                .unwind_information_rva = 0x21b0,
+            },
+        };
+        vb_copy_any_array(&file, pdata_content);
+
+        auto virtual_size = file.length - file_offset;
+        vb_align(&file, file_section_alignment);
+        auto file_size = file.length - file_offset;
+
+        auto section_rva = rva;
+        rva += virtual_size;
+
+        *pdata_section_header = (COFFSectionHeader) {
             .name = coff_section_name(strlit(".pdata")),
-            .virtual_size = 12,
-            .rva = 0x3000,
-            .file_size = 0x200,
-            .file_offset = 0xa00,
+            .virtual_size = virtual_size,
+            .rva = section_rva,
+            .file_size = file_size,
+            .file_offset = file_offset,
             .flags = {
                 .contains_initialized_data = 1,
                 .read = 1,
             },
-        },
-    };
-    vb_add_array(&file, section_headers);
+        };
+    }
 
-    // .text
-    vb_align(&file, 0x200);
-    assert(file.length == 0x400);
-    u8 text_content[] = { 0x48, 0x83, 0xEC, 0x28, 0x33, 0xC9, 0xFF, 0x15, 0xF4, 0x0F, 0x00, 0x00, 0x90, 0x48, 0x83, 0xC4, 0x28, 0xC3, };
-    vb_add_array(&file, text_content);
+    vb_align(&file, file_section_alignment);
 
-    // .rdata
-    vb_align(&file, 0x200);
-    assert(file.length == 0x600);
-    u8 rdata_chunk_0[] = { 0xF0, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-    vb_add_array(&file, rdata_chunk_0);
-
-    COFFDebugDirectory debug_directory = {
-        .characteristics = 0,
-        .timestamp = 1727882096,
-        .major_version = 0,
-        .minor_version = 0,
-        .type = COFF_DEBUG_CODEVIEW,
-        .data_size = 60,
-        .data_rva = 0x2084,
-        .data_offset = 0x684,
-    };
-    vb_copy_struct(&file, debug_directory);
-
-    u8 rdata_chunk_1[] = {
-        0x00, 0x00, 0x00, 0x00, 0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 
-        0x14, 0x00, 0x00, 0x00, 0xC0, 0x20, 0x00, 0x00, 0xC0, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-        0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x00, 0xDC, 0x00, 0x00, 0x00, 
-        0xD4, 0x20, 0x00, 0x00, 0xD4, 0x06, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x03, 0x80, 0x03, 0x80, 
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7C, 0x20, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 
-        0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
-    };
-    vb_add_array(&file, rdata_chunk_1);
-
-    u8 rsds_guid[] = { 0x3D, 0x15, 0x84, 0x0A, 0xBC, 0x9F, 0xA1, 0x4B, 0x82, 0xB4, 0x94, 0xF1, 0x5B, 0x91, 0x63, 0x3A, };
-    u32 rsds_age = 3;
-    file_write_coff_rsds(&file, (String)array_to_slice(rsds_guid), rsds_age, strlit("C:\\Users\\David\\dev\\minimal\\main.pdb"));
-
-    u8 rdata_chunk_2[] = {
-        0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
-        0x2E, 0x74, 0x65, 0x78, 0x74, 0x24, 0x6D, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 
-        0x10, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x35, 0x00, 0x00, 0x00, 0x00, 
-        0x10, 0x20, 0x00, 0x00, 0x54, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
-        0x64, 0x20, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x76, 
-        0x6F, 0x6C, 0x74, 0x6D, 0x64, 0x00, 0x00, 0x00, 0x84, 0x20, 0x00, 0x00, 0x2C, 0x01, 0x00, 0x00, 
-        0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x7A, 0x7A, 0x7A, 0x64, 0x62, 0x67, 0x00, 0x00, 0x00, 
-        0xB0, 0x21, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2E, 0x78, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
-        0xB8, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x32, 
-        0x00, 0x00, 0x00, 0x00, 0xCC, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 
-        0x74, 0x61, 0x24, 0x33, 0x00, 0x00, 0x00, 0x00, 0xE0, 0x21, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 
-        0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x34, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x21, 0x00, 0x00, 
-        0x1C, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x36, 0x00, 0x00, 0x00, 0x00, 
-        0x00, 0x30, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x2E, 0x70, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
-        0x01, 0x04, 0x01, 0x00, 0x04, 0x42, 0x00, 0x00, 
-    };
-    vb_add_array(&file, rdata_chunk_2);
-
-    assert(file.length == 0x7b8);
-    // IAT
-    COFFImportDirectory import_directories[] = {
-        {
-            .lookup_table_rva = 0x21e0,
-            .time_date_stamp = 0,
-            .forwarder_chain = 0,
-            .dll_name_rva = 0x21fe,
-            .address_table_rva = 0x2000,
-        },
-    };
-
-    assert(import_directories[array_length(import_directories) - 1].forwarder_chain == 0);
-    vb_add_array(&file, import_directories);
-
-    u8 weird_padding[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-    vb_add_array(&file, weird_padding);
-
-    COFFImportLookup import_lookups[] = {
-        {
-            .name_table_rva = 0x21f0,
-        },
-    };
-    assert(array_length(import_directories) == array_length(import_lookups));
-    vb_add_array(&file, import_lookups);
-
-    // This goes back to the first .rdata offset
-    // COFFImportAddress import_addresses[] = {
-    //     {
-    //         .name_table_rva = 0x21f0,
-    //     },
-    // };
-
-    vb_align(&file, 0x10);
-    assert(file.length == 0x7f0);
-
-    coff_import_name(&file, 376, strlit("ExitProcess"));
-
-    assert(file.length == 0x7fe);
-
-    auto dll_name = strlit("KERNEL32.dll");
-    auto dll_name_size = cast(u32, u64, dll_name.length + 1);
-    memcpy(vb_add(&file, dll_name_size), dll_name.pointer, dll_name_size);
-
-    // .pdata content
-    vb_align(&file, 0x200);
-
-    assert(file.length == 0xa00);
-    COFFExceptionTableEntry_x86_64 pdata_content[] = {
-        {
-            .start_rva = 0x1000,
-            .end_rva = 0x1012,
-            .unwind_information_rva = 0x21b0,
-        },
-    };
-    vb_add_array(&file, pdata_content);
-
-    vb_align(&file, 0x200);
+    assert(section_i == section_count);
 
     // Check if file matches
 #define CHECK_PE_MATCH 0
@@ -13717,25 +13527,25 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
             .pie = 1,
         },
     };
-    vb_copy_struct(&file, header);
+    vb_copy_scalar(&file, header);
 
     MachOCommand page_zero_command = {
         .id = LC_SEGMENT_64,
         .command_size = sizeof(MachOCommand) + sizeof(MachOSegment),
     };
-    vb_copy_struct(&file, page_zero_command);
+    vb_copy_scalar(&file, page_zero_command);
 
     MachOSegment page_zero_segment = {
         .name = macho_name16(strlit("__PAGEZERO")),
         .memory_size = GB(4),
     };
-    vb_copy_struct(&file, page_zero_segment);
+    vb_copy_scalar(&file, page_zero_segment);
 
     MachOCommand text_command = {
         .id = LC_SEGMENT_64,
         .command_size = 232,
     };
-    vb_copy_struct(&file, text_command);
+    vb_copy_scalar(&file, text_command);
 
     MachOSection text_section = {
         .section_name = macho_name16(strlit("__text")),
@@ -13773,18 +13583,18 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
         .flags = 0,
     };
 
-    vb_copy_struct(&file, text_segment);
+    vb_copy_scalar(&file, text_segment);
 
     assert(file.length == 0xb0);
-    vb_copy_struct(&file, text_section);
+    vb_copy_scalar(&file, text_section);
     vb_align(&file, 0x10);
-    vb_copy_struct(&file, unwind_info_section);
+    vb_copy_scalar(&file, unwind_info_section);
 
     MachOCommand linkedit_command = {
         .id = LC_SEGMENT_64,
         .command_size = sizeof(MachOCommand) + sizeof(MachOSegment),
     };
-    vb_copy_struct(&file, linkedit_command);
+    vb_copy_scalar(&file, linkedit_command);
 
     MachOSegment linkedit_segment = {
         .name = macho_name16(strlit("__LINKEDIT")),
@@ -13797,46 +13607,46 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
         .section_count = 0,
         .flags = 0,
     };
-    vb_copy_struct(&file, linkedit_segment);
+    vb_copy_scalar(&file, linkedit_segment);
 
     MachOCommand chained_fixups_command = {
         .id = LC_DYLD_CHAINED_FIXUPS,
         .command_size = 16,
     };
-    vb_copy_struct(&file, chained_fixups_command);
+    vb_copy_scalar(&file, chained_fixups_command);
 
     {
         u8 blob[] = { 0x00, 0x40, 0x00, 0x00, 0x38, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand exports_trie_command = {
         .id = LC_DYLD_EXPORTS_TRIE,
         .command_size = 16,
     };
-    vb_copy_struct(&file, exports_trie_command);
+    vb_copy_scalar(&file, exports_trie_command);
 
     {
         u8 blob[] = { 0x38, 0x40, 0x00, 0x00, 0x30, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand symtab_command = {
         .id = LC_SYMTAB,
         .command_size = 24,
     };
-    vb_copy_struct(&file, symtab_command);
+    vb_copy_scalar(&file, symtab_command);
 
     {
         u8 blob[] = { 0x70, 0x40, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, 0x20, 0x41, 0x00, 0x00, 0x68, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand dysymtab_command = {
         .id = LC_DYSYMTAB,
         .command_size = 80,
     };
-    vb_copy_struct(&file, dysymtab_command);
+    vb_copy_scalar(&file, dysymtab_command);
 
     {
         u8 blob[] = {
@@ -13846,103 +13656,103 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
         };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand load_dylinker_command = {
         .id = LC_LOAD_DYLINKER,
         .command_size = 32,
     };
-    vb_copy_struct(&file, load_dylinker_command);
+    vb_copy_scalar(&file, load_dylinker_command);
 
     { 
         u8 blob[] = { 0x0C, 0x00, 0x00, 0x00, 0x2F, 0x75, 0x73, 0x72, 0x2F, 0x6C, 0x69, 0x62, 0x2F, 0x64, 0x79, 0x6C, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand uuid_command = {
         .id = LC_UUID,
         .command_size = 24,
     };
-    vb_copy_struct(&file, uuid_command);
+    vb_copy_scalar(&file, uuid_command);
 
     {
         u8 uuid[] = { 0x9C, 0x6F, 0xC9, 0x12, 0xED, 0x7F, 0x39, 0x3A, 0x99, 0xA7, 0x93, 0x4B, 0xF6, 0xD1, 0x4D, 0xA1, };
-        vb_add_array(&file, uuid);
+        vb_copy_any_array(&file, uuid);
     }
 
     MachOCommand build_version_command = {
         .id = LC_BUILD_VERSION,
         .command_size = 32,
     };
-    vb_copy_struct(&file, build_version_command);
+    vb_copy_scalar(&file, build_version_command);
 
     {
         u8 blob[] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x03, 0x07, 0x5B, 0x04, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand source_version_command = {
         .id = LC_SOURCE_VERSION,
         .command_size = 16,
     };
-    vb_copy_struct(&file, source_version_command);
+    vb_copy_scalar(&file, source_version_command);
 
     {
         u8 blob[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand main_command = {
         .id = LC_MAIN,
         .command_size = 24,
     };
-    vb_copy_struct(&file, main_command);
+    vb_copy_scalar(&file, main_command);
 
     {
         u8 blob[] = { 0xA0, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand function_starts_command = {
         .id = LC_FUNCTION_STARTS,
         .command_size = 16,
     };
-    vb_copy_struct(&file, function_starts_command);
+    vb_copy_scalar(&file, function_starts_command);
 
     {
         u8 blob[] = { 0x68, 0x40, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand data_in_code_command = {
         .id = LC_DATA_IN_CODE,
         .command_size = 16,
     };
-    vb_copy_struct(&file, data_in_code_command);
+    vb_copy_scalar(&file, data_in_code_command);
     {
         u8 blob[] = { 0x70, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     MachOCommand code_signature_command = {
         .id = LC_CODE_SIGNATURE,
         .command_size = 16,
     };
-    vb_copy_struct(&file, code_signature_command);
+    vb_copy_scalar(&file, code_signature_command);
 
     {
         u8 blob[] = {
             0x90, 0x41, 0x00, 0x00, 0x20, 0x01, 0x00, 0x00, 
         };
-        vb_add_array(&file, blob);
+        vb_copy_any_array(&file, blob);
     }
 
     // Pad
     unused(vb_add(&file, text_section.offset - file.length));
 
     u8 text_section_content[] = { 0x00, 0x00, 0x80, 0x52, 0xC0, 0x03, 0x5F, 0xD6, };
-    vb_add_array(&file, text_section_content);
+    vb_copy_any_array(&file, text_section_content);
 
     u8 unwind_info_section_content[] = {
         0x01, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 
@@ -13952,7 +13762,7 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
         0x03, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x01, 0x00, 0x10, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 
         0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 
     };
-    vb_add_array(&file, unwind_info_section_content);
+    vb_copy_any_array(&file, unwind_info_section_content);
 
     vb_align(&file, 0x4000);
 
@@ -14002,7 +13812,7 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
         0xA6, 0x9A, 0x08, 0xAD, 0x02, 0xF7, 0x1C, 0xD4, 0x19, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
     };
 
-    vb_add_array(&file, linkedit_segment_content);
+    vb_copy_any_array(&file, linkedit_segment_content);
 
 #define CHECK 0
 #if CHECK

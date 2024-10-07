@@ -82,7 +82,7 @@ fn void compile_c(Arena* arena, CompileOptions options, char** envp)
 
     if (options.debug_info)
     {
-        *vb_add(args, 1) = "-g3";
+        *vb_add(args, 1) = "-g";
     }
 
     switch (options.optimization_mode)
