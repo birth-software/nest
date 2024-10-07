@@ -3134,10 +3134,22 @@ may_be_unused fn void run_command(Arena* arena, CStringSlice arguments, char* en
             if (WIFEXITED(status))
             {
                 auto exit_code = WEXITSTATUS(status);
-                if (exit_code == 0)
-                {
-                    success = 1;
-                }
+                success = exit_code == 0;
+                print("Program exited with code {u32}\n", exit_code);
+            }
+            else if (WIFSIGNALED(status))
+            {
+                auto signal_code = WTERMSIG(status);
+                print("Program was signaled: {u32}\n", signal_code);
+            }
+            else if (WIFSTOPPED(status))
+            {
+                auto stopped_code = WSTOPSIG(status);
+                print("Program was stopped: {u32}\n", stopped_code);
+            }
+            else
+            {
+                print("Program terminated unexpectedly with status {u32}\n", status);
             }
         }
         else
@@ -3239,14 +3251,35 @@ may_be_unused fn u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
     return pointer;
 }
 
-#define vb_add(a, count) (typeof((a)->pointer)) vb_generic_add((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
-#define vb_add_struct(a, S) (S*) vb_generic_add(a, 1, sizeof(S))
-#define vb_copy_struct(vb, s) *vb_add_struct(vb, typeof(s)) = s
-#define vb_append_struct(a, T, s) *(vb_add_struct(a, T)) = s
-#define vb_append_one(a, item) (typeof((a)->pointer)) vb_generic_append((VirtualBuffer(u8)*)(a), &(item), sizeof(*((a)->pointer)), 1)
-#define vb_to_bytes(vb) (Slice(u8)) { .pointer = (u8*)((vb).pointer), .length = sizeof(*((vb).pointer)) * (vb).length, }
-#define vb_ensure_capacity(a, count) vb_generic_ensure_capacity((VirtualBuffer(u8)*)(a), sizeof(*((a)->pointer)), count)
-#define vb_add_array(vb, arr) memcpy(vb_add(vb, sizeof(arr)), arr, sizeof(arr))
+#define vb_size_of_element(vb) sizeof(*((vb)->pointer))
+#define vb_add(vb, count) (typeof((vb)->pointer)) vb_generic_add((VirtualBuffer(u8)*)(vb), (vb_size_of_element(vb)), (count))
+#define vb_add_scalar(vb, S) (S*) vb_generic_add(vb, 1, sizeof(S))
+#define vb_copy_scalar(vb, s) *vb_add_scalar(vb, typeof(s)) = s
+#define vb_append_struct(vb, T, s) *(vb_add_struct(vb, T)) = s
+#define vb_append_one(vb, item) (typeof((vb)->pointer)) vb_generic_append((VirtualBuffer(u8)*)(vb), &(item), (vb_size_of_element(vb)), 1)
+#define vb_to_bytes(vb) (Slice(u8)) { .pointer = (u8*)((vb).pointer), .length = (vb_size_of_element(vb)) * (vb).length, }
+#define vb_ensure_capacity(vb, count) vb_generic_ensure_capacity((VirtualBuffer(u8)*)(vb), vb_size_of_element(vb), (count))
+#define vb_copy_array(vb, arr) memcpy(vb_add(vb, array_length(arr)), arr, sizeof(arr))
+#define vb_add_any_array(vb, E, count) (E*)vb_generic_add(vb, vb_size_of_element(vb), sizeof(E) * count)
+#define vb_copy_any_array(vb, arr) memcpy(vb_generic_add(vb, vb_size_of_element(vb), sizeof(arr)), (arr), sizeof(arr))
+#define vb_copy_any_slice(vb, slice) memcpy(vb_generic_add(vb, vb_size_of_element(vb), sizeof(*((slice).pointer)) * (slice).length), (slice).pointer, sizeof(*((slice).pointer)) * (slice).length)
+
+fn void vb_copy_string(VirtualBuffer(u8)* buffer, String string)
+{
+    auto length = cast(u32, u64, string.length);
+    auto* pointer = vb_add(buffer, length);
+    memcpy(pointer, string.pointer, length);
+}
+
+fn u64 vb_copy_string_zero_terminated(VirtualBuffer(u8)* buffer, String string)
+{
+    assert(string.pointer[string.length] == 0);
+    string.length += 1;
+
+    vb_copy_string(buffer, string);
+
+    return string.length;
+}
 
 may_be_unused fn Hash32 hash32_fib_end(Hash32 hash)
 {
