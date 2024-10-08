@@ -2290,7 +2290,7 @@ fn uint32_t pow5_factor(uint64_t value)
 }
 
 // Returns true if value is divisible by 5^p.
-fn bool multiple_of_power_of_5(const uint64_t value, const uint32_t p)
+fn u8 multiple_of_power_of_5(const uint64_t value, const uint32_t p)
 {
   // I tried a case distinction on p, but there was no performance difference.
   return pow5_factor(value) >= p;

@@ -16,7 +16,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: System information
-        run: uname -a
+        run: |
+          uname -a
+          lsb_release -a
+          clang -v
       - name: Build and test
         run: |
           ./project.sh test all
@@ -26,13 +29,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: System information
-        run: uname -a
-      - name: MacOS version
-        run: sw_vers -productVersion
       - name: Install LLVM
         run: |
           brew install llvm
+      - name: System information
+        run: |
+          uname -a
+          sw_vers -productVersion
+          clang -v
       - name: Build and test
         run: |
           ./project.sh test all
@@ -42,6 +46,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: System information
+        run: |
+          systeminfo
+          clang -v
       - name: Build and test
         run: |
           ./project.bat test all
