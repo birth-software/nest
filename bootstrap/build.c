@@ -384,6 +384,8 @@ fn void run_tests(Arena* arena, TestOptions const * const test_options, char** e
 
 fn void entry_point(int argc, char* argv[], char* envp[])
 {
+    calibrate_cpu_timer();
+
     if (argc < 2)
     {
         print("Expected some arguments\n");

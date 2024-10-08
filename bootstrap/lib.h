@@ -140,10 +140,14 @@ timestamp()
 }
 
 
+#if _WIN32
+global u64 cpu_frequency;
+#else
 #if LINK_LIBC
 global struct timespec cpu_resolution;
 #else
 global u64 cpu_frequency;
+#endif
 #endif
 
 
@@ -526,10 +530,18 @@ may_be_unused fn f64 resolve_timestamp(
         TimeUnit time_unit)
 {
 #if _WIN32
-    unused(start);
-    unused(end);
-    unused(time_unit);
-    todo();
+    auto s = (f64)(end - start) / (f64)cpu_frequency;
+    switch (time_unit)
+    {
+        case TIME_UNIT_NANOSECONDS:
+            return s * 1000000000.0;
+        case TIME_UNIT_MICROSECONDS:
+            return s * 1000000.0;
+        case TIME_UNIT_MILLISECONDS:
+            return s * 1000.0;
+        case TIME_UNIT_SECONDS:
+            return s;
+    }
 #else
 #if LINK_LIBC
     assert(end.tv_sec >= start.tv_sec);
@@ -568,11 +580,11 @@ may_be_unused fn f64 resolve_timestamp(
         switch (time_unit)
         {
             case TIME_UNIT_NANOSECONDS:
-                return s / 1000000000.0;
+                return s * 1000000000.0;
             case TIME_UNIT_MICROSECONDS:
-                return s / 1000000.0;
+                return s * 1000000.0;
             case TIME_UNIT_MILLISECONDS:
-                return s / 1000.0;
+                return s * 1000.0;
             case TIME_UNIT_SECONDS:
                 return s;
         }
@@ -1687,8 +1699,13 @@ may_be_unused fn void os_file_close(FileDescriptor fd)
 may_be_unused fn void calibrate_cpu_timer()
 {
 #ifndef SILENT
+#if _WIN32
+    LARGE_INTEGER li;
+    QueryPerformanceFrequency(&li);
+    cpu_frequency = (u64)li.QuadPart;
+#else
 #if LINK_LIBC
-    // clock_getres(CLOCK_MONOTONIC, &cpu_resolution);
+    clock_getres(CLOCK_MONOTONIC, &cpu_resolution);
 #else
     u64 miliseconds_to_wait = 100;
     u64 cpu_start = timestamp();
@@ -1706,6 +1723,7 @@ may_be_unused fn void calibrate_cpu_timer()
     u64 cpu_end = timestamp();
     u64 cpu_elapsed = cpu_end - cpu_start;
     cpu_frequency = os_frequency * cpu_elapsed / os_elapsed;
+#endif
 #endif
 #endif
 }
@@ -3229,9 +3247,14 @@ may_be_unused fn void run_command(Arena* arena, CStringSlice arguments, char* en
     startup_info.hStdError = GetStdHandle(STD_ERROR_HANDLE);
 
     auto handle_inheritance = 1;
+    auto start = timestamp();
     if (CreateProcessA(0, bytes, 0, 0, handle_inheritance, 0, 0, 0, &startup_info, &process_information))
     {
         WaitForSingleObject(process_information.hProcess, INFINITE);
+        auto end = timestamp();
+        auto ms = resolve_timestamp(start, end, TIME_UNIT_MILLISECONDS);
+
+        print("Process ran in {f64} ms\n", ms);
         DWORD exit_code;
         if (GetExitCodeProcess(process_information.hProcess, &exit_code))
         {
@@ -3801,13 +3824,7 @@ may_be_unused fn MD5Result md5_end(MD5Context* context)
 
 fn void entry_point(int argc, char* argv[], char* envp[]);
 
-#if LINK_LIBC
-int main(int argc, char* argv[], char* envp[])
-{
-    entry_point(argc, argv, envp);
-    return 0;
-}
-#else
+#if LINK_LIBC == 0
 [[gnu::naked]] [[noreturn]] void _start()
 {
     __asm__ __volatile__(
@@ -3825,9 +3842,15 @@ int main(int argc, char* argv[], char* envp[])
 void static_entry_point(int argc, char* argv[])
 {
     char** envp = (char**)&argv[argc + 1];
+#else
+int main(int argc, char* argv[], char* envp[])
+{
+#endif
     calibrate_cpu_timer();
     entry_point(argc, argv, envp);
+#if LINK_LIBC
+    return 0;
+#else
     syscall_exit(0);
-}
-
 #endif
+}
