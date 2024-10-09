@@ -10681,6 +10681,8 @@ STRUCT(COFFDebugDirectory)
     u32 data_offset;
 };
 
+static_assert(sizeof(COFFDebugDirectory) == 28);
+
 STRUCT(COFFGUID)
 {
     u8 data[16];
@@ -10839,26 +10841,33 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 
     auto* rdata_section_header = &section_headers[section_i];
     section_i += 1;
+    u32 iat_rva;
+    u32 iat_size;
+    u32 import_directory_rva;
+    u32 import_directory_size;
+    u32 debug_directory_rva;
+    u32 debug_directory_size;
     {
         // .rdata
         rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
         vb_align(&file, file_section_alignment);
         auto file_offset = file.length;
         assert(file_offset == 0x600);
-        u8 rdata_chunk_0[] = { 0xF0, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
+        u8 rdata_chunk_0[] = {
+            0xF0, 0x21, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        };
+        iat_rva = rva;
+        iat_size = sizeof(rdata_chunk_0);
         vb_copy_any_array(&file, rdata_chunk_0);
 
-        COFFDebugDirectory debug_directory = {
-            .characteristics = 0,
-            .timestamp = 1727882096,
-            .major_version = 0,
-            .minor_version = 0,
-            .type = COFF_DEBUG_CODEVIEW,
-            .data_size = 60,
-            .data_rva = 0x2084,
-            .data_offset = 0x684,
-        };
-        vb_copy_scalar(&file, debug_directory);
+        auto debug_directory_file_offset = file.length;
+        auto debug_directory_section_offset = debug_directory_file_offset - file_offset;
+        debug_directory_rva = rva + debug_directory_section_offset;
+
+        auto* debug_directory = vb_add_scalar(&file, COFFDebugDirectory);
 
         u8 rdata_chunk_1[] = {
             0x00, 0x00, 0x00, 0x00, 0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 
@@ -10870,12 +10879,14 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         };
         vb_copy_any_array(&file, rdata_chunk_1);
 
-        assert(rva + file.length - file_offset == debug_directory.data_rva);
-        assert(file.length == debug_directory.data_offset);
+        auto debug_directory_data_file_offset = file.length;
+        auto debug_directory_data_section_offset = debug_directory_data_file_offset - file_offset;
+        auto debug_directory_data_rva = rva + debug_directory_section_offset;
 
         u8 rsds_guid[] = { 0x3D, 0x15, 0x84, 0x0A, 0xBC, 0x9F, 0xA1, 0x4B, 0x82, 0xB4, 0x94, 0xF1, 0x5B, 0x91, 0x63, 0x3A, };
         u32 rsds_age = 3;
         file_write_coff_rsds(&file, (String)array_to_slice(rsds_guid), rsds_age, strlit("C:\\Users\\David\\dev\\minimal\\main.pdb"));
+        auto debug_directory_data_size = file.length - debug_directory_data_file_offset;
 
         u8 rdata_chunk_2[] = {
             0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -10896,8 +10907,22 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
             0x01, 0x04, 0x01, 0x00, 0x04, 0x42, 0x00, 0x00, 
         };
         vb_copy_any_array(&file, rdata_chunk_2);
+        *debug_directory = (COFFDebugDirectory){
+            .characteristics = 0,
+            .timestamp = 1727882096,
+            .major_version = 0,
+            .minor_version = 0,
+            .type = COFF_DEBUG_CODEVIEW,
+            .data_size = debug_directory_data_size,
+            .data_rva = debug_directory_data_rva,
+            .data_offset = debug_directory_data_file_offset,
+        };
+        debug_directory_size = sizeof(*debug_directory) + debug_directory->data_size;
 
         assert(file.length == 0x7b8);
+        auto import_directory_file_offset = file.length;
+        auto import_directory_section_offset = file.length - file_offset;
+        import_directory_rva = rva + import_directory_section_offset;
         // IAT
         COFFImportDirectory import_directories[] = {
             {
@@ -10915,6 +10940,8 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         u8 weird_padding[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
         vb_copy_any_array(&file, weird_padding);
 
+        import_directory_size= file.length - import_directory_file_offset;
+
         COFFImportLookup import_lookups[] = {
             {
                 .name_table_rva = 0x21f0,
@@ -10922,6 +10949,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         };
         assert(array_length(import_directories) == array_length(import_lookups));
         vb_copy_any_array(&file, import_lookups);
+        assert(file.length - import_directory_file_offset != 40);
 
         // This goes back to the first .rdata offset
         // COFFImportAddress import_addresses[] = {
@@ -10964,6 +10992,8 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 
     auto* pdata_section_header = &section_headers[section_i];
     section_i += 1;
+    u32 exception_table_rva;
+    u32 exception_table_size;
     {
         // .pdata content
         vb_align(&file, file_section_alignment);
@@ -10972,14 +11002,16 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 
         auto file_offset = file.length;
 
-        COFFExceptionTableEntry_x86_64 pdata_content[] = {
+        COFFExceptionTableEntry_x86_64 exception_entries[] = {
             {
                 .start_rva = text_section_header->rva,
                 .end_rva = text_section_header->rva + text_section_header->virtual_size,
                 .unwind_information_rva = 0x21b0,
             },
         };
-        vb_copy_any_array(&file, pdata_content);
+        exception_table_rva = rva;
+        exception_table_size = sizeof(exception_entries);
+        vb_copy_any_array(&file, exception_entries);
 
         auto virtual_size = file.length - file_offset;
         vb_align(&file, file_section_alignment);
@@ -11055,10 +11087,10 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         .loader_flags = {},
         .directory_count = array_length(coff_optional_header->directories),
         .directories = {
-            [COFF_IMPORT_DIRECTORY_INDEX] = { .rva = 0x21b8, .size = 40, },
-            [COFF_EXCEPTION_DIRECTORY_INDEX] = { .rva = 0x3000, .size = 12, },
-            [COFF_DEBUG_DIRECTORY_INDEX] = { .rva = 0x2010, .size = 84, },
-            [COFF_IAT_DIRECTORY_INDEX] = { .rva = 0x2000, .size = 16, },
+            [COFF_IMPORT_DIRECTORY_INDEX] = { .rva = import_directory_rva, .size = import_directory_size, },
+            [COFF_EXCEPTION_DIRECTORY_INDEX] = { .rva = exception_table_rva, .size = exception_table_size, },
+            [COFF_DEBUG_DIRECTORY_INDEX] = { .rva = debug_directory_rva, .size = debug_directory_size, },
+            [COFF_IAT_DIRECTORY_INDEX] = { .rva = iat_rva, .size = iat_size, },
         },
     };
 
