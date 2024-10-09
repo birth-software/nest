@@ -3324,25 +3324,27 @@ may_be_unused fn void run_command(Arena* arena, CStringSlice arguments, char* en
         int success = 0;
         if (result == pid)
         {
+            print("{cstr} ", arguments.pointer[0]);
+            
             if (WIFEXITED(status))
             {
                 auto exit_code = WEXITSTATUS(status);
                 success = exit_code == 0;
-                print("Program exited with code {u32}\n", exit_code);
+                print("exited with code {u32}\n", exit_code);
             }
             else if (WIFSIGNALED(status))
             {
                 auto signal_code = WTERMSIG(status);
-                print("Program was signaled: {u32}\n", signal_code);
+                print("was signaled: {u32}\n", signal_code);
             }
             else if (WIFSTOPPED(status))
             {
                 auto stopped_code = WSTOPSIG(status);
-                print("Program was stopped: {u32}\n", stopped_code);
+                print("was stopped: {u32}\n", stopped_code);
             }
             else
             {
-                print("Program terminated unexpectedly with status {u32}\n", status);
+                print("terminated unexpectedly with status {u32}\n", status);
             }
         }
         else
