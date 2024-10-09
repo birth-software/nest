@@ -1600,6 +1600,13 @@ STRUCT(OSFileOpenFlags)
     u32 create:1;
 };
 
+STRUCT(OSFilePermissions)
+{
+    u8 readable:1;
+    u8 writable:1;
+    u8 executable:1;
+};
+
 may_be_unused fn u8 os_file_descriptor_is_valid(FileDescriptor fd)
 {
 #if _WIN32
@@ -1609,15 +1616,15 @@ may_be_unused fn u8 os_file_descriptor_is_valid(FileDescriptor fd)
 #endif
 }
 
-may_be_unused fn FileDescriptor os_file_open(String path, OSFileOpenFlags flags)
+may_be_unused fn FileDescriptor os_file_open(String path, OSFileOpenFlags flags, OSFilePermissions permissions)
 {
     assert(path.pointer[path.length] == 0);
 #if _WIN32
 
     DWORD dwDesiredAccess = 0;
-    dwDesiredAccess |= flags.read * GENERIC_READ;
-    dwDesiredAccess |= flags.write * GENERIC_WRITE;
-    dwDesiredAccess |= flags.write * GENERIC_EXECUTE;
+    dwDesiredAccess |= permissions.readable * GENERIC_READ;
+    dwDesiredAccess |= permissions.writable * GENERIC_WRITE;
+    dwDesiredAccess |= permissions.executable * GENERIC_EXECUTE;
     DWORD dwShareMode = 0;
     LPSECURITY_ATTRIBUTES lpSecurityAttributes = 0;
     DWORD dwCreationDisposition = 0;
@@ -1636,16 +1643,17 @@ may_be_unused fn FileDescriptor os_file_open(String path, OSFileOpenFlags flags)
     posix_flags |= O_CREAT * flags.create;
     posix_flags |= O_TRUNC * flags.truncate;
 
-    int permissions;
-    if (flags.executable && flags.write)
+    int posix_permissions;
+    // TODO: make permissions better
+    if (permissions.executable)
     {
-        permissions = 0755;
+        posix_permissions = 0755;
     }
     else
     {
-        permissions = 0644;
+        posix_permissions = 0644;
     }
-    auto result = syscall_open((char*)path.pointer, posix_flags, permissions);
+    auto result = syscall_open((char*)path.pointer, posix_flags, posix_permissions);
     return result;
 #endif
 }
@@ -3184,6 +3192,8 @@ fn String file_read(Arena* arena, String path)
         .write = 0,
         .read = 1,
         .create = 0,
+    }, (OSFilePermissions) {
+        .readable = 1,
     });
 
     if (os_file_descriptor_is_valid(file_descriptor))
