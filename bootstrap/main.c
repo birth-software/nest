@@ -10664,8 +10664,14 @@ typedef enum COFFDebugType : u32
     COFF_DEBUG_OMAP_FROM_SRC = 8,
     COFF_DEBUG_BORLAND = 9,
     COFF_DEBUG_RESERVED10 = 10,
+    COFF_DEBUG_BBT = 10,
     COFF_DEBUG_CLSID = 11,
+    COFF_DEBUG_VC_FEATURE = 12,
+    COFF_DEBUG_POGO = 13,
+    COFF_DEBUG_ILTCG = 14,
+    COFF_DEBUG_MPX = 15,
     COFF_DEBUG_REPRO = 16,
+    COFF_DEBUG_SPGO = 18,
     COFF_DEBUG_EXTENDED_DLL_CHARACTERISTICS = 20,
 } COFFDebugType;
 
@@ -10676,9 +10682,9 @@ STRUCT(COFFDebugDirectory)
     u16 major_version;
     u16 minor_version;
     COFFDebugType type;
-    u32 data_size;
-    u32 data_rva;
-    u32 data_offset;
+    u32 size;
+    u32 rva;
+    u32 file_offset;
 };
 
 static_assert(sizeof(COFFDebugDirectory) == 28);
@@ -10758,24 +10764,6 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     };
     vb_copy_scalar(&file, dos_header);
 
-    u8 dos_code[] =  { 0x0E, 0x1F, 0xBA, 0x0E, 0x00, 0xB4, 0x09, 0xCD, 0x21, 0xB8, 0x01, 0x4C, 0xCD, 0x21, };
-    vb_copy_any_array(&file, dos_code);
-
-    auto dos_string = strlit("This program cannot be run in DOS mode.\r\r\n");
-    vb_copy_string(&file, dos_string);
-    *vb_add(&file, 1) = '$';
-
-    vb_align(&file, 8);
-
-    u8 rich_header[] = {
-        0xDD, 0x6A, 0x05, 0xC7, 0x99, 0x0B, 0x6B, 0x94, 0x99, 0x0B, 0x6B, 0x94, 0x99, 0x0B, 0x6B, 0x94, 
-        0xD2, 0x73, 0x6A, 0x95, 0x9A, 0x0B, 0x6B, 0x94, 0x99, 0x0B, 0x6A, 0x94, 0x98, 0x0B, 0x6B, 0x94, 
-        0xD1, 0x8E, 0x6F, 0x95, 0x98, 0x0B, 0x6B, 0x94, 0xD1, 0x8E, 0x69, 0x95, 0x98, 0x0B, 0x6B, 0x94, 
-        0x52, 0x69, 0x63, 0x68, 0x99, 0x0B, 0x6B, 0x94, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-    };
-    vb_copy_any_array(&file, rich_header);
-
     u32 data_directory_count = 16;
 
     const u32 virtual_section_alignment = 0x1000;
@@ -10814,7 +10802,6 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
         vb_align(&file, file_section_alignment);
         auto file_offset = file.length;
-        assert(file_offset == 0x400);
         u8 text_content[] = { 0x48, 0x83, 0xEC, 0x28, 0x33, 0xC9, 0xFF, 0x15, 0xF4, 0x0F, 0x00, 0x00, 0x90, 0x48, 0x83, 0xC4, 0x28, 0xC3, };
         entry_point_rva = rva;
         vb_copy_any_array(&file, text_content);
@@ -10850,34 +10837,31 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     {
         // .rdata
         rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+        assert(rva == 0x2000);
         vb_align(&file, file_section_alignment);
         auto file_offset = file.length;
-        assert(file_offset == 0x600);
-        u8 rdata_chunk_0[] = {
-            0xF0, 0x21, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-        };
-        iat_rva = rva;
-        iat_size = sizeof(rdata_chunk_0);
-        vb_copy_any_array(&file, rdata_chunk_0);
+
+        auto iat_file_offset = file.length;
+        auto iat_section_offset = iat_file_offset - file_offset;
+        iat_rva = rva + iat_section_offset;
+
+        const u32 import_address_count = 2;
+        auto* import_address_table = vb_add_any_array(&file, COFFImportAddress, import_address_count);
+        iat_size = file.length - iat_file_offset;
 
         auto debug_directory_file_offset = file.length;
         auto debug_directory_section_offset = debug_directory_file_offset - file_offset;
         debug_directory_rva = rva + debug_directory_section_offset;
 
-        auto* debug_directory = vb_add_scalar(&file, COFFDebugDirectory);
+        auto* debug_directories = vb_add_any_array(&file, COFFDebugDirectory, 3);
+        debug_directory_size = file.length - debug_directory_file_offset;
 
         u8 rdata_chunk_1[] = {
-            0x00, 0x00, 0x00, 0x00, 0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 
-            0x14, 0x00, 0x00, 0x00, 0xC0, 0x20, 0x00, 0x00, 0xC0, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-            0x70, 0x63, 0xFD, 0x66, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00, 0x00, 0x00, 0xDC, 0x00, 0x00, 0x00, 
-            0xD4, 0x20, 0x00, 0x00, 0xD4, 0x06, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x03, 0x80, 0x03, 0x80, 
+            0x18, 0x00, 0x00, 0x00, 0x03, 0x80, 0x03, 0x80, 
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7C, 0x20, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 
             0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
         };
-        vb_copy_any_array(&file, rdata_chunk_1);
+        vb_copy_array(&file, rdata_chunk_1);
 
         auto debug_directory_data_file_offset = file.length;
         auto debug_directory_data_section_offset = debug_directory_data_file_offset - file_offset;
@@ -10907,68 +10891,95 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
             0x01, 0x04, 0x01, 0x00, 0x04, 0x42, 0x00, 0x00, 
         };
         vb_copy_any_array(&file, rdata_chunk_2);
-        *debug_directory = (COFFDebugDirectory){
-            .characteristics = 0,
-            .timestamp = 1727882096,
-            .major_version = 0,
-            .minor_version = 0,
-            .type = COFF_DEBUG_CODEVIEW,
-            .data_size = debug_directory_data_size,
-            .data_rva = debug_directory_data_rva,
-            .data_offset = debug_directory_data_file_offset,
+        u32 timestamp = 0x66fd6370;
+        COFFDebugDirectory sample_debug_directories[] = {
+            {
+                .characteristics = 0,
+                .timestamp = timestamp,
+                .major_version = 0,
+                .minor_version = 0,
+                .type = COFF_DEBUG_CODEVIEW,
+                .size = debug_directory_data_size,
+                .rva = debug_directory_data_rva,
+                .file_offset = debug_directory_data_file_offset,
+            },
+            {
+                .characteristics = 0,
+                .timestamp = timestamp,
+                .major_version = 0,
+                .minor_version = 0,
+                .type = COFF_DEBUG_VC_FEATURE,
+                .size = 0x14,
+                .rva = rva + 0xc0,
+                .file_offset = file_offset + 0xc0,
+            },
+            {
+                .characteristics = 0,
+                .timestamp = timestamp,
+                .major_version = 0,
+                .minor_version = 0,
+                .type = COFF_DEBUG_POGO,
+                .size = 0xdc,
+                .rva = rva + 0xd4,
+                .file_offset = file_offset + 0xd4,
+            },
         };
-        debug_directory_size = sizeof(*debug_directory) + debug_directory->data_size;
 
-        assert(file.length == 0x7b8);
+        memcpy(debug_directories, sample_debug_directories, sizeof(sample_debug_directories));
+
         auto import_directory_file_offset = file.length;
         auto import_directory_section_offset = file.length - file_offset;
         import_directory_rva = rva + import_directory_section_offset;
+
         // IAT
-        COFFImportDirectory import_directories[] = {
-            {
-                .lookup_table_rva = 0x21e0,
-                .time_date_stamp = 0,
-                .forwarder_chain = 0,
-                .dll_name_rva = 0x21fe,
-                .address_table_rva = 0x2000,
-            },
-        };
+        const u32 import_directory_count = 2;
+        auto* import_directories = vb_add_any_array(&file, COFFImportDirectory, import_directory_count);
 
-        assert(import_directories[array_length(import_directories) - 1].forwarder_chain == 0);
-        vb_copy_any_array(&file, import_directories);
+        import_directory_size = file.length - import_directory_file_offset;
 
-        u8 weird_padding[] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, };
-        vb_copy_any_array(&file, weird_padding);
+        auto import_lookup_file_offset = file.length;
+        auto import_lookup_section_offset = file.length - file_offset;
+        auto import_lookup_rva = rva + import_lookup_section_offset;
+        const u32 import_lookup_count = import_directory_count;
+        auto* import_lookups = vb_add_any_array(&file, COFFImportLookup, import_lookup_count);
+        assert(import_lookup_count == import_directory_count);
 
-        import_directory_size= file.length - import_directory_file_offset;
-
-        COFFImportLookup import_lookups[] = {
-            {
-                .name_table_rva = 0x21f0,
-            },
-        };
-        assert(array_length(import_directories) == array_length(import_lookups));
-        vb_copy_any_array(&file, import_lookups);
-        assert(file.length - import_directory_file_offset != 40);
-
-        // This goes back to the first .rdata offset
-        // COFFImportAddress import_addresses[] = {
-        //     {
-        //         .name_table_rva = 0x21f0,
-        //     },
-        // };
-
-        vb_align(&file, 0x10);
-        assert(file.length == 0x7f0);
-
+        auto name_table_file_offset = file.length;
+        auto name_table_section_offset = name_table_file_offset - file_offset;
+        auto name_table_rva = rva + name_table_section_offset;
         coff_import_name(&file, 376, strlit("ExitProcess"));
 
-        assert(file.length == 0x7fe);
-
+        auto dll_name_file_offset = file.length;
+        auto dll_name_section_offset = dll_name_file_offset - file_offset;
+        auto dll_name_rva = rva + dll_name_section_offset;
         auto dll_name = strlit("KERNEL32.dll");
         vb_copy_string_zero_terminated(&file, dll_name);
 
         *vb_add(&file, 1) = 0;
+
+        assert(import_lookup_count == 2);
+        import_lookups[0] = (COFFImportLookup) {
+            .name_table_rva = name_table_rva,
+        };
+        import_lookups[1] = (COFFImportLookup) {};
+
+        assert(import_directory_count == 2);
+        import_directories[0] = (COFFImportDirectory) {
+            .lookup_table_rva = import_lookup_rva,
+            .time_date_stamp = 0,
+            .forwarder_chain = 0,
+            .dll_name_rva = dll_name_rva,
+            .address_table_rva = iat_rva,
+        };
+
+        import_directories[1] = (COFFImportDirectory) {};
+        assert(import_directories[import_directory_count - 1].forwarder_chain == 0);
+
+        assert(import_address_count == 2);
+        import_address_table[0] = (COFFImportAddress) {
+            .name_table_rva = name_table_rva,
+        };
+        import_address_table[1] = (COFFImportAddress) {};
 
         auto virtual_size = file.length - file_offset;
         vb_align(&file, file_section_alignment);
@@ -10997,7 +11008,6 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     {
         // .pdata content
         vb_align(&file, file_section_alignment);
-        assert(file.length == 0xa00);
         rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
 
         auto file_offset = file.length;
@@ -11006,7 +11016,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
             {
                 .start_rva = text_section_header->rva,
                 .end_rva = text_section_header->rva + text_section_header->virtual_size,
-                .unwind_information_rva = 0x21b0,
+                .unwind_information_rva = rdata_section_header->rva + 0x1b0,
             },
         };
         exception_table_rva = rva;
@@ -11050,6 +11060,9 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         initialized_data_size += section_header->file_size * section_header->flags.contains_initialized_data;
         uninitialized_data_size += section_header->file_size * section_header->flags.contains_uninitialized_data;
     }
+
+    assert(debug_directory_size % sizeof(COFFDebugDirectory) == 0);
+    assert(iat_size % sizeof(COFFImportAddress) == 0);
 
     *coff_optional_header = (COFFOptionalHeader) {
         .format = COFF_FORMAT_PE32_PLUS,
@@ -11100,12 +11113,19 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     auto minimal = file_read(thread->arena, strlit("C:/Users/David/dev/minimal/main.exe"));
     assert(file.length == minimal.length);
 
+    u32 diff_count = 0;
     for (u32 i = 0; i < minimal.length; i += 1)
     {
         auto mine = file.pointer[i];
         auto original = minimal.pointer[i];
-        assert(mine == original);
+        if (mine != original)
+        {
+            print("Diff at {u32}\n", i);
+            diff_count += 1;
+        }
     }
+
+    assert(diff_count == 0);
 #else
     unused(thread);
 #endif
