@@ -10405,7 +10405,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
 STRUCT(DOSHeader)
 {
-    u16 signature;
+    u8 signature[2];
     u16 extra_page_size;
     u16 page_count;
     u16 relocations;
@@ -10513,14 +10513,9 @@ STRUCT(COFFLoaderFlags)
 
 static_assert(sizeof(COFFLoaderFlags) == sizeof(u32));
 
-STRUCT(COFFSignature)
-{
-    u8 data[4];
-};
-
 STRUCT(COFFHeader)
 {
-    COFFSignature signature;
+    u8 signature[4];
     COFFArchitecture architecture;
     u16 section_count;
     u32 time_date_stamp;
@@ -10531,6 +10526,34 @@ STRUCT(COFFHeader)
 };
 
 static_assert(sizeof(COFFHeader) == 24);
+
+typedef enum COFFDataDirectoryIndex {
+  COFF_EXPORT_DIRECTORY_INDEX,
+  COFF_IMPORT_DIRECTORY_INDEX,
+  COFF_RESOURCE_DIRECTORY_INDEX,
+  COFF_EXCEPTION_DIRECTORY_INDEX,
+  COFF_SECURITY_DIRECTORY_INDEX,
+  COFF_RELOCATION_DIRECTORY_INDEX,
+  COFF_DEBUG_DIRECTORY_INDEX,
+  COFF_ARCHITECTURE_DIRECTORY_INDEX,
+  COFF_GLOBAL_PTR_DIRECTORY_INDEX,
+  COFF_TLS_DIRECTORY_INDEX,
+  COFF_LOAD_CONFIG_DIRECTORY_INDEX,
+  COFF_BOUND_IMPORT_DIRECTORY_INDEX,
+  COFF_IAT_DIRECTORY_INDEX,
+  COFF_DELAY_IMPORT_DIRECTORY_INDEX,
+  COFF_CLR_DIRECTORY_INDEX,
+  COFF_DATA_DIRECTORY_LAST, // TODO: ??
+  COFF_DATA_DIRECTORY_COUNT
+} COFFDataDirectoryIndex;
+
+static_assert(COFF_DATA_DIRECTORY_COUNT == 16);
+
+STRUCT(COFFDataDirectory)
+{
+    u32 rva;
+    u32 size;
+};
 
 STRUCT(COFFOptionalHeader)
 {
@@ -10563,12 +10586,7 @@ STRUCT(COFFOptionalHeader)
     u64 heap_commit_size;
     COFFLoaderFlags loader_flags;
     u32 directory_count;
-};
-
-STRUCT(COFFDataDirectory)
-{
-    u32 rva;
-    u32 size;
+    COFFDataDirectory directories[COFF_DATA_DIRECTORY_COUNT];
 };
 
 STRUCT(COFFSectionFlags)
@@ -10678,7 +10696,7 @@ STRUCT(COFFGUID)
 
 STRUCT(COFFRSDS)
 {
-    COFFSignature signature;
+    u8 signature[4];
     COFFGUID guid;
     u32 age;
     u8 path[];
@@ -10738,24 +10756,11 @@ fn void coff_import_name(VirtualBuffer(u8)* file, u16 hint, String name)
 may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 {
     VirtualBuffer(u8) file = {};
-    auto* mz = "MZ";
-    auto signature = *(u16*)mz;
-    auto dos_header = (DOSHeader){
-        .signature = signature,
-        .extra_page_size = 144,
-        .page_count = 3,
-        .relocations = 0,
-        .header_size_in_paragraphs = 4,
-        .minimum_allocated_paragraphs = 0,
-        .maximum_allocated_paragraphs = (u16)~((u16)(0u)),
-        .initial_ss_value = 0,
-        .initial_relative_sp_value = 184,
-        .checksum = 0,
-        .initial_relative_ip_value = 0,
-        .initial_cs_value = 0,
+
+    auto* dos_header = vb_add_scalar(&file, DOSHeader);
+    *dos_header = (DOSHeader){
+        .signature = { 'M', 'Z' },
         .relocation_table_pointer = sizeof(DOSHeader),
-        .overlay_number = 0,
-        .coff_header_pointer = 208,
     };
     vb_copy_scalar(&file, dos_header);
 
@@ -10777,96 +10782,39 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     };
     vb_copy_any_array(&file, rich_header);
 
-    COFFDataDirectory directories[] = {
-        { .rva = 0, .size = 0, },
-        { .rva = 8632, .size = 40, },
-        { .rva = 0, .size = 0, },
-        { .rva = 12288, .size = 12, },
-        { .rva = 0, .size = 0, },
-        { .rva = 0, .size = 0, },
-        { .rva = 8208, .size = 84, },
-        { .rva = 0, .size = 0, },
-        { .rva = 0, .size = 0, },
-        { .rva = 0, .size = 0, },
-        { .rva = 0, .size = 0, },
-        { .rva = 0, .size = 0, },
-        { .rva = 8192, .size = 16, },
-        { .rva = 0, .size = 0, },
-        { .rva = 0, .size = 0, },
-        { .rva = 0, .size = 0, },
-    };
+    u32 data_directory_count = 16;
 
     const u32 virtual_section_alignment = 0x1000;
     const u32 file_section_alignment = 0x200;
 
-    auto coff_optional_header = (COFFOptionalHeader) {
-        .format = COFF_FORMAT_PE32_PLUS,
-        .major_linker_version = 14,
-        .minor_linker_version = 41,
-        .code_size = 0x200,
-        .initialized_data_size = 0x600,
-        .uninitialized_data_size = 0,
-        .entry_point_address = 0x1000,
-        .code_offset = 0x1000,
-        .image_offset = 0x140000000,
-        .virtual_section_alignment = virtual_section_alignment,
-        .file_section_alignment = file_section_alignment,
-        .major_operating_system_version = 6,
-        .minor_operating_system_version = 0,
-        .major_image_version = 0,
-        .minor_image_version = 0,
-        .major_subsystem_version = 6,
-        .minor_subsystem_version = 0,
-        .win32_version_value = 0,
-        .image_size = 0x4000,
-        .headers_size = 0x400,
-        .checksum = 0,
-        .subsystem = COFF_SUBSYSTEM_WINDOWS_CUI,
-        .dll_characteristics = {
-            .high_entropy_va = 1,
-            .dynamic_base = 1,
-            .nx_compatible = 1,
-            .terminal_server_aware = 1,
-        },
-        .stack_reserve_size = MB(1),
-        .stack_commit_size = 0x1000,
-        .heap_reserve_size = MB(1),
-        .heap_commit_size = 0x1000,
-        .loader_flags = {},
-        .directory_count = array_length(directories),
-    };
-
     u16 section_count = 3;
     auto coff_header = (COFFHeader) {
-        .signature = {
-            .data = { 'P', 'E', 0, 0 },
-        },
+        .signature = { 'P', 'E', 0, 0 },
         .architecture = COFF_ARCH_AMD64,
         .section_count = section_count,
         .time_date_stamp = 1727882096,
         .symbol_table_pointer = 0,
         .symbol_count = 0,
-        .optional_header_size = sizeof(COFFOptionalHeader) + sizeof(directories),
+        .optional_header_size = sizeof(COFFOptionalHeader),
         .characteristics = {
             .executable_image = 1,
             .large_address_aware = 1,
         },
     };
 
-    assert(file.length == 0xd0);
+    dos_header->coff_header_pointer = file.length;
     *vb_add_scalar(&file, COFFHeader) = coff_header;
     auto optional_header_offset = file.length;
-    *vb_add_scalar(&file, COFFOptionalHeader) = coff_optional_header;
-    assert(file.length == 0x158);
-    vb_copy_any_array(&file, directories);
-    assert(file.length - optional_header_offset == coff_header.optional_header_size);
+    auto* coff_optional_header = vb_add_scalar(&file, COFFOptionalHeader);
 
     auto* section_headers = vb_add_any_array(&file, COFFSectionHeader, section_count);
     u16 section_i = 0;
+    auto headers_size = cast(u32, u64, align_forward(file.length, file_section_alignment));
     u32 rva = file.length;
 
     // .text
     auto* text_section_header = &section_headers[section_i];
+    u32 entry_point_rva;
     section_i += 1;
     {
         rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
@@ -10874,7 +10822,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         auto file_offset = file.length;
         assert(file_offset == 0x400);
         u8 text_content[] = { 0x48, 0x83, 0xEC, 0x28, 0x33, 0xC9, 0xFF, 0x15, 0xF4, 0x0F, 0x00, 0x00, 0x90, 0x48, 0x83, 0xC4, 0x28, 0xC3, };
-        auto entry_point_rva = rva;
+        entry_point_rva = rva;
         vb_copy_any_array(&file, text_content);
         auto virtual_size = file.length - file_offset;
         vb_align(&file, file_section_alignment);
@@ -10929,6 +10877,9 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
             0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
         };
         vb_copy_any_array(&file, rdata_chunk_1);
+
+        assert(rva + file.length - file_offset == debug_directory.data_rva);
+        assert(file.length == debug_directory.data_offset);
 
         u8 rsds_guid[] = { 0x3D, 0x15, 0x84, 0x0A, 0xBC, 0x9F, 0xA1, 0x4B, 0x82, 0xB4, 0x94, 0xF1, 0x5B, 0x91, 0x63, 0x3A, };
         u32 rsds_age = 3;
@@ -11059,8 +11010,65 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     }
 
     vb_align(&file, file_section_alignment);
+    rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
 
     assert(section_i == section_count);
+
+    u32 code_size = 0;
+    u32 initialized_data_size = 0;
+    u32 uninitialized_data_size = 0;
+
+    for (u16 i = 0; i < section_count; i += 1)
+    {
+        auto* section_header = &section_headers[i];
+
+        code_size += section_header->file_size * section_header->flags.contains_code;
+        initialized_data_size += section_header->file_size * section_header->flags.contains_initialized_data;
+        uninitialized_data_size += section_header->file_size * section_header->flags.contains_uninitialized_data;
+    }
+
+    *coff_optional_header = (COFFOptionalHeader) {
+        .format = COFF_FORMAT_PE32_PLUS,
+        .major_linker_version = 14,
+        .minor_linker_version = 41,
+        .code_size = code_size,
+        .initialized_data_size = initialized_data_size,
+        .uninitialized_data_size = uninitialized_data_size,
+        .entry_point_address = entry_point_rva,
+        .code_offset = text_section_header->rva,
+        .image_offset = 0x140000000,
+        .virtual_section_alignment = virtual_section_alignment,
+        .file_section_alignment = file_section_alignment,
+        .major_operating_system_version = 6,
+        .minor_operating_system_version = 0,
+        .major_image_version = 0,
+        .minor_image_version = 0,
+        .major_subsystem_version = 6,
+        .minor_subsystem_version = 0,
+        .win32_version_value = 0,
+        .image_size = rva,
+        .headers_size = headers_size,
+        .checksum = 0,
+        .subsystem = COFF_SUBSYSTEM_WINDOWS_CUI,
+        .dll_characteristics = {
+            .high_entropy_va = 1,
+            .dynamic_base = 1,
+            .nx_compatible = 1,
+            .terminal_server_aware = 1,
+        },
+        .stack_reserve_size = MB(1),
+        .stack_commit_size = 0x1000,
+        .heap_reserve_size = MB(1),
+        .heap_commit_size = 0x1000,
+        .loader_flags = {},
+        .directory_count = array_length(coff_optional_header->directories),
+        .directories = {
+            [COFF_IMPORT_DIRECTORY_INDEX] = { .rva = 0x21b8, .size = 40, },
+            [COFF_EXCEPTION_DIRECTORY_INDEX] = { .rva = 0x3000, .size = 12, },
+            [COFF_DEBUG_DIRECTORY_INDEX] = { .rva = 0x2010, .size = 84, },
+            [COFF_IAT_DIRECTORY_INDEX] = { .rva = 0x2000, .size = 16, },
+        },
+    };
 
     // Check if file matches
 #define CHECK_PE_MATCH 0
