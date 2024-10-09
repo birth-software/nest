@@ -2332,7 +2332,6 @@ fn Type* thread_type_get(Thread* thread, TypeIndex type_index)
     return type;
 }
 
-
 fn DebugType* thread_debug_type_get(Thread* thread, DebugTypeIndex debug_type_index)
 {
     assert(validi(debug_type_index));
@@ -3179,7 +3178,6 @@ fn s64 ip_generic_find_slot(GenericInternPool* pool, Thread* thread, u32 item_in
 
     return result;
 }
-
 
 fn GenericInternPoolBufferResult ip_DebugType_add_to_buffer(Thread* thread)
 {
@@ -4073,7 +4071,6 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //     return result;
 // }
 
-
 // fn s64 intern_pool_find_debug_type_slot(Thread* thread, const DebugType* type, Hash32 hash)
 // {
 //     auto it_index = original_index;
@@ -4225,7 +4222,6 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //         }
 //     }
 // }
-
 
 // fn TypeGetOrPut type_make_tuple(Thread* thread, Slice(TypeIndex) types)
 // {
@@ -4652,7 +4648,6 @@ may_be_unused fn String type_id_to_string(Type* type)
         case_to_name(TYPE_, COUNT);
     }
 }
-
 
 fn Hash64 hash_type(Thread* thread, Type* type)
 {
@@ -5249,7 +5244,6 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
             i += 1;
         }
 
-
         if (decimal_digit_count)
         {
             parser->i += 1;
@@ -5631,7 +5625,6 @@ fn NodeIndex analyze_addition(Thread* thread, Parser* parser, FunctionBuilder* b
 
         // node_set_input(thread, new_node_index, 2, right);
         todo();
-
 
         // print("Addition new node #{u32}\n", new_node_index.index);
         // print("Left code:\n```\n{s}\n```\n", s_get_slice(u8, src, parser->i, src.length));
@@ -7326,7 +7319,6 @@ STRUCT(ELFNoteHeader)
     ELFNoteType type;
 };
 static_assert(sizeof(ELFNoteHeader) == 12);
-
 
 #define elf_eh_frame_absptr 0x00
 #define elf_eh_frame_udata4 0x03
@@ -11883,7 +11875,6 @@ STRUCT(VirtualRegister)
 };
 decl_vb(VirtualRegister);
 
-
 fn s32 fixed_register_mask(RegisterMask mask)
 {
     if (mask.class == REGISTER_CLASS_STACK)
@@ -14640,6 +14631,22 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                 }
 #endif
                 assert(os_file_descriptor_is_valid(fd));
+
+                // print("u8 buffer[] = {\n");
+                //
+                // for (u64 i = 0; i < executable.length; i += 1)
+                // {
+                //     auto byte = executable.pointer[i];
+                //     if (i % 16 == 0)
+                //     {
+                //         print("\n    ");
+                //     }
+                //
+                //     print("0x{u32:x}, ", (u32)byte);
+                // }
+                //
+                // print("\n};");
+
                 os_file_write(fd, (String) { executable.pointer, executable.length });
                 os_file_close(fd);
             }

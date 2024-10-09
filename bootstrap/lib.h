@@ -1654,7 +1654,8 @@ may_be_unused fn u64 os_file_get_size(FileDescriptor fd)
 {
 #if _WIN32
     LARGE_INTEGER file_size;
-    GetFileSizeEx(fd, &file_size);
+    BOOL result = GetFileSizeEx(fd, &file_size);
+    assert(result != 0);
     return (u64)file_size.QuadPart;
 #else
     struct stat stat_buffer;
@@ -1668,31 +1669,48 @@ may_be_unused fn u64 os_file_get_size(FileDescriptor fd)
 may_be_unused fn void os_file_write(FileDescriptor fd, String content)
 {
 #if _WIN32
-    WriteFile(fd, content.pointer, cast(u32, u64, content.length), 0, 0);
+    DWORD bytes_written = 0;
+    BOOL result = WriteFile(fd, content.pointer, cast(u32, u64, content.length), &bytes_written, 0);
+    assert(result != 0);
 #else
-    syscall_write(fd, content.pointer, content.length);
+    auto result = syscall_write(fd, content.pointer, content.length);
+    assert(result == content.length);
 #endif
 }
 
-may_be_unused fn void os_file_read(FileDescriptor fd, String buffer, u64 byte_count)
+may_be_unused fn u64 os_file_read(FileDescriptor fd, String buffer, u64 byte_count)
 {
+    assert(byte_count);
     assert(byte_count <= buffer.length);
+    u64 bytes_read = 0;
     if (byte_count <= buffer.length)
     {
 #if _WIN32
-        ReadFile(fd, buffer.pointer, cast(u32, u64, byte_count), 0, 0);
+        DWORD read = 0;
+        BOOL result = ReadFile(fd, buffer.pointer, cast(u32, u64, byte_count), &read, 0);
+        assert(result != 0);
+        bytes_read = read;
 #else
-        syscall_read(fd, buffer.pointer, byte_count);
+        auto result = syscall_read(fd, buffer.pointer, byte_count);
+        assert(result > 0);
+        if (result > 0)
+        {
+            bytes_read = cast(u64, s64, result);
+        }
 #endif
     }
+    assert(bytes_read == byte_count);
+    return bytes_read;
 }
 
 may_be_unused fn void os_file_close(FileDescriptor fd)
 {
 #if _WIN32
-    CloseHandle(fd);
+    BOOL result = CloseHandle(fd);
+    assert(result != 0);
 #else
-    syscall_close(fd);
+    auto result = syscall_close(fd);
+    assert(result == 0);
 #endif
 }
 
