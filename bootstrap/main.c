@@ -14610,6 +14610,10 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                         .truncate = 1,
                         .create = 1,
                         .executable = 1,
+                        }, (OSFilePermissions) {
+                            .readable = 1,
+                            .writable = 1,
+                            .executable = 1,
                         });
 #if _WIN32
                 if (!os_file_descriptor_is_valid(fd))
