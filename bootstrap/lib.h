@@ -835,6 +835,14 @@ may_be_unused fn String string_base(String string)
         auto index = cast(u64, s64, maybe_index);
         result = s_get_slice(u8, string, index + 1, string.length);
     }
+#if _WIN32
+    if (!result.pointer)
+    {
+        auto maybe_index = string_last_ch(string, '\\');
+        auto index = cast(u64, s64, maybe_index);
+        result = s_get_slice(u8, string, index + 1, string.length);
+    }
+#endif
 
     return result;
 }
@@ -3286,6 +3294,7 @@ may_be_unused fn void run_command(Arena* arena, CStringSlice arguments, char* en
         DWORD exit_code;
         if (GetExitCodeProcess(process_information.hProcess, &exit_code))
         {
+            print("Process ran with exit code: {u32:x}\n", exit_code);
             if (exit_code != 0)
             {
                 fail();
