@@ -10753,6 +10753,41 @@ fn void coff_import_name(VirtualBuffer(u8)* file, u16 hint, String name)
     vb_copy_string_zero_terminated(file, name);
 }
 
+typedef enum COFFUnwindOperation : u8
+{
+    UNW_OP_PUSH_NONVOL = 0, // Save a non-volatile register on the stack.
+    UNW_OP_ALLOC_LARGE = 1, // Allocate a large stack frame.
+    UNW_OP_ALLOC_SMALL = 2, // Allocate a small stack frame.
+    UNW_OP_SET_FPREG = 3, // Establish the frame pointer register.
+    UNW_OP_SAVE_NONVOL = 4, // Save a non-volatile register at a specified offset.
+    UNW_OP_SAVE_NONVOL_FAR = 5, // Save a non-volatile register at a far offset.
+    UNW_OP_SAVE_XMM128 = 8, // Save a 128-bit XMM register.
+    UNW_OP_SAVE_XMM128_FAR = 9, // Save a 128-bit XMM register at a far offset.
+    UNW_OP_PUSH_MACHFRAME = 10, // Push a machine frame (used for interrupts and system exceptions).
+} COFFUnwindOperation;
+
+STRUCT(COFFUnwindCode)
+{
+    u8 code_offset;
+    COFFUnwindOperation operation:4;
+    u8 operation_info:4;
+};
+
+static_assert(sizeof(COFFUnwindCode) == 2);
+
+STRUCT(COFFUnwindInformation)
+{
+    u8 version:3;
+    u8 exception_handler:1;
+    u8 user_exception_handler:1;
+    u8 chain_info:1;
+    u8 reserved:2;
+    u8 prologue_size;
+    u8 code_count;
+    u8 frame_register_and_offset;
+    COFFUnwindCode code[];
+};
+
 may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 {
     VirtualBuffer(u8) file = {};
@@ -10768,13 +10803,15 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 
     const u32 virtual_section_alignment = 0x1000;
     const u32 file_section_alignment = 0x200;
+    const u32 timestamp = 0x66fd6370;
+
 
     u16 section_count = 3;
     auto coff_header = (COFFHeader) {
         .signature = { 'P', 'E', 0, 0 },
         .architecture = COFF_ARCH_AMD64,
         .section_count = section_count,
-        .time_date_stamp = 1727882096,
+        .time_date_stamp = timestamp,
         .symbol_table_pointer = 0,
         .symbol_count = 0,
         .optional_header_size = sizeof(COFFOptionalHeader),
@@ -10834,6 +10871,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     u32 import_directory_size;
     u32 debug_directory_rva;
     u32 debug_directory_size;
+    u32 unwind_information_rva;
     {
         // .rdata
         rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
@@ -10853,15 +10891,9 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         auto debug_directory_section_offset = debug_directory_file_offset - file_offset;
         debug_directory_rva = rva + debug_directory_section_offset;
 
-        auto* debug_directories = vb_add_any_array(&file, COFFDebugDirectory, 3);
+        const u32 debug_directory_count = 1;
+        auto* debug_directories = vb_add_any_array(&file, COFFDebugDirectory, debug_directory_count);
         debug_directory_size = file.length - debug_directory_file_offset;
-
-        u8 rdata_chunk_1[] = {
-            0x18, 0x00, 0x00, 0x00, 0x03, 0x80, 0x03, 0x80, 
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7C, 0x20, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 
-            0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
-        };
-        vb_copy_array(&file, rdata_chunk_1);
 
         auto debug_directory_data_file_offset = file.length;
         auto debug_directory_data_section_offset = debug_directory_data_file_offset - file_offset;
@@ -10872,26 +10904,30 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         file_write_coff_rsds(&file, (String)array_to_slice(rsds_guid), rsds_age, strlit("C:\\Users\\David\\dev\\minimal\\main.pdb"));
         auto debug_directory_data_size = file.length - debug_directory_data_file_offset;
 
-        u8 rdata_chunk_2[] = {
-            0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 
-            0x2E, 0x74, 0x65, 0x78, 0x74, 0x24, 0x6D, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 
-            0x10, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x35, 0x00, 0x00, 0x00, 0x00, 
-            0x10, 0x20, 0x00, 0x00, 0x54, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
-            0x64, 0x20, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x76, 
-            0x6F, 0x6C, 0x74, 0x6D, 0x64, 0x00, 0x00, 0x00, 0x84, 0x20, 0x00, 0x00, 0x2C, 0x01, 0x00, 0x00, 
-            0x2E, 0x72, 0x64, 0x61, 0x74, 0x61, 0x24, 0x7A, 0x7A, 0x7A, 0x64, 0x62, 0x67, 0x00, 0x00, 0x00, 
-            0xB0, 0x21, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x2E, 0x78, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
-            0xB8, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x32, 
-            0x00, 0x00, 0x00, 0x00, 0xCC, 0x21, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 
-            0x74, 0x61, 0x24, 0x33, 0x00, 0x00, 0x00, 0x00, 0xE0, 0x21, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 
-            0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x34, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x21, 0x00, 0x00, 
-            0x1C, 0x00, 0x00, 0x00, 0x2E, 0x69, 0x64, 0x61, 0x74, 0x61, 0x24, 0x36, 0x00, 0x00, 0x00, 0x00, 
-            0x00, 0x30, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x2E, 0x70, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 
-            0x01, 0x04, 0x01, 0x00, 0x04, 0x42, 0x00, 0x00, 
+        auto unwind_information_file_offset = file.length;
+        auto unwind_information_section_offset = unwind_information_file_offset - file_offset;
+        unwind_information_rva = rva + unwind_information_section_offset;
+        auto* unwind_information = vb_add_scalar(&file, COFFUnwindInformation);
+
+        auto unwind_information_prologue_offset = file.length;
+
+        COFFUnwindCode unwind_codes[] = {
+            {
+                .code_offset = 4,
+                .operation = UNW_OP_ALLOC_SMALL,
+                .operation_info = 4, // 4 * 8 = 32 bytes of stack
+            },
         };
-        vb_copy_any_array(&file, rdata_chunk_2);
-        u32 timestamp = 0x66fd6370;
+        vb_copy_any_array(&file, unwind_codes);
+        vb_align(&file, sizeof(u32));
+
+        *unwind_information = (COFFUnwindInformation) {
+            .version = 1,
+            .prologue_size = file.length - unwind_information_prologue_offset,
+            .code_count = array_length(unwind_codes),
+            .frame_register_and_offset = 0,
+        };
+
         COFFDebugDirectory sample_debug_directories[] = {
             {
                 .characteristics = 0,
@@ -10902,26 +10938,6 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
                 .size = debug_directory_data_size,
                 .rva = debug_directory_data_rva,
                 .file_offset = debug_directory_data_file_offset,
-            },
-            {
-                .characteristics = 0,
-                .timestamp = timestamp,
-                .major_version = 0,
-                .minor_version = 0,
-                .type = COFF_DEBUG_VC_FEATURE,
-                .size = 0x14,
-                .rva = rva + 0xc0,
-                .file_offset = file_offset + 0xc0,
-            },
-            {
-                .characteristics = 0,
-                .timestamp = timestamp,
-                .major_version = 0,
-                .minor_version = 0,
-                .type = COFF_DEBUG_POGO,
-                .size = 0xdc,
-                .rva = rva + 0xd4,
-                .file_offset = file_offset + 0xd4,
             },
         };
 
@@ -10947,7 +10963,9 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         auto name_table_file_offset = file.length;
         auto name_table_section_offset = name_table_file_offset - file_offset;
         auto name_table_rva = rva + name_table_section_offset;
-        coff_import_name(&file, 376, strlit("ExitProcess"));
+        // TODO: compute hints
+        u16 hint = 0;
+        coff_import_name(&file, hint, strlit("ExitProcess"));
 
         auto dll_name_file_offset = file.length;
         auto dll_name_section_offset = dll_name_file_offset - file_offset;
@@ -11016,7 +11034,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
             {
                 .start_rva = text_section_header->rva,
                 .end_rva = text_section_header->rva + text_section_header->virtual_size,
-                .unwind_information_rva = rdata_section_header->rva + 0x1b0,
+                .unwind_information_rva = unwind_information_rva,
             },
         };
         exception_table_rva = rva;
