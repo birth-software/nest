@@ -752,9 +752,9 @@ fn u64 strlen (const char* c_string)
 #define array_to_slice(arr) { .pointer = (arr), .length = array_length(arr) }
 #define array_to_bytes(arr) { .pointer = (u8*)(arr), .length = sizeof(arr) }
 #define pointer_to_bytes(p) (String) { .pointer = (u8*)(p), .length = sizeof(*p) }
-#define struct_to_bytes(s) pointer_to_bytes(&(s))
+#define scalar_to_bytes(s) pointer_to_bytes(&(s))
 #define string_to_c(s) ((char*)((s).pointer))
-#define cstr(s) ((String) { .pointer = (u8*)(s), .length = strlen(s), } )
+#define cstr(s) ((String) { .pointer = (u8*)(s), .length = strlen((char*)s), } )
 
 #define case_to_name(prefix, e) case prefix ## e: return strlit(#e)
 
@@ -775,7 +775,13 @@ fn u64 strlen (const char* c_string)
 #define s_equal(a, b) ((a).length == (b).length && memcmp((a).pointer, (b).pointer, sizeof(*((a).pointer)) * (a).length) == 0)
 
 declare_slice(u8);
+declare_slice(u16);
+declare_slice(u32);
+declare_slice(u64);
+declare_slice(s8);
+declare_slice(s16);
 declare_slice(s32);
+declare_slice(s64);
 typedef Slice(u8) String;
 // Array of strings
 declare_slice(String);
@@ -3424,9 +3430,34 @@ typedef struct StructName StructName
 
 decl_vb(u8);
 decl_vbp(u8);
-decl_vb(s32);
+decl_vb(u16);
+decl_vbp(u16);
 decl_vb(u32);
+decl_vbp(u32);
+decl_vb(s32);
+decl_vbp(s32);
+decl_vb(s64);
+decl_vbp(s64);
 decl_vb(String);
+
+fn u8 is_power_of_two(u64 value)
+{
+    return (value & (value - 1)) == 0;
+}
+
+fn u8 first_bit_set_32(u32 value)
+{
+    auto result = (u8)__builtin_ffs((s32)value);
+    result -= result != 0;
+    return result;
+}
+
+fn u64 first_bit_set_64(u64 value)
+{
+    auto result = (u8) __builtin_ffs((s64)value);
+    result -= result != 0;
+    return result;
+}
 
 fn void vb_generic_ensure_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
 {
