@@ -29462,7 +29462,6 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     const u32 file_section_alignment = 0x200;
     const u32 timestamp = 0x66fd6370;
 
-
     u16 section_count = 3;
     auto coff_header = (COFFHeader) {
         .signature = { 'P', 'E', 0, 0 },
@@ -31314,9 +31313,29 @@ fn void cfg_builder_clear(CFGBuilder* restrict builder, Thread* restrict thread)
     builder->scheduled.length = 0;
 }
 
+typedef enum CpuArchitecture : u8
+{
+    CPU_ARCH_X86_64,
+    CPU_ARCH_AARCH64,
+} CpuArchitecture;
+
+typedef enum OperatingSystem : u8
+{
+    OPERATING_SYSTEM_LINUX,
+    OPERATING_SYSTEM_MAC,
+    OPERATING_SYSTEM_WINDOWS,
+} OperatingSystem;
+
+STRUCT(Target)
+{
+    CpuArchitecture cpu;
+    OperatingSystem os;
+};
+
 STRUCT(CodegenOptions)
 {
     String test_name;
+    Target target;
     CompilerBackend backend;
 };
 
@@ -33325,74 +33344,63 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     case COMPILER_BACKEND_MACHINE:
         {
             auto code_slice = (Slice(u8)) { .pointer = code.pointer, .length = code.length, };
-            auto options = (ObjectOptions) {
+            auto object_options = (ObjectOptions) {
                 .object_path = object_path,
                 .exe_path = exe_path,
                 .code = code_slice,
                 .dynamic = 1,
             };
-            String executable = 
-#if _WIN32
-            write_pe(thread, options);
-#elif defined(__APPLE__)
-            write_macho(thread, options);
-#elif defined(__linux__)
-            write_elf(thread, options);
-#else
-            todo();
-#endif
 
+            String executable;
+            switch (options.target.os)
             {
-                auto fd = os_file_open(options.exe_path, (OSFileOpenFlags) {
-                        .write = 1,
-                        .truncate = 1,
-                        .create = 1,
-                        .executable = 1,
-                        }, (OSFilePermissions) {
-                            .readable = 1,
-                            .writable = 1,
-                            .executable = 1,
-                        });
-#if _WIN32
-                if (!os_file_descriptor_is_valid(fd))
-                {
-                    auto err = GetLastError();
-                    LPSTR lpMsgBuf;
-                    DWORD bufSize = FormatMessageA(
-                            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                            NULL,
-                            err,
-                            LANG_NEUTRAL, // Use default language
-                            (LPSTR)&lpMsgBuf,
-                            0,
-                            NULL
-                            );
-                    unused(bufSize);
-                    print("Error opening file \"{s}\": {cstr}\n", options.exe_path, lpMsgBuf);
-                    fail();
-                }
-#endif
-                assert(os_file_descriptor_is_valid(fd));
-
-                // print("u8 buffer[] = {\n");
-                //
-                // for (u64 i = 0; i < executable.length; i += 1)
-                // {
-                //     auto byte = executable.pointer[i];
-                //     if (i % 16 == 0)
-                //     {
-                //         print("\n    ");
-                //     }
-                //
-                //     print("0x{u32:x}, ", (u32)byte);
-                // }
-                //
-                // print("\n};");
-
-                os_file_write(fd, (String) { executable.pointer, executable.length });
-                os_file_close(fd);
+                case OPERATING_SYSTEM_LINUX:
+                    {
+                        executable = write_elf(thread, object_options);
+                    } break;
+                case OPERATING_SYSTEM_MAC:
+                    {
+                        executable = write_macho(thread, object_options);
+                    } break;
+                case OPERATING_SYSTEM_WINDOWS:
+                    {
+                        executable = write_pe(thread, object_options);
+                    } break;
             }
 
+            auto fd = os_file_open(object_options.exe_path, (OSFileOpenFlags) {
+                    .write = 1,
+                    .truncate = 1,
+                    .create = 1,
+                    .executable = 1,
+                    }, (OSFilePermissions) {
+                    .readable = 1,
+                    .writable = 1,
+                    .executable = 1,
+                    });
+#if _WIN32
+            if (!os_file_descriptor_is_valid(fd))
+            {
+                auto err = GetLastError();
+                LPSTR lpMsgBuf;
+                DWORD bufSize = FormatMessageA(
+                        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                        NULL,
+                        err,
+                        LANG_NEUTRAL, // Use default language
+                        (LPSTR)&lpMsgBuf,
+                        0,
+                        NULL
+                        );
+                unused(bufSize);
+                print("Error opening file \"{s}\": {cstr}\n", object_options.exe_path, lpMsgBuf);
+                fail();
+            }
+#endif
+            assert(os_file_descriptor_is_valid(fd));
+
+            os_file_write(fd, (String) { executable.pointer, executable.length });
+            os_file_close(fd);
         } break;
     }
 }
@@ -33816,6 +33824,21 @@ fn void entry_point(int argc, char* argv[], char* envp[])
     CompilerBackend compiler_backend = arguments.pointer[2].pointer[0];
     u8 emit_ir = arguments.length >= 4 && arguments.pointer[3].pointer[0] == 'y';
 
+    Target target = {
+#if _WIN32
+        .cpu = CPU_ARCH_X86_64,
+        .os = OPERATING_SYSTEM_WINDOWS,
+#elif defined(__APPLE__)
+        .cpu = CPU_ARCH_AARCH64,
+        .os = OPERATING_SYSTEM_MAC,
+#elif defined(__linux__)
+        .cpu = CPU_ARCH_X86_64,
+        .os = OPERATING_SYSTEM_LINUX,
+#else
+#error "Unknown platform"
+#endif
+    };
+
     os_directory_make(strlit("nest"));
 
     File file = {
@@ -33844,6 +33867,7 @@ fn void entry_point(int argc, char* argv[], char* envp[])
         code_generation(thread, (CodegenOptions) {
             .test_name = test_name,
             .backend = compiler_backend,
+            .target = target,
         });
     }
 
