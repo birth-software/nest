@@ -20671,8 +20671,9 @@ u8 pdb_image[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 };
 
-fn void pdb_write(Thread* thread, String pdb_path)
+fn String pdb_build(Thread* thread)
 {
+    unused(thread);
     const u32 block_size = 0x1000;
     VirtualBuffer(u8) pdb_file = {};
 
@@ -29421,28 +29422,7 @@ fn void pdb_write(Thread* thread, String pdb_path)
         }
     }
 
-    auto fd = os_file_open(pdb_path, (OSFileOpenFlags) {
-        .write = 1,
-        .truncate = 1,
-        .create = 1,
-    }, (OSFilePermissions) {
-        .readable = 1,
-        .writable = 1,
-    });
-
-    os_file_write(fd, (String) { pdb_file.pointer, pdb_file.length });
-
-    os_file_close(fd);
-
-    // auto* header = vb_add_scalar(&pdb, PDBHeader);
-    // *header = (PDBHeader) {
-    //     .magic = "Microsoft C/C++ MSF 7.00\r\n\x1a" "DS\x00\x00\x00",
-    //     .block_size = page_size,
-    //     .free_block_map_index = 1,
-    //     .block_count = 35,
-    //     .directory_size = 184,
-    //     .reserved = 0,
-    // };
+    return (String) { pdb_file.pointer, pdb_file.length };
 }
 
 may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
@@ -29782,7 +29762,9 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     };
 
     auto dot_index = string_last_ch(options.exe_path, '.');
+    dot_index = dot_index == -1 ? options.exe_path.length : dot_index;
     auto path_without_extension = s_get_slice(u8, options.exe_path, 0, dot_index);
+    assert(path_without_extension.length <= options.exe_path.length);
 
     String to_join[] = {
         path_without_extension,
@@ -29790,7 +29772,23 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     };
     auto pdb_path = arena_join_string(thread->arena, (Slice(String))array_to_slice(to_join));
 
-    pdb_write(thread, pdb_path);
+    auto pdb = pdb_build(thread);
+
+    // TODO:
+#if _WIN32
+    auto fd = os_file_open(pdb_path, (OSFileOpenFlags) {
+        .write = 1,
+        .truncate = 1,
+        .create = 1,
+    }, (OSFilePermissions) {
+        .readable = 1,
+        .writable = 1,
+    });
+
+    os_file_write(fd, pdb);
+
+    os_file_close(fd);
+#endif
 
     // Check if file matches
 #define CHECK_PE_MATCH 0
@@ -33357,6 +33355,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                 case OPERATING_SYSTEM_LINUX:
                     {
                         executable = write_elf(thread, object_options);
+                        write_pe(thread, object_options);
                     } break;
                 case OPERATING_SYSTEM_MAC:
                     {
