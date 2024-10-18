@@ -10929,6 +10929,7 @@ fn PDBCoalescedMSFStream pdb_coalesced_msf_stream(PDBStreamCreate create)
     {
         auto index = create.block_indices[0];
         auto file_offset = pdb_block_index_to_file_offset(index, create.block_size);
+        print("Creating stream from block #{u32}, file offset 0x{u64:x}\n", index, file_offset);
         result.data = create.data + file_offset;
         result.size = create.size;
     }
@@ -11532,180 +11533,6 @@ fn void pdb_print_sizes(PDBFile pdb, PDBDBIStream dbi)
             stream_offset = align_forward(stream_offset, 4);
         }
     }
-}
-
-fn void pdb_playground(Thread* thread)
-{
-    PDBFile pdb = {};
-
-    pdb.content = file_read(thread->arena, strlit("C:/Users/David/dev/minimal/main.pdb"));
-
-    if (pdb_validate(pdb.content) != PDB_VALIDATION_SUCCESS)
-    {
-        fail();
-    }
-
-    pdb.header = (PDBHeader*)(pdb.content.pointer + 0);
-    auto directory_block_count = pdb_size_to_block_count(pdb.header->directory_size, pdb.header->block_size);
-
-    auto directory_indices_stream = pdb_coalesced_msf_stream((PDBStreamCreate){
-        .data = pdb.content.pointer,
-        .block_size = pdb.header->block_size,
-        .block_indices = pdb.header->directory_block_indices,
-        .size = directory_block_count * sizeof(u32),
-    });
-    auto* directory_indices = (u32*)directory_indices_stream.data;
-
-    pdb.directory_stream = pdb_coalesced_msf_stream((PDBStreamCreate) {
-        .data = pdb.content.pointer,
-        .block_size = pdb.header->block_size,
-        .block_indices = directory_indices,
-        .size = pdb.header->directory_size,
-    });
-
-    pdb.stream_count = *(u32*)(pdb.directory_stream.data + 0);
-    pdb.stream_sizes = (u32*)(pdb.directory_stream.data + sizeof(u32));
-    auto* directory_stream_blocks = (u32*)(pdb.directory_stream.data + (sizeof(u32) + (sizeof(u32) * pdb.stream_count)));
-
-    {
-        VirtualBufferP(u32) stream_blocks = {};
-        vb_ensure_capacity(&stream_blocks, pdb.stream_count);
-        pdb.stream_blocks = stream_blocks.pointer;
-    }
-
-    auto* indices_for_current_block = directory_stream_blocks;
-    for (u32 i = 0; i < pdb.stream_count; i += 1)
-    {
-        auto byte_size = pdb_get_stream_size(pdb, i);
-        auto block_count = pdb_size_to_block_count(byte_size, pdb.header->block_size);
-
-        pdb.stream_blocks[i] = indices_for_current_block;
-
-        indices_for_current_block += block_count;
-    }
-
-    auto dbi = pdb_dbi_stream_create(pdb);
-    auto info_stream = pdb_info_stream_create(pdb);
-    if (info_stream.uses_debug_fast_link)
-    {
-        fail();
-    }
-
-    // Symbol record stream validation
-    if (dbi.header.symbol_record_stream_index == nil_stream_index)
-    {
-        fail();
-    }
-
-    // Public stream validation
-    if (dbi.header.public_stream_index == nil_stream_index)
-    {
-        fail();
-    }
-
-    auto public_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, dbi.header.public_stream_index));
-    {
-        PDBHashTableHeader hash_header;
-        pdb_direct_msf_stream_read_at_offset(public_stream, scalar_to_bytes(hash_header), sizeof(PDBPublicStreamHeader));
-
-        if (hash_header.signature != pdb_hash_table_signature)
-        {
-            fail();
-        }
-
-        if (hash_header.version != pdb_hash_table_version)
-        {
-            fail();
-        }
-    }
-
-    // Global stream validation
-    if (dbi.header.global_stream_index == nil_stream_index)
-    {
-        fail();
-    }
-
-    auto global_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, dbi.header.global_stream_index));
-    {
-        PDBHashTableHeader hash_header;
-        pdb_direct_msf_stream_read_at_offset(global_stream, scalar_to_bytes(hash_header), 0);
-
-        if (hash_header.signature != pdb_hash_table_signature)
-        {
-            fail();
-        }
-
-        if (hash_header.version != pdb_hash_table_version)
-        {
-            fail();
-        }
-    }
-
-    if (dbi.header.section_contribution_size < sizeof(PDBSectionContributionVersion))
-    {
-        fail();
-    }
-
-    auto stream_offset = pdb_section_contribution_substream_offset(dbi.header);
-
-    PDBSectionContributionVersion version;
-    pdb_direct_msf_stream_read_at_offset(dbi.stream, scalar_to_bytes(version), stream_offset);
-
-    if (version != PDB_SECTION_CONTRIBUTION_V60)
-    {
-        fail();
-    }
-
-    if (dbi.header.optional_debug_header_size == 0)
-    {
-        fail();
-    }
-
-    auto debug_header_offset = pdb_debug_header_substream_offset(dbi.header);
-
-    PDBDebugHeader debug_header;
-    pdb_direct_msf_stream_read_at_offset(dbi.stream, scalar_to_bytes(debug_header), debug_header_offset);
-
-    if (debug_header.section_header_stream_index == nil_stream_index)
-    {
-        fail();
-    }
-
-    auto tpi_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, tpi_stream_index));
-
-    TPIStreamHeader header;
-    pdb_direct_msf_stream_read_at_offset(tpi_stream, scalar_to_bytes(header), 0);
-
-    if (header.version != TPI_STREAM_V80)
-    {
-        fail();
-    }
-
-    pdb_print_sizes(pdb, dbi);
-
-// STRUCT(PDBHeader)
-// {
-//     u8 magic[32];
-//     u32 block_size;
-//     u32 free_block_map_index;
-//     u32 block_count;
-//     u32 directory_size;
-//     u32 reserved;
-//     u32 directory_block_indices[];
-// };
-
-    // VirtualBuffer(u8) pdb = {};
-    // auto* header = vb_add_scalar(&pdb, PDBHeader);
-    // *header = (PDBHeader) {
-    //     .magic = "Microsoft C/C++ MSF 7.00\r\n\x1a" "DS\x00\x00\x00",
-    //     .block_size = page_size,
-    //     .free_block_map_index = 1,
-    //     .block_count = 35,
-    //     .directory_size = 184,
-    //     .reserved = 0,
-    // };
-    //
-    // vb_align(&pdb, page_size);
 }
 
 u8 pdb_image[] = {
@@ -20671,9 +20498,190 @@ u8 pdb_image[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 };
 
+fn void pdb_playground(Thread* thread)
+{
+    PDBFile pdb = {};
+
+    pdb.content = (String)array_to_slice(pdb_image);
+
+    if (pdb_validate(pdb.content) != PDB_VALIDATION_SUCCESS)
+    {
+        fail();
+    }
+
+    pdb.header = (PDBHeader*)(pdb.content.pointer + 0);
+    auto directory_block_count = pdb_size_to_block_count(pdb.header->directory_size, pdb.header->block_size);
+    print("Directory block count: {u32}\n", directory_block_count);
+
+    print("Creating directory indices stream...\n");
+    auto directory_indices_stream = pdb_coalesced_msf_stream((PDBStreamCreate){
+        .data = pdb.content.pointer,
+        .block_size = pdb.header->block_size,
+        .block_indices = pdb.header->directory_block_indices,
+        .size = directory_block_count * sizeof(u32),
+    });
+    auto* directory_indices = (u32*)directory_indices_stream.data;
+
+    print("Creating directory stream...\n");
+    pdb.directory_stream = pdb_coalesced_msf_stream((PDBStreamCreate) {
+        .data = pdb.content.pointer,
+        .block_size = pdb.header->block_size,
+        .block_indices = directory_indices,
+        .size = pdb.header->directory_size,
+    });
+
+    pdb.stream_count = *(u32*)(pdb.directory_stream.data + 0);
+    pdb.stream_sizes = (u32*)(pdb.directory_stream.data + sizeof(u32));
+    print("Stream count: {u32}\n", pdb.stream_count);
+    auto* directory_stream_blocks = (u32*)(pdb.directory_stream.data + (sizeof(u32) + (sizeof(u32) * pdb.stream_count)));
+
+    {
+        VirtualBufferP(u32) stream_blocks = {};
+        vb_ensure_capacity(&stream_blocks, pdb.stream_count);
+        pdb.stream_blocks = stream_blocks.pointer;
+    }
+
+    auto* indices_for_current_block = directory_stream_blocks;
+    for (u32 i = 0; i < pdb.stream_count; i += 1)
+    {
+        auto byte_size = pdb_get_stream_size(pdb, i);
+        auto block_count = pdb_size_to_block_count(byte_size, pdb.header->block_size);
+
+        pdb.stream_blocks[i] = indices_for_current_block;
+        print("Stream #{u32} 0x{u32} bytes ({u32} blocks)\n", i, byte_size, block_count);
+
+        indices_for_current_block += block_count;
+    }
+
+    auto dbi = pdb_dbi_stream_create(pdb);
+    auto info_stream = pdb_info_stream_create(pdb);
+    if (info_stream.uses_debug_fast_link)
+    {
+        fail();
+    }
+
+    // Symbol record stream validation
+    if (dbi.header.symbol_record_stream_index == nil_stream_index)
+    {
+        fail();
+    }
+
+    // Public stream validation
+    if (dbi.header.public_stream_index == nil_stream_index)
+    {
+        fail();
+    }
+
+    auto public_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, dbi.header.public_stream_index));
+    {
+        PDBHashTableHeader hash_header;
+        pdb_direct_msf_stream_read_at_offset(public_stream, scalar_to_bytes(hash_header), sizeof(PDBPublicStreamHeader));
+
+        if (hash_header.signature != pdb_hash_table_signature)
+        {
+            fail();
+        }
+
+        if (hash_header.version != pdb_hash_table_version)
+        {
+            fail();
+        }
+    }
+
+    // Global stream validation
+    if (dbi.header.global_stream_index == nil_stream_index)
+    {
+        fail();
+    }
+
+    auto global_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, dbi.header.global_stream_index));
+    {
+        PDBHashTableHeader hash_header;
+        pdb_direct_msf_stream_read_at_offset(global_stream, scalar_to_bytes(hash_header), 0);
+
+        if (hash_header.signature != pdb_hash_table_signature)
+        {
+            fail();
+        }
+
+        if (hash_header.version != pdb_hash_table_version)
+        {
+            fail();
+        }
+    }
+
+    if (dbi.header.section_contribution_size < sizeof(PDBSectionContributionVersion))
+    {
+        fail();
+    }
+
+    auto stream_offset = pdb_section_contribution_substream_offset(dbi.header);
+
+    PDBSectionContributionVersion version;
+    pdb_direct_msf_stream_read_at_offset(dbi.stream, scalar_to_bytes(version), stream_offset);
+
+    if (version != PDB_SECTION_CONTRIBUTION_V60)
+    {
+        fail();
+    }
+
+    if (dbi.header.optional_debug_header_size == 0)
+    {
+        fail();
+    }
+
+    auto debug_header_offset = pdb_debug_header_substream_offset(dbi.header);
+
+    PDBDebugHeader debug_header;
+    pdb_direct_msf_stream_read_at_offset(dbi.stream, scalar_to_bytes(debug_header), debug_header_offset);
+
+    if (debug_header.section_header_stream_index == nil_stream_index)
+    {
+        fail();
+    }
+
+    auto tpi_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, tpi_stream_index));
+
+    TPIStreamHeader header;
+    pdb_direct_msf_stream_read_at_offset(tpi_stream, scalar_to_bytes(header), 0);
+
+    if (header.version != TPI_STREAM_V80)
+    {
+        fail();
+    }
+
+    pdb_print_sizes(pdb, dbi);
+
+// STRUCT(PDBHeader)
+// {
+//     u8 magic[32];
+//     u32 block_size;
+//     u32 free_block_map_index;
+//     u32 block_count;
+//     u32 directory_size;
+//     u32 reserved;
+//     u32 directory_block_indices[];
+// };
+
+    // VirtualBuffer(u8) pdb = {};
+    // auto* header = vb_add_scalar(&pdb, PDBHeader);
+    // *header = (PDBHeader) {
+    //     .magic = "Microsoft C/C++ MSF 7.00\r\n\x1a" "DS\x00\x00\x00",
+    //     .block_size = page_size,
+    //     .free_block_map_index = 1,
+    //     .block_count = 35,
+    //     .directory_size = 184,
+    //     .reserved = 0,
+    // };
+    //
+    // vb_align(&pdb, page_size);
+}
+
+
 fn String pdb_build(Thread* thread)
 {
-    unused(thread);
+    pdb_playground(thread);
+
     const u32 block_size = 0x1000;
     VirtualBuffer(u8) pdb_file = {};
 
@@ -29775,8 +29783,8 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     auto pdb = pdb_build(thread);
 
     // TODO:
-#if _WIN32
-    auto fd = os_file_open(pdb_path, (OSFileOpenFlags) {
+// #if _WIN32
+    auto fd = os_file_open(strlit("mydbg.pdb"), (OSFileOpenFlags) {
         .write = 1,
         .truncate = 1,
         .create = 1,
@@ -29788,7 +29796,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     os_file_write(fd, pdb);
 
     os_file_close(fd);
-#endif
+// #endif
 
     // Check if file matches
 #define CHECK_PE_MATCH 0
