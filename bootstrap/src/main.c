@@ -1,4 +1,10 @@
-#include "lib.h"
+#include <std/base.h>
+#include <std/os.h>
+#include <std/entry_point.h>
+#include <std/virtual_buffer.h>
+#include <std/md5.h>
+#include <std/string.h>
+
 #ifdef __APPLE__
 #define clang_path "/opt/homebrew/opt/llvm/bin/clang"
 #else
@@ -32,7 +38,7 @@ fn void print_string(String message)
 {
 #ifndef SILENT
     // TODO: check writes
-    os_file_write(stdout_get(), message);
+    os_file_write(os_stdout_get(), message);
     // assert(result >= 0);
     // assert((u64)result == message.length);
 #else
@@ -9798,9 +9804,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             };
             // MD5Result md5_hash = { { 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19 } };
             String dummy_file = file_read(thread->arena, strlit("/home/david/dev/nest/tests/first.nat"));
-            auto md5 = md5_init();
-            md5_update(&md5, dummy_file);
-            auto md5_hash = md5_end(&md5);
+            auto md5_hash = md5_string(dummy_file);
 
             auto filename_string_offset = debug_line_str.length;
             {
@@ -11535,7 +11539,7 @@ fn void pdb_print_sizes(PDBFile pdb, PDBDBIStream dbi)
     }
 }
 
-u8 pdb_image[] = {
+global u8 pdb_image[] = {
     0x4D, 0x69, 0x63, 0x72, 0x6F, 0x73, 0x6F, 0x66, 0x74, 0x20, 0x43, 0x2F, 0x43, 0x2B, 0x2B, 0x20, 
     0x4D, 0x53, 0x46, 0x20, 0x37, 0x2E, 0x30, 0x30, 0x0D, 0x0A, 0x1A, 0x44, 0x53, 0x00, 0x00, 0x00, 
     0x00, 0x10, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x23, 0x00, 0x00, 0x00, 0xB8, 0x00, 0x00, 0x00, 
@@ -29783,7 +29787,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     auto pdb = pdb_build(thread);
 
     // TODO:
-// #if _WIN32
+#if _WIN32
     auto fd = os_file_open(strlit("mydbg.pdb"), (OSFileOpenFlags) {
         .write = 1,
         .truncate = 1,
@@ -29796,7 +29800,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     os_file_write(fd, pdb);
 
     os_file_close(fd);
-// #endif
+#endif
 
     // Check if file matches
 #define CHECK_PE_MATCH 0
@@ -33385,25 +33389,25 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                     .writable = 1,
                     .executable = 1,
                     });
-#if _WIN32
-            if (!os_file_descriptor_is_valid(fd))
-            {
-                auto err = GetLastError();
-                LPSTR lpMsgBuf;
-                DWORD bufSize = FormatMessageA(
-                        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                        NULL,
-                        err,
-                        LANG_NEUTRAL, // Use default language
-                        (LPSTR)&lpMsgBuf,
-                        0,
-                        NULL
-                        );
-                unused(bufSize);
-                print("Error opening file \"{s}\": {cstr}\n", object_options.exe_path, lpMsgBuf);
-                fail();
-            }
-#endif
+// #if _WIN32
+//             if (!os_file_descriptor_is_valid(fd))
+//             {
+//                 auto err = GetLastError();
+//                 LPSTR lpMsgBuf;
+//                 DWORD bufSize = FormatMessageA(
+//                         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+//                         NULL,
+//                         err,
+//                         LANG_NEUTRAL, // Use default language
+//                         (LPSTR)&lpMsgBuf,
+//                         0,
+//                         NULL
+//                         );
+//                 unused(bufSize);
+//                 print("Error opening file \"{s}\": {cstr}\n", object_options.exe_path, lpMsgBuf);
+//                 fail();
+//             }
+// #endif
             assert(os_file_descriptor_is_valid(fd));
 
             os_file_write(fd, (String) { executable.pointer, executable.length });
@@ -33793,7 +33797,7 @@ fn void print_ir(Thread* restrict thread)
     }
 }
 
-fn void entry_point(int argc, char* argv[], char* envp[])
+void entry_point(int argc, char* argv[], char* envp[])
 {
     unused(envp);
 #if DO_UNIT_TESTS
@@ -33860,9 +33864,9 @@ fn void entry_point(int argc, char* argv[], char* envp[])
     }
 
     print("File path: {s}\n", source_file_path);
-    auto test_dir = string_no_extension(file.path);
+    auto test_dir = path_no_extension(file.path);
     print("Test dir path: {s}\n", test_dir);
-    auto test_name = string_base(test_dir);
+    auto test_name = path_base(test_dir);
     print("Test name: {s}\n", test_name);
 
     if (emit_ir)

@@ -9,12 +9,14 @@ on:
     - cron: "0 0 * * *"
 
 jobs:
-  linux_build_and_test:
+  linux_Debug:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt install -y ninja-build
       - name: System information
         run: |
           uname -a
@@ -22,34 +24,180 @@ jobs:
           clang -v
       - name: Build and test
         run: |
-          ./project.sh test all
-  macos_build_and_test:
+          ./project.sh "build_type=Debug" test all
+  linux_MinSizeRel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt install -y ninja-build
+      - name: System information
+        run: |
+          uname -a
+          lsb_release -a
+          clang -v
+      - name: Build and test
+        run: |
+          ./project.sh "build_type=MinSizeRel" test all
+  linux_RelWithDebInfo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt install -y ninja-build
+      - name: System information
+        run: |
+          uname -a
+          lsb_release -a
+          clang -v
+      - name: Build and test
+        run: |
+          ./project.sh "build_type=RelWithDebInfo" test all
+  linux_Release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt install -y ninja-build
+      - name: System information
+        run: |
+          uname -a
+          lsb_release -a
+          clang -v
+      - name: Build and test
+        run: |
+          ./project.sh "build_type=Release" test all
+  macos_Debug:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install LLVM
+      - name: Install dependencies
         run: |
-          brew install llvm
+          brew install llvm ninja
       - name: System information
         run: |
           uname -a
           sw_vers -productVersion
           clang -v
       - name: Build and test
+        run: ./project.sh "build_type=Debug" test all
+  macos_MinSizeRel:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
         run: |
-          ./project.sh test all
-  windows_build_and_test:
+          brew install llvm ninja
+      - name: System information
+        run: |
+          uname -a
+          sw_vers -productVersion
+          clang -v
+      - name: Build and test
+        run: ./project.sh "build_type=MinSizeRel" test all
+  macos_RelWithDebInfo:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          brew install llvm ninja
+      - name: System information
+        run: |
+          uname -a
+          sw_vers -productVersion
+          clang -v
+      - name: Build and test
+        run: ./project.sh "build_type=RelWithDebInfo" test all
+  macos_Release:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          brew install llvm ninja
+      - name: System information
+        run: |
+          uname -a
+          sw_vers -productVersion
+          clang -v
+      - name: Build and test
+        run: ./project.sh "build_type=Release" test all
+  windows_Debug:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install dependencies
+        run: choco install ninja
       # - name: System information
       #   run: |
       #     systeminfo
       #     clang -v
       - name: Build and test
-        run: |
-          ./project.bat test all
+        run: pwsh ./project.ps1 "build_type=Debug" test all
+        env:
+          LANG: en_US.UTF-8  # Ensure UTF-8 encoding
+  windows_MinSizeRel:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: choco install ninja
+      # - name: System information
+      #   run: |
+      #     systeminfo
+      #     clang -v
+      - name: Build and test
+        run: pwsh ./project.ps1 "build_type=MinSizeRel" test all
+        env:
+          LANG: en_US.UTF-8  # Ensure UTF-8 encoding
+  windows_RelWithDebInfo:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: choco install ninja
+      # - name: System information
+      #   run: |
+      #     systeminfo
+      #     clang -v
+      - name: Build and test
+        run: pwsh ./project.ps1 "build_type=RelWithDebInfo" test all
+        env:
+          LANG: en_US.UTF-8  # Ensure UTF-8 encoding
+  windows_Release:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: choco install ninja
+      # - name: System information
+      #   run: |
+      #     systeminfo
+      #     clang -v
+      - name: Build and test
+        run: pwsh ./project.ps1 "build_type=Release" test all
+        env:
+          LANG: en_US.UTF-8  # Ensure UTF-8 encoding

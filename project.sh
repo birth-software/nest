@@ -1,10 +1,18 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -ex
-mkdir -p build
-case "$OSTYPE" in
-  linux*)  CLANG_PATH="clang" ;; 
-  darwin*)   CLANG_PATH="/opt/homebrew/opt/llvm/bin/clang" ;;
-  *)        exit 1 ;;
-esac
-time $CLANG_PATH -o build/build bootstrap/build.c -g -march=native -std=gnu2x -Wall -Wextra -Wpedantic -Wno-nested-anon-types -Wno-keyword-macro -Wno-gnu-auto-type -Wno-auto-decl-extensions -Wno-gnu-empty-initializer -Wno-fixed-enum-extension -pedantic -fno-exceptions -fno-stack-protector
-build/build $@
+release_mode="Debug"
+if [[ "$1" =~ ^build_type=.* ]]; then
+    release_mode=${1#build_type=}
+fi
+echo "Build type: $release_mode"
+build_dir=build
+mkdir -p $build_dir
+cmake . -B$build_dir -G Ninja -DCMAKE_BUILD_TYPE="$release_mode" -DCMAKE_C_COMPILER="clang" -DCMAKE_CXX_COMPILER="clang++"
+original_dir=$PWD
+cd $build_dir
+ninja
+cd $original_dir
+
+if [ "$#" -ne 0 ]; then
+    $build_dir/runner $@
+fi
