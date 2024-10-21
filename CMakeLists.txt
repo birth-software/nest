@@ -14,9 +14,12 @@ add_compile_options(
 )
 include_directories("bootstrap/include")
 
+find_package(LLVM REQUIRED CONFIG)
+
 set(LIBRARY_NAME "std")
 set(RUNNER_NAME "runner")
 set(COMPILER_NAME "nest")
+
 add_library("${LIBRARY_NAME}"
     "bootstrap/std/base.c"
     "bootstrap/std/string.c"
@@ -27,10 +30,15 @@ add_library("${LIBRARY_NAME}"
     "bootstrap/std/sha1.c"
 )
 add_executable("${RUNNER_NAME}" "bootstrap/runner/runner.c")
-target_link_libraries(${RUNNER_NAME} ${LIBRARY_NAME})
+target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 
 add_executable("${COMPILER_NAME}"
     "bootstrap/src/main.c"
     "bootstrap/src/pdb_image.c"
 )
-target_link_libraries(${COMPILER_NAME} ${LIBRARY_NAME})
+
+target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})
+target_include_directories(${COMPILER_NAME} PRIVATE ${LLVM_INCLUDE_DIRS})
+target_link_directories(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARY_DIRS})
+target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME} ${LLVM_LIBRARIES})
+
