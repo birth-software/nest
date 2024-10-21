@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build
+        run: sudo apt install -y ninja-build mold
       - name: System information
         run: |
           uname -a
@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build
+        run: sudo apt install -y ninja-build mold
       - name: System information
         run: |
           uname -a
@@ -48,7 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build
+        run: sudo apt install -y ninja-build mold
       - name: System information
         run: |
           uname -a
@@ -64,7 +64,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build
+        run: sudo apt install -y ninja-build mold
       - name: System information
         run: |
           uname -a
@@ -144,13 +144,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: choco install ninja
+        run: |
+          choco install ninja
+          pwsh ./fetch-llvm.ps1
       # - name: System information
       #   run: |
       #     systeminfo
       #     clang -v
       - name: Build and test
-        run: pwsh ./project.ps1 "build_type=Debug" test all
+        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=Debug" test all
         env:
           LANG: en_US.UTF-8  # Ensure UTF-8 encoding
   windows_MinSizeRel:
@@ -160,13 +162,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: choco install ninja
+        run: |
+          choco install ninja
+          pwsh ./fetch-llvm.ps1
       # - name: System information
       #   run: |
       #     systeminfo
       #     clang -v
       - name: Build and test
-        run: pwsh ./project.ps1 "build_type=MinSizeRel" test all
+        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=MinSizeRel" test all
         env:
           LANG: en_US.UTF-8  # Ensure UTF-8 encoding
   windows_RelWithDebInfo:
@@ -176,13 +180,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: choco install ninja
+        run: |
+          choco install ninja
+          pwsh ./fetch-llvm.ps1
       # - name: System information
       #   run: |
       #     systeminfo
       #     clang -v
       - name: Build and test
-        run: pwsh ./project.ps1 "build_type=RelWithDebInfo" test all
+        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=RelWithDebInfo" test all
         env:
           LANG: en_US.UTF-8  # Ensure UTF-8 encoding
   windows_Release:
@@ -192,12 +198,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: choco install ninja
+        run: |
+          choco install ninja
+          pwsh ./fetch-llvm.ps1
       # - name: System information
       #   run: |
       #     systeminfo
       #     clang -v
       - name: Build and test
-        run: pwsh ./project.ps1 "build_type=Release" test all
+        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=Release" test all
         env:
           LANG: en_US.UTF-8  # Ensure UTF-8 encoding
