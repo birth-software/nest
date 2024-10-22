@@ -16,7 +16,7 @@ esac
 
 case "$OSTYPE" in
     linux*) cmake . -B$build_dir -G Ninja -DCMAKE_BUILD_TYPE="$release_mode" -DCMAKE_C_COMPILER="$CLANG_PREFIX/clang" -DCMAKE_CXX_COMPILER="$CLANG_PREFIX/clang++" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold" -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=mold" ;;
-    darwin*) cmake . -B$build_dir -G Ninja -DCMAKE_BUILD_TYPE="$release_mode" -DCMAKE_C_COMPILER="$CLANG_PREFIX/clang" -DCMAKE_CXX_COMPILER="$CLANG_PREFIX/clang++" -DCMAKE_PREFIX_PATH=$(brew --prefix llvm) ;;
+    darwin*) cmake . -B$build_dir -G Ninja -DCMAKE_BUILD_TYPE="$release_mode" -DCMAKE_C_COMPILER="$CLANG_PREFIX/clang" -DCMAKE_CXX_COMPILER="$CLANG_PREFIX/clang++" "-DCMAKE_PREFIX_PATH=$(brew --prefix zstd);$(brew --prefix llvm)" ;;
     *)        exit 1 ;;
 esac
 

@@ -163,7 +163,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     if (argc < 2)
     {
         print("Expected some arguments\n");
-        fail();
+        failed_execution();
     }
 
     Arena* arena = arena_init_default(KB(64));
@@ -187,7 +187,7 @@ void entry_point(int argc, char* argv[], char* envp[])
 
         if (string_starts_with(argument, strlit("build_type=")))
         {
-            auto release_start = cast(u32, s32, string_first_ch(argument, '=') + 1);
+            auto release_start = cast_to(u32, s32, string_first_ch(argument, '=') + 1);
             auto release_string = s_get_slice(u8, argument, release_start, argument.length);
 
             for (u64 i = 0; i < array_length(release_strings); i += 1)
@@ -261,7 +261,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     if (command == COMMAND_COUNT && !source_file_path.pointer)
     {
         print("Expected a command\n");
-        fail();
+        failed_execution();
     }
 
     if (command == COMMAND_COUNT)
@@ -283,7 +283,6 @@ void entry_point(int argc, char* argv[], char* envp[])
         build_type = CMAKE_BUILD_TYPE_DEBUG;
     }
 
-    auto build_type_string = release_strings[build_type];
     String compiler_path = strlit("build/nest");
 
     switch (command)
@@ -291,7 +290,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     case COMMAND_DEBUG:
         if (!source_file_path.pointer)
         {
-            fail();
+            failed_execution();
         }
 
         run(arena, envp, compiler_path, preferred_compiler_backend, 1, string_to_c(source_file_path));

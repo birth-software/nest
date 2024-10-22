@@ -24,7 +24,7 @@ s64 string_last_ch(String string, u8 ch)
         i -= 1;
         if (string.pointer[i] == ch)
         {
-            result = cast(s64, u64, i);
+            result = cast_to(s64, u64, i);
             break;
         }
     }

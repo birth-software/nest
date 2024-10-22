@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build mold
+        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
       - name: System information
         run: |
           uname -a
@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build mold
+        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
       - name: System information
         run: |
           uname -a
@@ -48,7 +48,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build mold
+        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
       - name: System information
         run: |
           uname -a
@@ -64,7 +64,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt install -y ninja-build mold
+        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
       - name: System information
         run: |
           uname -a
