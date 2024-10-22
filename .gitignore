@@ -1,7 +1,7 @@
-build/
-nest/
-*.data
-perf.data*
+/build/
+/nest/
+/*.data
+/perf.data*
 project
-project.dSYM/
-.cache/
+/project.dSYM/
+/.cache/
