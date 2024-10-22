@@ -33,8 +33,8 @@ add_executable("${RUNNER_NAME}" "bootstrap/runner/runner.c")
 target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 
 add_executable("${COMPILER_NAME}"
-    "bootstrap/src/main.c"
-    "bootstrap/src/pdb_image.c"
+    "bootstrap/nest/main.c"
+    "bootstrap/nest/pdb_image.c"
 )
 
 target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})

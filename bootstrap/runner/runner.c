@@ -4,15 +4,10 @@
 #include <std/virtual_buffer.h>
 #include <std/string.h>
 
+#include <nest/base.h>
+
 #define nest_dir "nest"
 
-typedef enum CompilerBackend
-{
-    COMPILER_BACKEND_INTERPRETER,
-    COMPILER_BACKEND_C,
-    COMPILER_BACKEND_MACHINE,
-    COMPILER_BACKEND_COUNT,
-} CompilerBackend;
 declare_slice(CompilerBackend);
 
 typedef enum CMakeBuildType
@@ -30,13 +25,15 @@ fn void run(Arena* arena, char** envp, String compiler_path, CompilerBackend com
     char* compiler_backend_string;
     switch (compiler_backend)
     {
-    case COMPILER_BACKEND_C:
-        compiler_backend_string = "c";
-        break;
-    case COMPILER_BACKEND_INTERPRETER:
-        compiler_backend_string = "i";
-        break;
-    case COMPILER_BACKEND_MACHINE:
+    // case COMPILER_BACKEND_C:
+    //     compiler_backend_string = "c";
+    //     break;
+    // case COMPILER_BACKEND_INTERPRETER:
+    //     compiler_backend_string = "i";
+    //     break;
+
+    // TODO: change ch
+    case COMPILER_BACKEND_NEST:
         compiler_backend_string = "m";
         break;
     case COMPILER_BACKEND_COUNT:
@@ -119,13 +116,13 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
             char* compiler_backend_string;
             switch (compiler_backend)
             {
-                case COMPILER_BACKEND_C:
-                    compiler_backend_string = "c";
-                    break;
-                case COMPILER_BACKEND_INTERPRETER:
-                    compiler_backend_string = "i";
-                    break;
-                case COMPILER_BACKEND_MACHINE:
+                // case COMPILER_BACKEND_C:
+                //     compiler_backend_string = "c";
+                //     break;
+                // case COMPILER_BACKEND_INTERPRETER:
+                //     compiler_backend_string = "i";
+                //     break;
+                case COMPILER_BACKEND_NEST:
                     compiler_backend_string = "m";
                     break;
                 case COMPILER_BACKEND_COUNT:
@@ -141,7 +138,7 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
 
             run_command(arena, (CStringSlice) array_to_slice(arguments), envp);
 
-            if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
+            // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
             {
                 String path_split[] = {
                     strlit("./" nest_dir "/"),
@@ -204,17 +201,17 @@ void entry_point(int argc, char* argv[], char* envp[])
 
             assert(build_type != CMAKE_BUILD_TYPE_COUNT);
         }
-        else if (s_equal(argument, strlit("i")))
-        {
-            preferred_compiler_backend = COMPILER_BACKEND_INTERPRETER;
-        }
-        else if (s_equal(argument, strlit("c")))
-        {
-            preferred_compiler_backend = COMPILER_BACKEND_C;
-        }
+        // else if (s_equal(argument, strlit("i")))
+        // {
+        //     preferred_compiler_backend = COMPILER_BACKEND_INTERPRETER;
+        // }
+        // else if (s_equal(argument, strlit("c")))
+        // {
+        //     preferred_compiler_backend = COMPILER_BACKEND_C;
+        // }
         else if (s_equal(argument, strlit("m")))
         {
-            preferred_compiler_backend = COMPILER_BACKEND_MACHINE;
+            preferred_compiler_backend = COMPILER_BACKEND_NEST;
         }
         else if (s_equal(argument, strlit("test")))
         {
@@ -277,7 +274,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     {
         if (preferred_compiler_backend == COMPILER_BACKEND_COUNT)
         {
-            preferred_compiler_backend = COMPILER_BACKEND_MACHINE;
+            preferred_compiler_backend = COMPILER_BACKEND_NEST;
         }
     }
 
@@ -320,7 +317,7 @@ void entry_point(int argc, char* argv[], char* envp[])
             CompilerBackend all_compiler_backends[] = {
                 // COMPILER_BACKEND_INTERPRETER,
                 // COMPILER_BACKEND_C,
-                COMPILER_BACKEND_MACHINE,
+                COMPILER_BACKEND_NEST,
             };
 
             Slice(CompilerBackend) compiler_backend_selection;
