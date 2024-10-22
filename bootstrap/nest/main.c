@@ -7,6 +7,7 @@
 
 #include <nest/base.h>
 #include <nest/pdb_image.h>
+#include <nest/llvm.h>
 
 #ifdef __APPLE__
 #define clang_path "/opt/homebrew/opt/llvm/bin/clang"
@@ -1665,9 +1666,9 @@ STRUCT(TypePair)
     u32 raw;
 };
 decl_vb(TypePair);
-global const TypePair type_pair_invalid;
+global_variable const TypePair type_pair_invalid;
 
-global const u32 debug_mask = 0xffffff;
+global_variable const u32 debug_mask = 0xffffff;
 
 fn TypePair type_pair_make(DebugTypeIndex debug_type, BackendTypeId backend_type)
 {
@@ -1978,7 +1979,7 @@ fn void bitset_ensure_length(Bitset* bitset, u64 max)
     auto old_length = bitset->arr.length;
     if (old_length < length)
     {
-        auto new_element_count = cast(u32, u64, length - old_length);
+        auto new_element_count = cast_to(u32, u64, length - old_length);
         unused(vb_add(&bitset->arr, new_element_count));
     }
 }
@@ -2030,7 +2031,7 @@ typedef enum x86_64_RegisterClass : u8
     REGISTER_CLASS_X86_64_COUNT
 } x86_64_RegisterClass;
 
-const global u8 register_count_per_class[] = {
+const global_variable u8 register_count_per_class[] = {
     [0] = 0,
     [REGISTER_CLASS_X86_64_GPR] = 16,
     [REGISTER_CLASS_X86_64_XMM] = 16,
@@ -2065,7 +2066,7 @@ typedef enum RegisterMask_x86_64: u8
     REGISTER_MASK_EMPTY = 0,
     REGISTER_MASK_GPR = 1,
 } RegisterMask_x86_64;
-const global auto empty_register_mask = Index(RegisterMask, REGISTER_MASK_EMPTY);
+const global_variable auto empty_register_mask = Index(RegisterMask, REGISTER_MASK_EMPTY);
 
 STRUCT(RegisterMask)
 {
@@ -2158,7 +2159,7 @@ fn WorkListHandle thread_worklist_acquire(Thread* thread)
     u8 bitset = thread->worklist_bitset;
     if (bitset)
     {
-        auto index = cast(u8, s32, __builtin_ctz(~thread->worklist_bitset));
+        auto index = cast_to(u8, s32, __builtin_ctz(~thread->worklist_bitset));
         thread->worklist_bitset |= (1 << index);
         return (WorkListHandle)
         {
@@ -2424,12 +2425,12 @@ fn void node_ensure_capacity(Thread* thread, u32* offset, u16* capacity, u16 cur
 {
     auto current_offset = *offset;
     auto current_capacity = *capacity;
-    auto desired_capacity = cast(u16, u32, current_length + additional);
+    auto desired_capacity = cast_to(u16, u32, current_length + additional);
 
     if (desired_capacity > current_capacity)
     {
         auto* ptr = vb_add(&thread->buffer.uses, desired_capacity);
-        u32 new_offset = cast(u32, s64, ptr - thread->buffer.uses.pointer);
+        u32 new_offset = cast_to(u32, s64, ptr - thread->buffer.uses.pointer);
         memcpy(ptr, &thread->buffer.uses.pointer[current_offset], current_length * sizeof(NodeIndex));
         memset(ptr + current_length, 0, (desired_capacity - current_length) * sizeof(NodeIndex));
         *offset = new_offset;
@@ -2576,7 +2577,7 @@ fn s64 node_find(Slice(NodeIndex) nodes, NodeIndex node_index)
     {
         if (index_equal(nodes.pointer[i], node_index))
         {
-            result = cast(s64, u64, i);
+            result = cast_to(s64, u64, i);
             break;
         }
     }
@@ -2600,7 +2601,7 @@ fn u8 node_remove_output(Thread* thread, NodeIndex node_index, NodeIndex use_ind
     auto outputs = node_get_outputs(thread, node);
     auto maybe_index = node_find(outputs, use_index);
     assert(maybe_index != -1);
-    auto index = cast(u16, s64, maybe_index);
+    auto index = cast_to(u16, s64, maybe_index);
     thread_node_remove_use(thread, node->output_offset, &node->output_count, index);
     return node->output_count == 0;
 }
@@ -2637,7 +2638,7 @@ fn u8 node_remove_output(Thread* thread, NodeIndex node_index, NodeIndex use_ind
 //     auto inputs = node_get_inputs(thread, node);
 //     while (node->input_count > 0)
 //     {
-//         auto input_index = cast(u16, u32, node->input_count - 1);
+//         auto input_index = cast_to(u16, u32, node->input_count - 1);
 //         node->input_count = input_index;
 //         auto old_input_index = inputs.pointer[input_index];
 //
@@ -2717,12 +2718,12 @@ STRUCT(NodeCreate)
 
 fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
 {
-    auto input_count = cast(u16, u64, data.inputs.length);
+    auto input_count = cast_to(u16, u64, data.inputs.length);
     auto input_result = thread_get_node_reference_array(thread, input_count);
     memcpy(input_result.pointer, data.inputs.pointer, sizeof(NodeIndex) * input_count);
 
     auto* node = vb_add(&thread->buffer.nodes, 1);
-    auto node_index = Index(Node, cast(u32, s64, node - thread->buffer.nodes.pointer));
+    auto node_index = Index(Node, cast_to(u32, s64, node - thread->buffer.nodes.pointer));
     memset(node, 0, sizeof(Node));
     node->id = data.id;
     node->input_offset = input_result.index;
@@ -3067,7 +3068,7 @@ fn Hash32 debug_type_hash_index(Thread* thread, DebugTypeIndex type_index)
     return debug_type_hash(thread, type);
 }
 
-global const u64 intern_pool_min_capacity = 64;
+global_variable const u64 intern_pool_min_capacity = 64;
 STRUCT(GenericInternPool)
 {
     u32* pointer;
@@ -3150,7 +3151,7 @@ fn s64 ip_generic_find_slot(GenericInternPool* pool, Thread* thread, u32 item_in
         auto chunk = _mm256_loadu_si256((const __m256i_u*) ptr);
         auto is_zero = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(chunk, _mm256_setzero_si256())));
 #endif
-        auto occupied_slots_ahead = cast(u32, s32, __builtin_ctz((u32)is_zero));
+        auto occupied_slots_ahead = cast_to(u32, s32, __builtin_ctz((u32)is_zero));
 #else
         u32 occupied_slots_ahead = 0;
         for (u32 fake_i = it_index; fake_i < it_index + existing_capacity; fake_i += 1)
@@ -3191,7 +3192,7 @@ fn s64 ip_generic_find_slot(GenericInternPool* pool, Thread* thread, u32 item_in
 fn GenericInternPoolBufferResult ip_DebugType_add_to_buffer(Thread* thread)
 {
     auto* result = vb_add(&thread->buffer.debug_types, 1);
-    auto buffer_index = cast(u32, s64, result - thread->buffer.debug_types.pointer);
+    auto buffer_index = cast_to(u32, s64, result - thread->buffer.debug_types.pointer);
     auto type_index = Index(DebugType, buffer_index);
     static_assert(sizeof(type_index) == sizeof(u32));
     return (GenericInternPoolBufferResult) {
@@ -3234,7 +3235,7 @@ fn void ip_generic_ensure_capacity(GenericInternPool* pool, Thread* thread, u32 
 
     if (destination_length > half_capacity)
     {
-        auto new_capacity = cast(u32, u64, MAX(round_up_to_next_power_of_2(destination_length), intern_pool_min_capacity));
+        auto new_capacity = cast_to(u32, u64, MAX(round_up_to_next_power_of_2(destination_length), intern_pool_min_capacity));
         auto* new_array = arena_allocate(thread->arena, u32, new_capacity);
         memset(new_array, 0, sizeof(u32) * new_capacity);
 
@@ -3269,7 +3270,7 @@ fn GenericGetOrPut ip_generic_get_or_put(GenericInternPool* pool, Thread* thread
         auto maybe_slot = ip_generic_find_slot(pool, thread, item_index, hash, interface);
         if (maybe_slot != -1)
         {
-            auto index = cast(u32, s64, maybe_slot);
+            auto index = cast_to(u32, s64, maybe_slot);
             auto element = pool->pointer[index];
             u8 is_valid_or_existing = element != 0;
             if (!is_valid_or_existing)
@@ -3417,16 +3418,16 @@ fn s64 ip_find_slot_register_mask(GenericInternPool* generic_pool, Thread* threa
     return result;
 }
 
-global const auto ip_interface_debug_type = (InternPoolInterface) {
+global_variable const auto ip_interface_debug_type = (InternPoolInterface) {
     .add_to_buffer = &ip_DebugType_add_to_buffer,
     .find_slot = &ip_find_slot_debug_type,
 };
 
-global const auto ip_interface_node = (InternPoolInterface) {
+global_variable const auto ip_interface_node = (InternPoolInterface) {
     .find_slot = &ip_find_slot_node,
 };
 
-global const auto ip_interface_register_mask = (InternPoolInterface) {
+global_variable const auto ip_interface_register_mask = (InternPoolInterface) {
     .find_slot = &ip_find_slot_register_mask,
 };
 
@@ -3468,7 +3469,7 @@ may_be_unused fn T ## Index ip_ ## T ## _remove(InternPool(T)* pool, Thread* thr
     \
     if (maybe_slot != -1)\
     {\
-        auto i = cast(u32, s64, maybe_slot);\
+        auto i = cast_to(u32, s64, maybe_slot);\
         auto* slot_pointer = &pool->pointer[i];\
         auto old_item_index = *slot_pointer;\
         assert(validi(old_item_index));\
@@ -3657,7 +3658,7 @@ fn Hash64 type_get_hash_tuple(Thread* thread, Type* type)
 // \
 //     if (destination_length > half_capacity) \
 //     {\
-//         auto new_capacity = cast(u32, u64, MAX(round_up_to_next_power_of_2(destination_length), 32)); \
+//         auto new_capacity = cast_to(u32, u64, MAX(round_up_to_next_power_of_2(destination_length), 32)); \
 //         auto* new_array = arena_allocate(thread->arena, u32, new_capacity); \
 //         memset(new_array, 0, sizeof(u32) * new_capacity); \
 //         \
@@ -3835,7 +3836,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 // fn TypeIndex intern_pool_put_new_type_at_assume_not_existent_assume_capacity(Thread* thread, Type* type, u32 index)
 // {
 //     auto* result = vb_add(&thread->buffer.types, 1);
-//     auto buffer_index = cast(u32, s64, result - thread->buffer.types.pointer);
+//     auto buffer_index = cast_to(u32, s64, result - thread->buffer.types.pointer);
 //     auto type_index = Index(Type, buffer_index);
 //     *result = *type;
 //
@@ -3852,7 +3853,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //     assert(thread->interned.types.length < thread->interned.types.capacity);
 //     Hash64 hash = type->hash;
 //     assert(hash);
-//     auto index = cast(u32, u64, hash & (thread->interned.types.capacity - 1));
+//     auto index = cast_to(u32, u64, hash & (thread->interned.types.capacity - 1));
 //
 //     return intern_pool_put_new_type_at_assume_not_existent_assume_capacity(thread, type, index);
 // }
@@ -3901,13 +3902,13 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 
 // fn NodeIndex intern_pool_get_node(Thread* thread, NodeIndex key, Hash64 hash)
 // {
-//     auto original_index = cast(u32, u64, hash & (thread->interned.nodes.capacity - 1));
+//     auto original_index = cast_to(u32, u64, hash & (thread->interned.nodes.capacity - 1));
 //     auto maybe_slot = intern_pool_find_node_slot(thread, original_index, key);
 //     auto node_index = invalidi(Node);
 //
 //     if (maybe_slot != -1)
 //     {
-//         auto slot = cast(u32, s64, maybe_slot);
+//         auto slot = cast_to(u32, s64, maybe_slot);
 //         auto* pointer_to_slot = &thread->interned.nodes.pointer[slot];
 //         node_index = *(NodeIndex*)pointer_to_slot;
 //     }
@@ -3929,12 +3930,12 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 // {
 //     auto capacity = thread->interned.nodes.capacity;
 //     assert(thread->interned.nodes.length < capacity);
-//     auto original_index = cast(u32, u64, hash & (capacity - 1));
+//     auto original_index = cast_to(u32, u64, hash & (capacity - 1));
 //
 //     auto slot = intern_pool_find_node_slot(thread, original_index, node);
 //     if (slot == -1)
 //     {
-//         fail();
+//         failed_execution();
 //     }
 //     auto index = (u32)slot;
 //
@@ -3950,7 +3951,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //
 //     if (destination_length > half_capacity)
 //     {
-//         auto new_capacity = cast(u32, u64, MAX(round_up_to_next_power_of_2(destination_length), 32));
+//         auto new_capacity = cast_to(u32, u64, MAX(round_up_to_next_power_of_2(destination_length), 32));
 //         auto* new_array = arena_allocate(thread->arena, u32, new_capacity);
 //         memset(new_array, 0, sizeof(u32) * new_capacity);
 //
@@ -4119,7 +4120,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 // fn DebugTypeIndex intern_pool_put_new_debug_type_at_assume_not_existent_assume_capacity(Thread* thread, const DebugType* type, u32 index)
 // {
 //     auto* result = vb_add(&thread->buffer.debug_types, 1);
-//     auto buffer_index = cast(u32, s64, result - thread->buffer.debug_types.pointer);
+//     auto buffer_index = cast_to(u32, s64, result - thread->buffer.debug_types.pointer);
 //     auto type_index = Index(DebugType, buffer_index);
 //     *result = *type;
 //
@@ -4150,12 +4151,12 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 // {
 //     auto existing_capacity = thread->interned.types.capacity;
 //     auto hash = hash_debug_type(type);
-//     auto original_index = cast(u32, u64, hash & (existing_capacity - 1));
+//     auto original_index = cast_to(u32, u64, hash & (existing_capacity - 1));
 //     
 //     auto maybe_slot = intern_pool_find_debug_type_slot(thread, original_index, type);
 //     if (maybe_slot != -1)
 //     {
-//         auto index = cast(u32, s64, maybe_slot);
+//         auto index = cast_to(u32, s64, maybe_slot);
 //         auto type_index = *(DebugTypeIndex*)&thread->interned.types.pointer[index];
 //         u8 existing = validi(type_index);
 //         if (!existing)
@@ -4193,12 +4194,12 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 // {
 //     auto existing_capacity = thread->interned.types.capacity;
 //     auto hash = hash_type(thread, type);
-//     auto original_index = cast(u32, u64, hash & (existing_capacity - 1));
+//     auto original_index = cast_to(u32, u64, hash & (existing_capacity - 1));
 //     
 //     auto maybe_slot = intern_pool_find_type_slot(thread, original_index, type);
 //     if (maybe_slot != -1)
 //     {
-//         auto index = cast(u32, s64, maybe_slot);
+//         auto index = cast_to(u32, s64, maybe_slot);
 //         TypeIndex type_index = *(TypeIndex*)&thread->interned.types.pointer[index];
 //         u8 existing = validi(type_index);
 //         if (!existing)
@@ -4548,7 +4549,7 @@ fn NodeIndex idealize_return(Thread* thread, NodeIndex node_index)
 //     }
 // }
 
-global const TypeVirtualTable type_functions[TYPE_COUNT] = {
+global_variable const TypeVirtualTable type_functions[TYPE_COUNT] = {
     [TYPE_BOTTOM] = { .get_hash = &type_get_hash_default },
     [TYPE_TOP] = { .get_hash = &type_get_hash_default },
     [TYPE_LIVE_CONTROL] = { .get_hash = &type_get_hash_default },
@@ -4557,7 +4558,7 @@ global const TypeVirtualTable type_functions[TYPE_COUNT] = {
     [TYPE_TUPLE] = { .get_hash = &type_get_hash_tuple },
 };
 
-global const NodeVirtualTable node_functions[NODE_COUNT] = {
+global_variable const NodeVirtualTable node_functions[NODE_COUNT] = {
     // [NODE_START] = {
     //     .compute_type = &compute_type_start,
     //     .idealize = &idealize_null,
@@ -4770,7 +4771,7 @@ fn Hash64 hash_type(Thread* thread, Type* type)
 //     auto hash = hash_node(thread, node, node_index);
 //     
 //     auto original_index = hash & (existing_capacity - 1);
-//     auto slot = intern_pool_find_node_slot(thread, cast(u32, u64, original_index), node_index);
+//     auto slot = intern_pool_find_node_slot(thread, cast_to(u32, u64, original_index), node_index);
 //
 //     if (slot != -1)
 //     {
@@ -4852,7 +4853,7 @@ STRUCT(Parser)
                 if (new_line)
                 {
                     // TODO: is this a bug?
-                    parser->column = cast(u32, u64, index + 1);
+                    parser->column = cast_to(u32, u64, index + 1);
                 }
 
                 if (!is_space(ch, get_next_ch_safe(src, parser->i)))
@@ -4889,7 +4890,7 @@ STRUCT(Parser)
     if (likely(index < src.length))
     {
         u8 ch = src.pointer[index];
-        auto matches = cast(u64, s64, likely(ch == expected_ch));
+        auto matches = cast_to(u64, s64, likely(ch == expected_ch));
         parser->i += matches;
         if (!matches)
         {
@@ -4898,7 +4899,7 @@ STRUCT(Parser)
             print_string(strlit("', but found '"));
             print_string(ch_to_str(ch));
             print_string(strlit("'\n"));
-            fail();
+            failed_execution();
         }
     }
     else
@@ -4906,7 +4907,7 @@ STRUCT(Parser)
         print_string(strlit("expected character '"));
         print_string(ch_to_str(expected_ch));
         print_string(strlit("', but found end of file\n"));
-        fail();
+        failed_execution();
     }
 }
 
@@ -4924,7 +4925,7 @@ STRUCT(Parser)
         while (parser->i < src.length)
         {
             u8 ch = src.pointer[parser->i];
-            auto is_identifier = cast(u64, s64, likely(is_identifier_ch(ch)));
+            auto is_identifier = cast_to(u64, s64, likely(is_identifier_ch(ch)));
             parser->i += is_identifier;
 
             if (!is_identifier)
@@ -4939,11 +4940,11 @@ STRUCT(Parser)
             }
         }
 
-        fail();
+        failed_execution();
     }
     else
     {
-        fail();
+        failed_execution();
     }
 }
 
@@ -5068,7 +5069,7 @@ fn NodeIndex dead_code_elimination(Thread* thread, NodePair nodes)
 //     // }
 // }
 
-global auto enable_peephole = 1;
+global_variable auto enable_peephole = 1;
 
 fn NodeIndex peephole_optimize(Thread* thread, Function* function, NodeIndex node_index)
 {
@@ -5259,13 +5260,13 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
 
             if (integer_start)
             {
-                auto signedness = cast(u8, u64, s_start);
+                auto signedness = cast_to(u8, u64, s_start);
                 u64 bit_size;
                 u64 current_i = parser->i;
                 assert(src.pointer[current_i] >= '0' & src.pointer[current_i] <= '9');
                 switch (decimal_digit_count) {
                     case 0:
-                        fail();
+                        failed_execution();
                     case 1:
                         bit_size = src.pointer[current_i] - '0';
                         break;
@@ -5273,7 +5274,7 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
                         bit_size = (src.pointer[current_i] - '0') * 10 + (src.pointer[current_i + 1] - '0');
                         break;
                     default:
-                        fail();
+                        failed_execution();
                 }
                 parser->i += decimal_digit_count;
 
@@ -5281,23 +5282,23 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
 
                 if (bit_size)
                 {
-                    auto bit_count = cast(u8, u64, bit_size);
+                    auto bit_count = cast_to(u8, u64, bit_size);
                     auto valid = MIN(MAX(8, round_up_to_next_power_of_2(MAX(bit_count, 1))), 64);
                     if (bit_count != valid)
                     {
-                        fail();
+                        failed_execution();
                     }
-                    auto bit_index = cast(u32, s32, __builtin_ctz(bit_count >> 3));
+                    auto bit_index = cast_to(u32, s32, __builtin_ctz(bit_count >> 3));
                     static_assert(array_length(thread->types.debug.integer.array) == 8);
                     auto index = signedness * 4 + bit_index;
                     auto debug_type_index = thread->types.debug.integer.array[index];
-                    BackendTypeId backend_type = cast(u8, u32, bit_index + 1);
+                    BackendTypeId backend_type = cast_to(u8, u32, bit_index + 1);
                     auto type_pair = type_pair_make(debug_type_index, backend_type);
                     return type_pair;
                 }
                 else
                 {
-                    fail();
+                    failed_execution();
                 }
             }
             else if (float_start)
@@ -5311,7 +5312,7 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
         }
         else
         {
-            fail();
+            failed_execution();
         }
     }
 
@@ -5360,7 +5361,7 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
         // }
         // else
         // {
-        //     fail();
+        //     failed_execution();
         // }
     }
     else if (is_digit)
@@ -5391,13 +5392,13 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
                     case 'o': prefix = INTEGER_PREFIX_OCTAL; break;
                     case 'd': prefix = INTEGER_PREFIX_DECIMAL; break;
                     case 'b': prefix = INTEGER_PREFIX_BINARY; break;
-                    default: fail();
+                    default: failed_execution();
                 };
 
                 parser->i += 2;
 
             } else if (!is_valid_after_zero) {
-                fail();
+                failed_execution();
             }
         }
 
@@ -5786,7 +5787,7 @@ fn NodeIndex analyze_comparison(Thread* thread, Parser* parser, FunctionBuilder*
                 }
                 else
                 {
-                    fail();
+                    failed_execution();
                 }
                 break;
             case '<':
@@ -5929,7 +5930,7 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
             // auto left = scope_lookup(thread, builder, left_name);
             // if (!validi(left))
             // {
-            //     fail();
+            //     failed_execution();
             // }
             //
             // NodeIndex right;
@@ -5987,7 +5988,7 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
                         // auto result = scope_define(thread, builder, local_name, initial_value_node->type, initial_value_node_index);
                         // if (!validi(result))
                         // {
-                        //     fail();
+                        //     failed_execution();
                         // }
                     } break;
                 case block_start:
@@ -6044,7 +6045,7 @@ fn void analyze_file(Thread* thread, File* file)
                 skip_space(parser, src);
 
                 Function* restrict function = vb_add(&thread->buffer.functions, 1);
-                auto function_index = cast(u32, s64, function - thread->buffer.functions.pointer);
+                auto function_index = cast_to(u32, s64, function - thread->buffer.functions.pointer);
                 memset(function, 0, sizeof(Function));
                 builder->function = function;
                 function->line = start_line;
@@ -6074,7 +6075,7 @@ fn void analyze_file(Thread* thread, File* file)
                     if (argument_i == 255)
                     {
                         // Maximum arguments reached
-                        fail();
+                        failed_execution();
                     }
 
                     auto argument_name = parse_identifier(parser, src);
@@ -6836,11 +6837,11 @@ fn void analyze_file(Thread* thread, File* file)
 //     //     //         {
 //     //     //             if (projection_index == 0)
 //     //     //             {
-//     //     //                 fail();
+//     //     //                 failed_execution();
 //     //     //             }
 //     //     //             // if (projection_index > interpreter->arguments.length + 1)
 //     //     //             // {
-//     //     //             //     fail();
+//     //     //             //     failed_execution();
 //     //     //             // }
 //     //     //
 //     //     //             switch (projection_index)
@@ -7099,7 +7100,7 @@ fn void thread_init(Thread* thread)
         .mask = ((u16)0xffff & ~((u16)1 << RSP)), // & ~((u16)1 << RBP),
     };
 
-// global RegisterMask register_masks[] = {
+// global_variable RegisterMask register_masks[] = {
 //     {
 //     },
 //     {
@@ -7174,7 +7175,7 @@ fn void vb_align(VirtualBuffer(u8)* buffer, u64 alignment)
 {
     auto current_length = buffer->length;
     auto target_len = align_forward(current_length, alignment);
-    auto count = cast(u32, u64, target_len - current_length);
+    auto count = cast_to(u32, u64, target_len - current_length);
     auto* pointer = vb_add(buffer, count);
     memset(pointer, 0, count);
 }
@@ -7244,7 +7245,7 @@ fn u32 elf_get_string(VirtualBuffer(u8)* restrict buffer, String string)
         {
             if (s_equal(existing, string))
             {
-                return cast(u32, s64, existing.pointer - buffer->pointer);
+                return cast_to(u32, s64, existing.pointer - buffer->pointer);
             }
 
             existing.pointer += 1;
@@ -7255,7 +7256,7 @@ fn u32 elf_get_string(VirtualBuffer(u8)* restrict buffer, String string)
     }
 
     auto length = buffer->length;
-    auto* ptr = vb_add(buffer, cast(u32, u64, string.length + 1));
+    auto* ptr = vb_add(buffer, cast_to(u32, u64, string.length + 1));
     memcpy(ptr, string.pointer, string.length);
     *(ptr + string.length) = 0;
 
@@ -7809,7 +7810,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         auto* ptr = vb_add_scalar(&builder->file, ELFNoteHeader);
         *ptr = (ELFNoteHeader)
         {
-            .name_size = cast(u32, u64, vb_copy_string_zero_terminated(&builder->file, gnu_string)),
+            .name_size = cast_to(u32, u64, vb_copy_string_zero_terminated(&builder->file, gnu_string)),
             .descriptor_size = 16,
             .type = NT_GNU_PROPERTY_TYPE_0,
         };
@@ -7895,7 +7896,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto* note_header = vb_add_scalar(&builder->file, ELFNoteHeader);
         *note_header = (ELFNoteHeader) {
-            .name_size = cast(u32, u64, vb_copy_string_zero_terminated(&builder->file, gnu_string)),
+            .name_size = cast_to(u32, u64, vb_copy_string_zero_terminated(&builder->file, gnu_string)),
             .descriptor_size = 16,
             .type = NT_GNU_ABI_TAG,
         };
@@ -7929,9 +7930,9 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
     auto gnu_build_id_abi_note_size = builder->file.length - gnu_build_id_abi_note_offset;
 
-    auto preliminar_section_count = cast(u16, u32, builder->section_headers.length + 1);
+    auto preliminar_section_count = cast_to(u16, u32, builder->section_headers.length + 1);
     auto dynamic_symbol_table_index = preliminar_section_count;
-    auto dynamic_string_table_index = cast(u16, u32, dynamic_symbol_table_index + 1);
+    auto dynamic_string_table_index = cast_to(u16, u32, dynamic_symbol_table_index + 1);
 
     u32 gnu_hash_offset = 0;
     {
@@ -8302,7 +8303,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
     auto code_offset = builder->file.length;
     auto init_offset = code_offset;
-    auto init_section_index = cast(u16, u32, builder->section_headers.length);
+    auto init_section_index = cast_to(u16, u32, builder->section_headers.length);
     VirtualBuffer(SymbolRelocation) symbol_relocations = {};
     String init_section_content = {};
     {
@@ -8340,7 +8341,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         };
 
         init_section_content.length = sizeof(data);
-        init_section_content.pointer = vb_add(&builder->file, cast(u32, u64, init_section_content.length));
+        init_section_content.pointer = vb_add(&builder->file, cast_to(u32, u64, init_section_content.length));
 
         memcpy(init_section_content.pointer, data, init_section_content.length);
 
@@ -8368,7 +8369,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     u32 main_offset = 0;
     u32 main_size;
 
-    auto text_section_index = cast(u16, u32, builder->section_headers.length);
+    auto text_section_index = cast_to(u16, u32, builder->section_headers.length);
     {
         //.text
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8607,7 +8608,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         // TODO: fix this
         main_offset = builder->file.length;
-        main_size = cast(u32, u64, options.code.length);
+        main_size = cast_to(u32, u64, options.code.length);
 
         vb_copy_string(&builder->file, options.code);
 
@@ -8631,7 +8632,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     }
 
     u32 fini_offset = 0; 
-    auto fini_section_index = cast(u16, u32, builder->section_headers.length);
+    auto fini_section_index = cast_to(u16, u32, builder->section_headers.length);
     {
         // .fini
         auto* section_header = vb_add(&builder->section_headers, 1);
@@ -8696,7 +8697,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
     auto read_only_offset = builder->file.length;
 
-    auto rodata_section_index = cast(u16, u32, builder->section_headers.length);
+    auto rodata_section_index = cast_to(u16, u32, builder->section_headers.length);
     u32 _IO_stdin_used_size = 0;
     u32 rodata_va = 0;
     {
@@ -8737,7 +8738,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     u32 eh_frame_offset = 0;
     u32 eh_frame_size = 0;
     u64 eh_frame_alignment = 0;
-    auto eh_frame_hdr_section_index = cast(u16, u32, builder->section_headers.length);
+    auto eh_frame_hdr_section_index = cast_to(u16, u32, builder->section_headers.length);
     u32 eh_frame_header_entries = 0;
     EhFrameHeader* eh_frame_header = 0;
     {
@@ -8754,8 +8755,8 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         // TODO: figure out a link between this and the code
         EhFrameHeaderEntry entries[] = {
-            { .pc = cast(s32, s64, (s64)_start_offset - (s64)offset), .fde = 0x34 },
-            { .pc = cast(s32, s64, (s64)main_offset - (s64)offset), .fde = 0x4c },
+            { .pc = cast_to(s32, s64, (s64)_start_offset - (s64)offset), .fde = 0x34 },
+            { .pc = cast_to(s32, s64, (s64)main_offset - (s64)offset), .fde = 0x4c },
         };
 
         eh_frame_header_entries = array_length(entries);
@@ -8795,7 +8796,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             .pointer_encoding = elf_eh_frame_sdata4 | elf_eh_frame_pcrel,
             .count_encoding = elf_eh_frame_udata4 | elf_eh_frame_absptr,
             .table_encoding = elf_eh_frame_sdata4 | elf_eh_frame_datarel,
-            .frame_start = cast(u32, u64, offset - (cast(u64, s64, ((u8*)eh_frame_header - builder->file.pointer)) + offsetof(EhFrameHeader, frame_start))),
+            .frame_start = cast_to(u32, u64, offset - (cast_to(u64, s64, ((u8*)eh_frame_header - builder->file.pointer)) + offsetof(EhFrameHeader, frame_start))),
             .entry_count = eh_frame_header_entries,
         };
 
@@ -8855,7 +8856,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             };
 
             // _start
-            s32 initial_location = cast(s32, s64, (s64)_start_offset - (s64)builder->file.length);
+            s32 initial_location = cast_to(s32, s64, (s64)_start_offset - (s64)builder->file.length);
             *(s32*)(vb_add(&builder->file, sizeof(s32))) = initial_location;
 
             *(u32*)(vb_add(&builder->file, sizeof(u32))) = _start_size;
@@ -8877,7 +8878,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 .length = 0x10,
                 .pointer = 0x34,
             };
-            s32 initial_location = cast(s32, s64, (s64)main_offset - (s64)builder->file.length);
+            s32 initial_location = cast_to(s32, s64, (s64)main_offset - (s64)builder->file.length);
             *(s32*)(vb_add(&builder->file, sizeof(s32))) = initial_location;
 
             *(u32*)(vb_add(&builder->file, sizeof(u32))) = main_size;
@@ -9035,7 +9036,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     auto* __dso_handle_relocation = &dynamic_relocations[dynamic_relocation_count];
     dynamic_relocation_count += 1;
 
-    auto dynamic_section_index = cast(u16, u32, builder->section_headers.length);
+    auto dynamic_section_index = cast_to(u16, u32, builder->section_headers.length);
     u32 dynamic_va = 0;
     {
         // .dynamic
@@ -9175,7 +9176,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         };
     }
 
-    auto got_plt_section_index = cast(u16, u32, builder->section_headers.length);
+    auto got_plt_section_index = cast_to(u16, u32, builder->section_headers.length);
     u32 got_plt_va = 0;
     {
         // .got.plt
@@ -9288,7 +9289,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
     u32 data_va_start = 0;
     u32 data_va_end = 0;
-    auto data_section_index = cast(u16, u32, builder->section_headers.length);
+    auto data_section_index = cast_to(u16, u32, builder->section_headers.length);
     u32 __dso_handle_va;
     {
         // .data
@@ -9308,7 +9309,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         u32 size = sizeof(entries);
 
         vb_copy_any_array(&builder->file, entries);
-        data_va_end = cast(u32, u64, data_va_start + size);
+        data_va_end = cast_to(u32, u64, data_va_start + size);
 
         *section_header = (ELFSectionHeader) {
             .name_offset = name,
@@ -9334,7 +9335,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     }
 
     u32 bss_size;
-    auto bss_section_index = cast(u16, u32, builder->section_headers.length);
+    auto bss_section_index = cast_to(u16, u32, builder->section_headers.length);
     u32 bss_end;
     u32 bss_start;
     {
@@ -9477,7 +9478,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 vb_copy_string_zero_terminated(&debug_str, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
-                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+                *vb_add(&builder->file, 1) = cast_to(u8, u32, string_offset_index);
             }
 
             // language: data2
@@ -9490,7 +9491,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 vb_copy_string_zero_terminated(&debug_str, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
-                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+                *vb_add(&builder->file, 1) = cast_to(u8, u32, string_offset_index);
             }
 
             // str_offsets_base: sec_offset
@@ -9506,7 +9507,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 vb_copy_string_zero_terminated(&debug_str, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
-                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+                *vb_add(&builder->file, 1) = cast_to(u8, u32, string_offset_index);
             }
 
             // low_pc: addrx
@@ -9544,7 +9545,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 vb_copy_string_zero_terminated(&builder->file, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
-                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+                *vb_add(&builder->file, 1) = cast_to(u8, u32, string_offset_index);
             }
             
             // file: data1
@@ -9572,7 +9573,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 vb_copy_string_zero_terminated(&builder->file, string);
                 auto string_offset_index = debug_str_offsets.length;
                 *vb_add(&debug_str_offsets, 1) = string_offset;
-                *vb_add(&builder->file, 1) = cast(u8, u32, string_offset_index);
+                *vb_add(&builder->file, 1) = cast_to(u8, u32, string_offset_index);
             }
 
             // encoding: data1
@@ -9588,7 +9589,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         auto length_size = sizeof(compilation_unit->length);
         *compilation_unit = (DwarfCompilationUnit) {
-            .length = cast(u32, u64, size - length_size),
+            .length = cast_to(u32, u64, size - length_size),
             .version = 5,
             .type = DW_UT_compile,
             .address_size = 8,
@@ -9748,7 +9749,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 { DW_LCNT_path, DW_FORM_line_strp },
             };
 
-            auto directory_entry_format_count = cast(u8, u32, array_length(directory_entry_formats));
+            auto directory_entry_format_count = cast_to(u8, u32, array_length(directory_entry_formats));
             *vb_add(&builder->file, 1) = directory_entry_format_count;
 
             for (u8 i = 0; i < array_length(directory_entry_formats); i += 1)
@@ -9782,7 +9783,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 { DW_LCNT_MD5, DW_FORM_data16 },
             };
 
-            auto filename_entry_format_count = cast(u8, u32, array_length(filename_entry_formats));
+            auto filename_entry_format_count = cast_to(u8, u32, array_length(filename_entry_formats));
             *vb_add(&builder->file, 1) = filename_entry_format_count;
 
             for (u8 i = 0; i < filename_entry_format_count; i += 1)
@@ -9850,7 +9851,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
             // Advance PC by 3
             *vb_add(&builder->file, 1) = DW_LNS_advance_pc;
-            *vb_add(&builder->file, 1) = cast(u8, u32, main_size);
+            *vb_add(&builder->file, 1) = cast_to(u8, u32, main_size);
 
             {
                 // TODO: confirm this is the encoding of special opcodes?
@@ -9867,7 +9868,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             .version = 5,
             .address_size = 8,
             .segment_selector_size = 0,
-            .header_length = cast(u32, u64, line_program_start_offset - after_header_length),
+            .header_length = cast_to(u32, u64, line_program_start_offset - after_header_length),
             .minimum_instruction_length = 1,
             .maximum_operations_per_instruction = 1,
             .default_is_stmt = 1,
@@ -9934,7 +9935,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         u64 addresses[] = { main_offset };
 
         auto header = (DwarfAddressTableHeader) {
-            .unit_length = cast(u32, u64, sizeof(DwarfAddressTableHeader) - length_size + sizeof(addresses)),
+            .unit_length = cast_to(u32, u64, sizeof(DwarfAddressTableHeader) - length_size + sizeof(addresses)),
             .version = 5,
             .address_size = 8,
             .segment_selector_size = 0,
@@ -10012,7 +10013,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         u32 offset_array_size = debug_str_offsets.length * sizeof(*debug_str_offsets.pointer);
         auto header = (DwarfDebugStrOffsetsHeader) {
 
-            .length = cast(u32, u64, sizeof(DwarfDebugStrOffsetsHeader) - length_size + offset_array_size),
+            .length = cast_to(u32, u64, sizeof(DwarfDebugStrOffsetsHeader) - length_size + offset_array_size),
             .version = 5,
         };
         *vb_add_scalar(&builder->file, DwarfDebugStrOffsetsHeader) = header;
@@ -10360,7 +10361,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
     vb_align(&builder->file, alignof(ELFSectionHeader));
     auto section_header_offset = builder->file.length;
-    auto section_header_count = cast(u16, u32, builder->section_headers.length);
+    auto section_header_count = cast_to(u16, u32, builder->section_headers.length);
     memcpy(vb_add(&builder->file, sizeof(ELFSectionHeader) * section_header_count), builder->section_headers.pointer, builder->section_headers.length * sizeof(ELFSectionHeader));
 
     *elf_header = (ELFHeader)
@@ -10803,7 +10804,7 @@ static_assert(sizeof(PDBHeader) == 52);
 
 fn u32 pdb_size_to_block_count(u32 bytes, u32 block_size)
 {
-    return cast(u32, u64, ((u64)bytes + block_size - 1) / block_size);
+    return cast_to(u32, u64, ((u64)bytes + block_size - 1) / block_size);
 }
 
 fn u64 pdb_block_index_to_file_offset(u32 block_index, u32 block_size)
@@ -10844,12 +10845,12 @@ STRUCT(PDBStreamCreate)
     u32 size;
 };
 
-global const u32 nil_page_size = 0xffffffff;
-global const u16 nil_stream_index = 0xffff;
-global const u32 info_stream_index = 1;
-global const u32 tpi_stream_index = 2;
-global const u16 dbi_stream_index = 3;
-global const u16 ipi_stream_index = 4;
+global_variable const u32 nil_page_size = 0xffffffff;
+global_variable const u16 nil_stream_index = 0xffff;
+global_variable const u32 info_stream_index = 1;
+global_variable const u32 tpi_stream_index = 2;
+global_variable const u16 dbi_stream_index = 3;
+global_variable const u16 ipi_stream_index = 4;
 
 STRUCT(PDBCoalescedMSFStream)
 {
@@ -10909,7 +10910,7 @@ fn PDBStreamCreate pdb_setup_stream_creation(PDBFile pdb, u32 stream_index)
 {
     if (pdb_validate_stream_index(pdb, stream_index) != PDB_STREAM_INDEX_VALIDATION_SUCCESS)
     {
-        fail();
+        failed_execution();
     }
 
     return (PDBStreamCreate)
@@ -11064,7 +11065,7 @@ fn PDBDirectMSFStream pdb_direct_msf_stream_create(PDBStreamCreate create)
 {
     if (!is_power_of_two(create.block_size))
     {
-        fail();
+        failed_execution();
     }
 
     return create;
@@ -11126,7 +11127,7 @@ STRUCT(PDBDBIStreamHeader)
     u32 padding;
 };
 
-global const u32 dbi_stream_header_signature = 0xffffffff;
+global_variable const u32 dbi_stream_header_signature = 0xffffffff;
 
 STRUCT(PDBDBIStream)
 {
@@ -11141,18 +11142,18 @@ fn PDBDBIStream pdb_dbi_stream_create(PDBFile pdb)
 
     if (result.stream.size < sizeof(PDBDBIStreamHeader))
     {
-        fail();
+        failed_execution();
     }
 
     pdb_direct_msf_stream_read_at_offset(result.stream, scalar_to_bytes(result.header), 0);
 
     if (result.header.signature != dbi_stream_header_signature)
     {
-        fail();
+        failed_execution();
     }
     else if (result.header.version != PDB_DBI_VERSION_V70)
     {
-        fail();
+        failed_execution();
     }
 
     return result;
@@ -11293,8 +11294,8 @@ STRUCT(PDBHashTableHeader)
     u32 bucket_count;
 };
 
-global const u32 pdb_hash_table_signature = 0xffffffff;
-global const u32 pdb_hash_table_version = 0xeffe0000 + 19990810;
+global_variable const u32 pdb_hash_table_signature = 0xffffffff;
+global_variable const u32 pdb_hash_table_version = 0xeffe0000 + 19990810;
 
 typedef enum PDBSectionContributionVersion : u32
 {
@@ -11544,7 +11545,7 @@ fn void pdb_playground(Thread* thread)
 
     if (pdb_validate(pdb.content) != PDB_VALIDATION_SUCCESS)
     {
-        fail();
+        failed_execution();
     }
 
     pdb.header = (PDBHeader*)(pdb.content.pointer + 0);
@@ -11595,19 +11596,19 @@ fn void pdb_playground(Thread* thread)
     auto info_stream = pdb_info_stream_create(pdb);
     if (info_stream.uses_debug_fast_link)
     {
-        fail();
+        failed_execution();
     }
 
     // Symbol record stream validation
     if (dbi.header.symbol_record_stream_index == nil_stream_index)
     {
-        fail();
+        failed_execution();
     }
 
     // Public stream validation
     if (dbi.header.public_stream_index == nil_stream_index)
     {
-        fail();
+        failed_execution();
     }
 
     auto public_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, dbi.header.public_stream_index));
@@ -11617,19 +11618,19 @@ fn void pdb_playground(Thread* thread)
 
         if (hash_header.signature != pdb_hash_table_signature)
         {
-            fail();
+            failed_execution();
         }
 
         if (hash_header.version != pdb_hash_table_version)
         {
-            fail();
+            failed_execution();
         }
     }
 
     // Global stream validation
     if (dbi.header.global_stream_index == nil_stream_index)
     {
-        fail();
+        failed_execution();
     }
 
     auto global_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, dbi.header.global_stream_index));
@@ -11639,18 +11640,18 @@ fn void pdb_playground(Thread* thread)
 
         if (hash_header.signature != pdb_hash_table_signature)
         {
-            fail();
+            failed_execution();
         }
 
         if (hash_header.version != pdb_hash_table_version)
         {
-            fail();
+            failed_execution();
         }
     }
 
     if (dbi.header.section_contribution_size < sizeof(PDBSectionContributionVersion))
     {
-        fail();
+        failed_execution();
     }
 
     auto stream_offset = pdb_section_contribution_substream_offset(dbi.header);
@@ -11660,12 +11661,12 @@ fn void pdb_playground(Thread* thread)
 
     if (version != PDB_SECTION_CONTRIBUTION_V60)
     {
-        fail();
+        failed_execution();
     }
 
     if (dbi.header.optional_debug_header_size == 0)
     {
-        fail();
+        failed_execution();
     }
 
     auto debug_header_offset = pdb_debug_header_substream_offset(dbi.header);
@@ -11675,7 +11676,7 @@ fn void pdb_playground(Thread* thread)
 
     if (debug_header.section_header_stream_index == nil_stream_index)
     {
-        fail();
+        failed_execution();
     }
 
     auto tpi_stream = pdb_direct_msf_stream_create(pdb_setup_stream_creation(pdb, tpi_stream_index));
@@ -11685,7 +11686,7 @@ fn void pdb_playground(Thread* thread)
 
     if (header.version != TPI_STREAM_V80)
     {
-        fail();
+        failed_execution();
     }
 
     pdb_print_sizes(pdb, dbi);
@@ -20453,7 +20454,7 @@ fn String pdb_build(Thread* thread)
 
     if (pdb_file.length != array_length(pdb_image))
     {
-        fail();
+        failed_execution();
     }
 
     for (u32 i = 0; i < pdb_file.length; i += 1)
@@ -20464,7 +20465,7 @@ fn String pdb_build(Thread* thread)
         if (mine != original)
         {
             print("Diff at position {u32}\n", i);
-            fail();
+            failed_execution();
         }
     }
 
@@ -20510,7 +20511,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
 
     auto* section_headers = vb_add_any_array(&file, COFFSectionHeader, section_count);
     u16 section_i = 0;
-    auto headers_size = cast(u32, u64, align_forward(file.length, file_section_alignment));
+    auto headers_size = cast_to(u32, u64, align_forward(file.length, file_section_alignment));
     u32 rva = file.length;
 
     // .text
@@ -20518,7 +20519,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     u32 entry_point_rva;
     section_i += 1;
     {
-        rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+        rva = cast_to(u32, u64, align_forward(rva, virtual_section_alignment));
         vb_align(&file, file_section_alignment);
         auto file_offset = file.length;
         u8 text_content[] = { 0x48, 0x83, 0xEC, 0x28, 0x33, 0xC9, 0xFF, 0x15, 0xF4, 0x0F, 0x00, 0x00, 0x90, 0x48, 0x83, 0xC4, 0x28, 0xC3, };
@@ -20556,7 +20557,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     u32 unwind_information_rva;
     {
         // .rdata
-        rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+        rva = cast_to(u32, u64, align_forward(rva, virtual_section_alignment));
         assert(rva == 0x2000);
         vb_align(&file, file_section_alignment);
         auto file_offset = file.length;
@@ -20708,7 +20709,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     {
         // .pdata content
         vb_align(&file, file_section_alignment);
-        rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+        rva = cast_to(u32, u64, align_forward(rva, virtual_section_alignment));
 
         auto file_offset = file.length;
 
@@ -20744,7 +20745,7 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     }
 
     vb_align(&file, file_section_alignment);
-    rva = cast(u32, u64, align_forward(rva, virtual_section_alignment));
+    rva = cast_to(u32, u64, align_forward(rva, virtual_section_alignment));
 
     assert(section_i == section_count);
 
@@ -20816,12 +20817,12 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
         path_without_extension,
         strlit(".pdb"),
     };
-    auto pdb_path = arena_join_string(thread->arena, (Slice(String))array_to_slice(to_join));
 
     auto pdb = pdb_build(thread);
 
     // TODO:
 #if _WIN32
+    auto pdb_path = arena_join_string(thread->arena, (Slice(String))array_to_slice(to_join));
     auto fd = os_file_open(strlit("mydbg.pdb"), (OSFileOpenFlags) {
         .write = 1,
         .truncate = 1,
@@ -21453,7 +21454,7 @@ fn s32 node_best_ready(Scheduler* restrict scheduler, u64 in_use_mask)
             continue;
         }
 
-        return cast(s32, u32, length);
+        return cast_to(s32, u32, length);
     }
 
     return -1;
@@ -21465,7 +21466,7 @@ fn RegisterMaskIndex register_mask_intern(Thread* thread, RegisterMask register_
 {
     auto* new_rm = vb_add(&thread->buffer.register_masks, 1);
     *new_rm = register_mask;
-    auto candidate_index = Index(RegisterMask, cast(u32, s64, new_rm - thread->buffer.register_masks.pointer));
+    auto candidate_index = Index(RegisterMask, cast_to(u32, s64, new_rm - thread->buffer.register_masks.pointer));
     auto result = ip_RegisterMask_get_or_put(&thread->interned.register_masks, thread, candidate_index);
     auto final_index = result.index;
     assert((!index_equal(candidate_index, final_index)) == result.existing);
@@ -21569,7 +21570,7 @@ fn RegisterMaskIndex node_constraint(Thread* thread, Node* node, Slice(RegisterM
             {
                 if (ins.length)
                 {
-                    const global s32 ret_gprs[] = { RAX, RDX };
+                    const global_variable s32 ret_gprs[] = { RAX, RDX };
 
                     ins.pointer[1] = empty_register_mask;
                     ins.pointer[2] = empty_register_mask;
@@ -22124,7 +22125,7 @@ fn u8 register_allocate(Thread* thread, VirtualBuffer(VirtualRegister) virtual_r
         {
             print("Interfere with active: {u32}\n", (s32)other->assigned);
             in_use |= ((u32)1 << other->assigned);
-            *vb_add(spills, 1) = cast(u32, u64, i);
+            *vb_add(spills, 1) = cast_to(u32, u64, i);
         }
     }
 
@@ -22170,7 +22171,7 @@ fn u8 register_allocate(Thread* thread, VirtualBuffer(VirtualRegister) virtual_r
     }
     else
     {
-        virtual_register->assigned = cast(s16, s32, __builtin_ffsll(~in_use) - 1);
+        virtual_register->assigned = cast_to(s16, s32, __builtin_ffsll(~in_use) - 1);
         print("Register assigned: {s}\n", gpr_to_string((GPR)virtual_register->assigned));
     }
 
@@ -22256,7 +22257,7 @@ fn void node_ready_up(Thread* thread, Scheduler* scheduler, NodeIndex node_index
 
     for (i = 0; i < count; i += 1)
     {
-        if (cast(s32, u64, priority) < scheduler->ready.pointer[i].priority)
+        if (cast_to(s32, u64, priority) < scheduler->ready.pointer[i].priority)
         {
             break;
         }
@@ -22270,7 +22271,7 @@ fn void node_ready_up(Thread* thread, Scheduler* scheduler, NodeIndex node_index
 
     scheduler->ready.pointer[i] = (ReadyNode) {
         .node_index = node_index,
-            .priority = cast(s32, u64, priority),
+            .priority = cast_to(s32, u64, priority),
             .unit_mask = unit_mask,
     };
 }
@@ -22356,32 +22357,6 @@ fn void cfg_builder_clear(CFGBuilder* restrict builder, Thread* restrict thread)
     builder->basic_blocks.length = 0;
     builder->scheduled.length = 0;
 }
-
-typedef enum CpuArchitecture : u8
-{
-    CPU_ARCH_X86_64,
-    CPU_ARCH_AARCH64,
-} CpuArchitecture;
-
-typedef enum OperatingSystem : u8
-{
-    OPERATING_SYSTEM_LINUX,
-    OPERATING_SYSTEM_MAC,
-    OPERATING_SYSTEM_WINDOWS,
-} OperatingSystem;
-
-STRUCT(Target)
-{
-    CpuArchitecture cpu;
-    OperatingSystem os;
-};
-
-STRUCT(CodegenOptions)
-{
-    String test_name;
-    Target target;
-    CompilerBackend backend;
-};
 
 fn BasicBlockIndex cfg_get_predicate_basic_block(Thread* restrict thread, FixedBlockMap* map, NodeIndex arg_node_index, u16 i)
 {
@@ -22677,12 +22652,12 @@ fn void cfg_global_schedule(CFGBuilder* restrict builder, Thread* restrict threa
         bitset_ensure_length(&basic_block->live_out, node_count);
     }
 
-    auto bb0 = Index(BasicBlock, cast(u32, s64, &builder->basic_blocks.pointer[0] - builder->basic_blocks.pointer));
+    auto bb0 = Index(BasicBlock, cast_to(u32, s64, &builder->basic_blocks.pointer[0] - builder->basic_blocks.pointer));
 
     for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
     {
         auto* basic_block = &builder->basic_blocks.pointer[i];
-        auto bb_index = Index(BasicBlock, cast(u32, s64, basic_block - builder->basic_blocks.pointer));
+        auto bb_index = Index(BasicBlock, cast_to(u32, s64, basic_block - builder->basic_blocks.pointer));
         builder->scheduled.pointer[geti(basic_block->start)] = bb_index;
 
         if (i == 0)
@@ -22994,9 +22969,9 @@ fn void cfg_list_schedule(Thread* restrict thread, CFGBuilder* restrict builder,
             {
                 break;
             }
-            auto index = cast(u32, s32, signed_index);
+            auto index = cast_to(u32, s32, signed_index);
             auto available = scheduler.ready.pointer[index].unit_mask & ~in_use_mask;
-            auto unit_i = __builtin_ffsll(cast(s64, u64, available)) - 1;
+            auto unit_i = __builtin_ffsll(cast_to(s64, u64, available)) - 1;
 
             auto node_index = scheduler.ready.pointer[index].node_index;
             auto* node = thread_node_get(thread, node_index);
@@ -23015,7 +22990,7 @@ fn void cfg_list_schedule(Thread* restrict thread, CFGBuilder* restrict builder,
             *vb_add(&active, 1) = (InFlightNode)
             {
                 .node_index = node_index,
-                .end = cast(u32, u64, end_cycle),
+                .end = cast_to(u32, u64, end_cycle),
                 .unit_i = unit_i,
             };
 
@@ -23597,6 +23572,9 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
 
 fn void code_generation(Thread* restrict thread, CodegenOptions options)
 {
+    // TODO: delete, this is testing
+    llvm_codegen(options);
+
     auto cfg_builder = cfg_builder_init(thread);
     auto* restrict builder = &cfg_builder;
     VirtualBuffer(u8) code = {};
@@ -23687,7 +23665,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
         memset(ins.pointer, 0, sizeof(RegisterMaskIndex) * max_ins);
 
         VirtualBuffer(VirtualRegister) virtual_registers = {};
-        vb_ensure_capacity(&virtual_registers, cast(u32, u64, round_up_to_next_power_of_2(virtual_register_count + 16)));
+        vb_ensure_capacity(&virtual_registers, cast_to(u32, u64, round_up_to_next_power_of_2(virtual_register_count + 16)));
         virtual_registers.length = virtual_register_count;
 
         for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
@@ -23747,13 +23725,13 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
 
                 *vb_add(&virtual_registers, 1) = (VirtualRegister) {
                     .mask = mask,
-                    .class = cast(s16, u32, class),
-                    .assigned = cast(s16, u32, i),
+                    .class = cast_to(s16, u32, class),
+                    .assigned = cast_to(s16, u32, i),
                     .spill_cost = INFINITY,
                 };
             }
 
-            fixed[class] = cast(s32, u32, base);
+            fixed[class] = cast_to(s32, u32, base);
         }
 
         // Insert legalizing moves
@@ -23819,7 +23797,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                                 if (shared_edge >= 0)
                                 {
                                     auto* input_node = thread_node_get(thread, input_index);
-                                    auto p_shared_edge = cast(u16, s32, shared_edge);
+                                    auto p_shared_edge = cast_to(u16, s32, shared_edge);
                                     assert(p_shared_edge < input_node->input_count);
                                     auto inputs = node_get_inputs(thread, input_node);
                                     for (u16 i = 1; i < input_node->input_count; i += 1)
@@ -24134,7 +24112,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
         for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
         {
             auto* basic_block = &builder->basic_blocks.pointer[i];
-            auto basic_block_index = Index(BasicBlock, cast(u32, s64, basic_block - builder->basic_blocks.pointer));
+            auto basic_block_index = Index(BasicBlock, cast_to(u32, s64, basic_block - builder->basic_blocks.pointer));
             auto first_node = thread_node_get(thread, basic_block->items.pointer[0]);
             auto item_count = basic_block->items.length;
             u8 empty = 1;
@@ -24163,7 +24141,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
             }
             else
             {
-                basic_block->forward = cast(s32, u32, i);
+                basic_block->forward = cast_to(s32, u32, i);
 
                 auto* bb_end = thread_node_get(thread, basic_block->end);
                 if (!cfg_node_terminator(bb_end))
@@ -24217,7 +24195,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
         auto* order = arena_allocate(thread->arena, s32, builder->basic_blocks.length);
 
         u32 order_index = 0;
-        for (s32 i = 0; i < cast(s32, u32, builder->basic_blocks.length); i += 1)
+        for (s32 i = 0; i < cast_to(s32, u32, builder->basic_blocks.length); i += 1)
         {
             auto* basic_block = &builder->basic_blocks.pointer[i];
             if (basic_block->forward == i)
@@ -24231,7 +24209,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
             }
         }
 
-        for (s32 i = 0; i < cast(s32, u32, builder->basic_blocks.length); i += 1)
+        for (s32 i = 0; i < cast_to(s32, u32, builder->basic_blocks.length); i += 1)
         {
             auto* basic_block = &builder->basic_blocks.pointer[i];
             if (basic_block->forward == i)
@@ -24444,7 +24422,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
 //                         );
 //                 unused(bufSize);
 //                 print("Error opening file \"{s}\": {cstr}\n", object_options.exe_path, lpMsgBuf);
-//                 fail();
+//                 failed_execution();
 //             }
 // #endif
             assert(os_file_descriptor_is_valid(fd));
@@ -24848,7 +24826,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     Arena* global_arena = arena_init(MB(2), KB(64), KB(64));
 
     {
-        arguments.length = cast(u64, s32, argc);
+        arguments.length = cast_to(u64, s32, argc);
         arguments.pointer = arena_allocate(global_arena, String, arguments.length);
 
         for (int i = 0; i < argc; i += 1)
@@ -24869,7 +24847,7 @@ void entry_point(int argc, char* argv[], char* envp[])
 
     if (argc < 3)
     {
-        fail();
+        failed_execution();
     }
 
     String source_file_path = arguments.pointer[1];
@@ -24901,7 +24879,8 @@ void entry_point(int argc, char* argv[], char* envp[])
 
     if (thread->main_function == -1)
     {
-        fail();
+
+        failed_execution();
     }
 
     print("File path: {s}\n", source_file_path);

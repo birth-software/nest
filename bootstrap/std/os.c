@@ -53,12 +53,12 @@ timestamp()
 
 
 #if _WIN32
-global u64 cpu_frequency;
+global_variable u64 cpu_frequency;
 #else
 #if LINK_LIBC
-global struct timespec cpu_resolution;
+global_variable struct timespec cpu_resolution;
 #else
-global u64 cpu_frequency;
+global_variable u64 cpu_frequency;
 #endif
 #endif
 
@@ -180,14 +180,14 @@ String path_base(String string)
     auto maybe_index = string_last_ch(string, '/');
     if (maybe_index != -1)
     {
-        auto index = cast(u64, s64, maybe_index);
+        auto index = cast_to(u64, s64, maybe_index);
         result = s_get_slice(u8, string, index + 1, string.length);
     }
 #if _WIN32
     if (!result.pointer)
     {
         auto maybe_index = string_last_ch(string, '\\');
-        auto index = cast(u64, s64, maybe_index);
+        auto index = cast_to(u64, s64, maybe_index);
         result = s_get_slice(u8, string, index + 1, string.length);
     }
 #endif
@@ -201,7 +201,7 @@ String path_no_extension(String string)
     auto maybe_index = string_last_ch(string, '.');
     if (maybe_index != -1)
     {
-        auto index = cast(u64, s64, maybe_index);
+        auto index = cast_to(u64, s64, maybe_index);
         result = s_get_slice(u8, string, 0, index);
     }
 
@@ -650,7 +650,7 @@ may_be_unused fn void* posix_mmap(void* address, size_t length, int protection_f
     return mmap(address, length, protection_flags, map_flags, fd, offset);
 #else 
 #ifdef __linux__
-    return (void*) syscall6(syscall_x86_64_mmap, (s64)address, cast(s64, u64, length), protection_flags, map_flags, fd, offset);
+    return (void*) syscall6(syscall_x86_64_mmap, (s64)address, cast_to(s64, u64, length), protection_flags, map_flags, fd, offset);
 #else
 #error "Unsupported operating system for static linking" 
 #endif
@@ -663,7 +663,7 @@ may_be_unused fn int syscall_mprotect(void *address, size_t length, int protecti
     return mprotect(address, length, protection_flags);
 #else 
 #ifdef __linux__
-    return cast(s32, s64, syscall3(syscall_x86_64_mprotect, (s64)address, cast(s64, u64, length), protection_flags));
+    return cast_to(s32, s64, syscall3(syscall_x86_64_mprotect, (s64)address, cast_to(s64, u64, length), protection_flags));
 #else
     return mprotect(address, length, protection_flags);
 #endif
@@ -676,7 +676,7 @@ may_be_unused fn int syscall_open(const char *file_path, int flags, int mode)
     return open(file_path, flags, mode);
 #else
 #ifdef __linux__
-    return cast(s32, s64, syscall3(syscall_x86_64_open, (s64)file_path, flags, mode));
+    return cast_to(s32, s64, syscall3(syscall_x86_64_open, (s64)file_path, flags, mode));
 #else
     return open(file_path, flags, mode);
 #endif
@@ -689,7 +689,7 @@ may_be_unused fn int syscall_close(int fd)
     return close(fd);
 #else
 #ifdef __linux__
-    return cast(s32, s64, syscall1(syscall_x86_64_close, fd));
+    return cast_to(s32, s64, syscall1(syscall_x86_64_close, fd));
 #else
     return close(fd);
 #endif
@@ -702,7 +702,7 @@ fn int syscall_fstat(int fd, struct stat *buffer)
     return fstat(fd, buffer);
 #else
 #ifdef __linux__
-    return cast(s32, s64, syscall2(syscall_x86_64_fstat, fd, (s64)buffer));
+    return cast_to(s32, s64, syscall2(syscall_x86_64_fstat, fd, (s64)buffer));
 #else
     return fstat(fd, buffer);
 #endif
@@ -741,7 +741,7 @@ may_be_unused fn int syscall_mkdir(String path, u32 mode)
 #if LINK_LIBC
     return mkdir((char*)path.pointer, mode);
 #else
-    return cast(s32, s64, syscall2(syscall_x86_64_mkdir, (s64)path.pointer, (s64)mode));
+    return cast_to(s32, s64, syscall2(syscall_x86_64_mkdir, (s64)path.pointer, (s64)mode));
 #endif
 }
 
@@ -751,7 +751,7 @@ may_be_unused fn int syscall_rmdir(String path)
 #if LINK_LIBC
     return rmdir((char*)path.pointer);
 #else
-    return cast(s32, s64, syscall1(syscall_x86_64_rmdir, (s64)path.pointer));
+    return cast_to(s32, s64, syscall1(syscall_x86_64_rmdir, (s64)path.pointer));
 #endif
 }
 
@@ -761,7 +761,7 @@ may_be_unused fn int syscall_unlink(String path)
 #if LINK_LIBC
     return unlink((char*)path.pointer);
 #else
-    return cast(s32, s64, syscall1(syscall_x86_64_unlink, (s64)path.pointer));
+    return cast_to(s32, s64, syscall1(syscall_x86_64_unlink, (s64)path.pointer));
 #endif
 }
 
@@ -770,7 +770,7 @@ may_be_unused fn pid_t syscall_fork()
 #if LINK_LIBC
     return fork();
 #else
-    return cast(s32, s64, syscall0(syscall_x86_64_fork));
+    return cast_to(s32, s64, syscall0(syscall_x86_64_fork));
 #endif
 
 }
@@ -789,7 +789,7 @@ may_be_unused fn pid_t syscall_waitpid(pid_t pid, int* status, int options)
 #if LINK_LIBC
     return waitpid(pid, status, options);
 #else
-    return cast(s32, s64, syscall4(syscall_x86_64_wait4, pid, (s64)status, options, 0));
+    return cast_to(s32, s64, syscall4(syscall_x86_64_wait4, pid, (s64)status, options, 0));
 #endif
 }
 
@@ -798,7 +798,7 @@ may_be_unused fn int syscall_gettimeofday(struct timeval* tv, struct timezone* t
 #if LINK_LIBC
     return gettimeofday(tv, tz);
 #else
-    return cast(s32, s64, syscall2(syscall_x86_64_gettimeofday, (s64)tv, (s64)tz));
+    return cast_to(s32, s64, syscall2(syscall_x86_64_gettimeofday, (s64)tv, (s64)tz));
 #endif
 }
 
@@ -831,7 +831,7 @@ may_be_unused fn u64 os_timer_get()
 #else
     struct timeval tv;
     syscall_gettimeofday(&tv, 0);
-    auto result = os_timer_freq() * cast(u64, s64, tv.tv_sec) + cast(u64, s64, tv.tv_usec);
+    auto result = os_timer_freq() * cast_to(u64, s64, tv.tv_sec) + cast_to(u64, s64, tv.tv_usec);
     return result;
 #endif
 }
@@ -898,7 +898,7 @@ u64 os_file_get_size(FileDescriptor fd)
     struct stat stat_buffer;
     int stat_result = syscall_fstat(fd, &stat_buffer);
     assert(stat_result == 0);
-    auto size = cast(u64, s64, stat_buffer.st_size);
+    auto size = cast_to(u64, s64, stat_buffer.st_size);
     return size;
 #endif
 }
@@ -907,11 +907,11 @@ void os_file_write(FileDescriptor fd, String content)
 {
 #if _WIN32
     DWORD bytes_written = 0;
-    BOOL result = WriteFile(fd, content.pointer, cast(u32, u64, content.length), &bytes_written, 0);
+    BOOL result = WriteFile(fd, content.pointer, cast_to(u32, u64, content.length), &bytes_written, 0);
     assert(result != 0);
 #else
     auto result = syscall_write(fd, content.pointer, content.length);
-    assert(cast(u64, s64, result) == content.length);
+    assert(cast_to(u64, s64, result) == content.length);
 #endif
 }
 
@@ -924,7 +924,7 @@ may_be_unused fn u64 os_file_read(FileDescriptor fd, String buffer, u64 byte_cou
     {
 #if _WIN32
         DWORD read = 0;
-        BOOL result = ReadFile(fd, buffer.pointer, cast(u32, u64, byte_count), &read, 0);
+        BOOL result = ReadFile(fd, buffer.pointer, cast_to(u32, u64, byte_count), &read, 0);
         assert(result != 0);
         bytes_read = read;
 #else
@@ -932,7 +932,7 @@ may_be_unused fn u64 os_file_read(FileDescriptor fd, String buffer, u64 byte_cou
         assert(result > 0);
         if (result > 0)
         {
-            bytes_read = cast(u64, s64, result);
+            bytes_read = cast_to(u64, s64, result);
         }
 #endif
     }
@@ -1090,22 +1090,22 @@ void print(const char* format, ...)
                                         it += 1;
                                         if (*it != '2')
                                         {
-                                            fail();
+                                            failed_execution();
                                         }
                                         it += 1;
-                                        fail();
+                                        failed_execution();
                                         break;
                                     case '6':
                                         it += 1;
                                         if (*it != '4')
                                         {
-                                            fail();
+                                            failed_execution();
                                         }
                                         it += 1;
                                         value_double = va_arg(args, f64);
                                         break;
                                     default:
-                                        fail();
+                                        failed_execution();
                                 }
 
                                 buffer_i += format_float(s_get_slice(u8, buffer, buffer_i, buffer.length), value_double);
@@ -1215,7 +1215,7 @@ void print(const char* format, ...)
 
                     if (*it != brace_close)
                     {
-                        fail();
+                        failed_execution();
                     }
 
                     it += 1;
@@ -1373,7 +1373,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         if (argument)
         {
             auto string_len = strlen(argument);
-            length += cast(u32, u64, string_len + 1);
+            length += cast_to(u32, u64, string_len + 1);
         }
     }
 
@@ -1416,12 +1416,12 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
             print("Process ran with exit code: {u32:x}\n", exit_code);
             if (exit_code != 0)
             {
-                fail();
+                failed_execution();
             }
         }
         else
         {
-            fail();
+            failed_execution();
         }
 
         CloseHandle(process_information.hProcess);
@@ -1511,7 +1511,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         if (!success)
         {
             print("Program failed to run!\n");
-            fail();
+            failed_execution();
         }
         auto ms = resolve_timestamp(start_timestamp, end_timestamp, TIME_UNIT_MILLISECONDS);
         auto ticks =

@@ -60,7 +60,7 @@
 
 // fn void sha1_process_block(Sha1Context* ctx)
 // {
-//     global const u32 k[4] =
+//     global_variable const u32 k[4] =
 //     {
 //         0x5A827999,
 //         0x6ED9EBA1,

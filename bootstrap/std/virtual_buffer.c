@@ -13,8 +13,8 @@ void vb_generic_ensure_capacity(VirtualBuffer(u8)* vb, u32 item_size, u32 item_c
             vb->pointer = os_reserve(0, item_size * UINT32_MAX, (OSReserveProtectionFlags) {}, (OSReserveMapFlags) { .priv = 1, .anon = 1, .noreserve = 1 });
         }
 
-        u32 old_page_capacity = cast(u32, u64, align_forward(old_capacity * item_size, minimum_granularity));
-        u32 new_page_capacity = cast(u32, u64, align_forward(wanted_capacity * item_size, minimum_granularity));
+        u32 old_page_capacity = cast_to(u32, u64, align_forward(old_capacity * item_size, minimum_granularity));
+        u32 new_page_capacity = cast_to(u32, u64, align_forward(wanted_capacity * item_size, minimum_granularity));
 
         u32 commit_size = new_page_capacity - old_page_capacity;
         void* commit_pointer = vb->pointer + old_page_capacity;
@@ -42,7 +42,7 @@ u8* vb_generic_add(VirtualBuffer(u8)* vb, u32 item_size, u32 item_count)
 
 u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
 {
-    auto len = cast(u32, u64, bytes.length);
+    auto len = cast_to(u32, u64, bytes.length);
     vb_generic_ensure_capacity(vb, sizeof(u8), len);
     auto* pointer = vb_generic_add_assume_capacity(vb, sizeof(u8), len);
     memcpy(pointer, bytes.pointer, len);
@@ -51,7 +51,7 @@ u8* vb_append_bytes(VirtualBuffer(u8*) vb, Slice(u8) bytes)
 
 void vb_copy_string(VirtualBuffer(u8)* buffer, String string)
 {
-    auto length = cast(u32, u64, string.length);
+    auto length = cast_to(u32, u64, string.length);
     auto* pointer = vb_add(buffer, length);
     memcpy(pointer, string.pointer, length);
 }

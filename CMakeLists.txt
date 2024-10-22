@@ -4,6 +4,7 @@ project(nest)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
+
 add_compile_options(
     -pedantic
     -Wall -Wextra -Wpedantic
@@ -15,6 +16,82 @@ add_compile_options(
 include_directories("bootstrap/include")
 
 find_package(LLVM REQUIRED CONFIG)
+
+find_program(LLVM_CONFIG_EXE
+    NAMES llvm-config-19 llvm-config-19.0 llvm-config190 llvm-config19 llvm-config NAMES_PER_DIR
+    PATHS
+    "/mingw64/bin"
+    "/c/msys64/mingw64/bin"
+    "c:/msys64/mingw64/bin"
+    "C:/Libraries/llvm-19.0.0/bin")
+
+if ("${LLVM_CONFIG_EXE}" STREQUAL "LLVM_CONFIG_EXE-NOTFOUND")
+    if (NOT LLVM_CONFIG_ERROR_MESSAGES STREQUAL "")
+        list(JOIN LLVM_CONFIG_ERROR_MESSAGES "\n" LLVM_CONFIG_ERROR_MESSAGE)
+        message(FATAL_ERROR ${LLVM_CONFIG_ERROR_MESSAGE})
+    else()
+        message(FATAL_ERROR "unable to find llvm-config")
+    endif()
+endif()
+
+
+execute_process(
+    COMMAND ${LLVM_CONFIG_EXE} --libs
+    OUTPUT_VARIABLE LLVM_LIBRARIES_SPACES
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+string(REPLACE " " ";" LLVM_LIBRARIES "${LLVM_LIBRARIES_SPACES}")
+
+execute_process(
+    COMMAND ${LLVM_CONFIG_EXE} --libdir
+    OUTPUT_VARIABLE LLVM_LIBDIRS_SPACES
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+string(REPLACE " " ";" LLVM_LIBDIRS "${LLVM_LIBDIRS_SPACES}")
+
+execute_process(
+    COMMAND ${LLVM_CONFIG_EXE} --system-libs
+    OUTPUT_VARIABLE LLVM_SYSTEM_LIBS_SPACES
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+string(REPLACE " " ";" LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS_SPACES}")
+
+execute_process(
+    COMMAND ${LLVM_CONFIG_EXE} --shared-mode
+    OUTPUT_VARIABLE LLVM_LINK_MODE
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+if (${LLVM_LINK_MODE} STREQUAL "shared")
+    # We always ask for the system libs corresponding to static linking,
+    # since on some distros LLD is only available as a static library
+    # and we need these libraries to link it successfully
+    execute_process(
+        COMMAND ${LLVM_CONFIG_EXE} --system-libs --link-static
+        OUTPUT_VARIABLE LLVM_STATIC_SYSTEM_LIBS_SPACES
+        ERROR_QUIET # Some installations have no static libs, we just ignore the failure
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" LLVM_STATIC_SYSTEM_LIBS "${LLVM_STATIC_SYSTEM_LIBS_SPACES}")
+
+    set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS} ${LLVM_STATIC_SYSTEM_LIBS})
+else()
+    set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS})
+endif()
+
+execute_process(
+    COMMAND ${LLVM_CONFIG_EXE} --includedir
+    OUTPUT_VARIABLE LLVM_INCLUDE_DIRS_SPACES
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+string(REPLACE " " ";" LLVM_INCLUDE_DIRS "${LLVM_INCLUDE_DIRS_SPACES}")
+
+if (APPLE)
+    if (MSVC)
+        list(REMOVE_ITEM LLVM_LIBRARIES "zstd.lib")
+    else()
+        list(REMOVE_ITEM LLVM_LIBRARIES "-lzstd")
+    endif()
+
+    find_library(ZSTD NAMES libzstd.a libzstdstatic.a zstd NAMES_PER_DIR)
+    list(APPEND LLVM_LIBRARIES "${ZSTD}")
+endif()
+
+link_directories("${LLVM_LIBDIRS}")
 
 set(LIBRARY_NAME "std")
 set(RUNNER_NAME "runner")
@@ -35,6 +112,7 @@ target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 add_executable("${COMPILER_NAME}"
     "bootstrap/nest/main.c"
     "bootstrap/nest/pdb_image.c"
+    "bootstrap/nest/llvm.cpp"
 )
 
 target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})

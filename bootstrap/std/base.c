@@ -320,14 +320,14 @@ u8 log2_alignment(u64 alignment)
     assert(alignment != 0);
     assert((alignment & (alignment - 1)) == 0);
     u64 left = (sizeof(alignment) * 8) - 1;
-    auto right = cast(u64, s32, __builtin_clzll(alignment));
-    auto result = cast(u8, u64, left - right);
+    auto right = cast_to(u64, s32, __builtin_clzll(alignment));
+    auto result = cast_to(u8, u64, left - right);
     return result;
 }
 
 // Lehmer's generator
 // https://lemire.me/blog/2019/03/19/the-fastest-conventional-random-number-generator-that-can-pass-big-crush/
-may_be_unused global __uint128_t rn_state;
+may_be_unused global_variable u128 rn_state;
 may_be_unused fn u64 generate_random_number()
 {
     rn_state *= 0xda942042e4dd58b5;
@@ -349,7 +349,7 @@ u64 round_up_to_next_power_of_2(u64 n)
 
 may_be_unused fn u64 absolute_int(s64 n)
 {
-    return n < 0 ? cast(u64, s64, -n) : cast(u64, s64, n);
+    return n < 0 ? cast_to(u64, s64, -n) : cast_to(u64, s64, n);
 }
 
 u64 parse_decimal(String string)
@@ -582,7 +582,7 @@ fn s32 pow5_bits(const s32 e)
 #define DOUBLE_POW5_INV_TABLE_SIZE 342
 #define DOUBLE_POW5_TABLE_SIZE 326
 
-global const u8 DIGIT_TABLE[200] = {
+global_variable const u8 DIGIT_TABLE[200] = {
   '0','0','0','1','0','2','0','3','0','4','0','5','0','6','0','7','0','8','0','9',
   '1','0','1','1','1','2','1','3','1','4','1','5','1','6','1','7','1','8','1','9',
   '2','0','2','1','2','2','2','3','2','4','2','5','2','6','2','7','2','8','2','9',
@@ -595,7 +595,7 @@ global const u8 DIGIT_TABLE[200] = {
   '9','0','9','1','9','2','9','3','9','4','9','5','9','6','9','7','9','8','9','9'
 };
 
-global const u64 DOUBLE_POW5_INV_SPLIT[DOUBLE_POW5_INV_TABLE_SIZE][2] =
+global_variable const u64 DOUBLE_POW5_INV_SPLIT[DOUBLE_POW5_INV_TABLE_SIZE][2] =
 {
     {                    1u, 2305843009213693952u }, { 11068046444225730970u, 1844674407370955161u },
     {  5165088340638674453u, 1475739525896764129u }, {  7821419487252849886u, 1180591620717411303u },
@@ -802,7 +802,7 @@ fn u32 log10_pow5(const s32 e) {
   return (((u32) e) * 732923) >> 20;
 }
 
-global const u64 DOUBLE_POW5_SPLIT[DOUBLE_POW5_TABLE_SIZE][2] =
+global_variable const u64 DOUBLE_POW5_SPLIT[DOUBLE_POW5_TABLE_SIZE][2] =
 {
     {                    0u, 1152921504606846976u }, {                    0u, 1441151880758558720u },
     {                    0u, 1801439850948198400u }, {                    0u, 2251799813685248000u },
@@ -1288,7 +1288,7 @@ fn void write_float_decimal(String buffer, u64* value, u64 count)
 
     while (i + 2 < count)
     {
-        auto c = cast(u8, u64, *value % 100);
+        auto c = cast_to(u8, u64, *value % 100);
         *value /= 100;
         auto ptr = digits2(c);
         buffer.pointer[count - i - 1] = ptr[1];
@@ -1298,7 +1298,7 @@ fn void write_float_decimal(String buffer, u64* value, u64 count)
 
     while (i < count)
     {
-        auto c = cast(u8, u64, *value % 10);
+        auto c = cast_to(u8, u64, *value % 10);
         *value /= 10;
         buffer.pointer[count - i - 1] = '0' + c;
 
@@ -1494,7 +1494,7 @@ u64 format_float(String buffer, f64 value_double)
                 } break;
             case FLOAT_FORMAT_DECIMAL:
                 {
-                    auto dp_offset = result.exponent + cast(s32, u32, olength);
+                    auto dp_offset = result.exponent + cast_to(s32, u32, olength);
 
                     if (dp_offset <= 0)
                     {
@@ -1559,13 +1559,13 @@ u64 first_bit_set_64(u64 value)
 
 Hash32 hash32_fib_end(Hash32 hash)
 {
-    auto result = trunc(Hash32, ((hash + 1) * 11400714819323198485ull) >> 32);
+    auto result = truncate_value(Hash32, ((hash + 1) * 11400714819323198485ull) >> 32);
     return result;
 }
 
 Hash32 hash64_fib_end(Hash64 hash)
 {
-    auto result = trunc(Hash32, ((hash + 1) * 11400714819323198485ull) >> 32);
+    auto result = truncate_value(Hash32, ((hash + 1) * 11400714819323198485ull) >> 32);
     return result;
 }
 
@@ -1637,7 +1637,7 @@ void* memmove(void* const dst, const void* const src, usize n)
 
 void* memset(void* dst, int n, usize size)
 {
-    u8 ch = cast(u8, s32, n);
+    u8 ch = cast_to(u8, s32, n);
     auto* destination = (u8*)dst;
     for (u64 i = 0; i < size; i += 1)
     {

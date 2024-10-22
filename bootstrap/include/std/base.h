@@ -39,6 +39,18 @@ typedef double f64;
 typedef u32 Hash32;
 typedef u64 Hash64;
 
+#ifdef __cplusplus
+#define EXPORT extern "C"
+#else
+#define EXPORT
+#endif
+
+#if defined(__cplusplus) && defined(__linux__)
+#define NO_EXCEPT __THROW
+#else
+#define NO_EXCEPT
+#endif
+
 #define STRUCT_FORWARD_DECL(S) typedef struct S S
 #define STRUCT(S) STRUCT_FORWARD_DECL(S); struct S
 #define UNION_FORWARD_DECL(U) typedef union U U
@@ -69,6 +81,9 @@ declare_slice_p(char);
 typedef Slice(u8) String;
 declare_slice(String);
 
+#define NamedEnumMemberEnum(e, enum_member) e ## _ ## enum_member
+#define NamedEnumMemberString(e, enum_member) strlit(#enum_member)
+
 typedef SliceP(char) CStringSlice;
 
 #ifdef _WIN32
@@ -92,17 +107,18 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
-
 #define INFINITY __builtin_inff()
 #define NAN __builtin_nanf("")
 #define fn static
 #define method __attribute__((visibility("internal")))
-#define global static
+#define global_variable static
 #define forceinline __attribute__((always_inline))
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define breakpoint() __builtin_debugtrap()
-#define fail() trap()
+#define failed_execution() trap()
+
+
 #define trap() bad_exit("Trap reached", __FILE__, __LINE__)
 #define array_length(arr) sizeof(arr) / sizeof((arr)[0])
 #define KB(n) ((n) * 1024)
@@ -111,8 +127,8 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
 #define TB(n) ((u64)(n) * 1024 * 1024 * 1024 * 1024)
 #define unused(x) (void)(x)
 #define may_be_unused __attribute__((unused))
-#define trunc(Destination, source) (Destination)(source)
-#define cast(Destination, Source, source) cast_ ## Source ## _to_ ## Destination (source, __FILE__, __LINE__)
+#define truncate_value(Destination, source) (Destination)(source)
+#define cast_to(Destination, Source, source) cast_ ## Source ## _to_ ## Destination (source, __FILE__, __LINE__)
 #define bad_exit(message, file, line) do { print(message " at {cstr}:{u32}\n", file, line); __builtin_trap(); } while(0)
 #define size_until_end(T, field_name) (sizeof(T) - offsetof(T, field_name))
 #define SWAP(a, b) \
@@ -121,7 +137,6 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
         a = b;\
         b = temp;\
     } while (0)
-
 
 #define slice_from_pointer_range(T, start, end) (Slice(T)) { .pointer = start, .length = (u64)(end - start), }
 
@@ -137,14 +152,14 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
 
 #define case_to_name(prefix, e) case prefix ## e: return strlit(#e)
 
-const may_be_unused global u8 brace_open = '{';
-const may_be_unused global u8 brace_close = '}';
+const may_be_unused global_variable u8 brace_open = '{';
+const may_be_unused global_variable u8 brace_close = '}';
 
-const may_be_unused global u8 parenthesis_open = '(';
-const may_be_unused global u8 parenthesis_close = ')';
+const may_be_unused global_variable u8 parenthesis_open = '(';
+const may_be_unused global_variable u8 parenthesis_close = ')';
 
-const may_be_unused global u8 bracket_open = '[';
-const may_be_unused global u8 bracket_close = ']';
+const may_be_unused global_variable u8 bracket_open = '[';
+const may_be_unused global_variable u8 bracket_close = ']';
 
 #define s_get(s, i) (s).pointer[i]
 #define s_get_pointer(s, i) &((s).pointer[i])
@@ -157,22 +172,23 @@ const may_be_unused global u8 bracket_close = ']';
 #define assert(x) unlikely(!(x))
 #endif
 
+#ifndef __cplusplus
+// Undefine unreachable if needed to provide a more safe-guard implementation
 #ifdef unreachable
 #undef unreachable
 #endif
-
 #if _DEBUG
 #define unreachable() bad_exit("Unreachable triggered", __FILE__, __LINE__)
 #else
 #define unreachable() __builtin_unreachable()
 #endif
 
-#ifdef static_assert
-#undef static_assert
-#endif
 #define static_assert(x) _Static_assert((x), "Static assert failed!")
 #define alignof(x) _Alignof(x)
 #define auto __auto_type
+#else
+#define restrict __restrict
+#endif
 
 #define todo() do { print("TODO at {cstr}:{u32}\n", __FILE__, __LINE__); __builtin_trap(); } while(0)
 
@@ -183,13 +199,13 @@ u8 is_power_of_two(u64 value);
 u8 first_bit_set_32(u32 value);
 u64 first_bit_set_64(u64 value);
 
-void* memcpy(void* const restrict dst, const void* const restrict src, usize size);
-void* memmove(void* const dst, const void* const src, usize n);
-void* memset(void* dst, int n, usize size);
-int memcmp(const void* a, const void* b, usize n);
-usize strlen (const char* c_string);
-int strcmp(const char* s1, const char* s2);
-int strncmp(const char* s1, const char* s2, usize length);
+EXPORT void* memcpy(void* const restrict dst, const void* const restrict src, usize size) NO_EXCEPT;
+EXPORT void* memmove(void* const dst, const void* const src, usize n) NO_EXCEPT;
+EXPORT void* memset(void* dst, int n, usize size) NO_EXCEPT;
+EXPORT int memcmp(const void* a, const void* b, usize n) NO_EXCEPT;
+EXPORT usize strlen (const char* c_string) NO_EXCEPT;
+EXPORT int strcmp(const char* s1, const char* s2) NO_EXCEPT;
+EXPORT int strncmp(const char* s1, const char* s2, usize length) NO_EXCEPT;
 
 u8 cast_u32_to_u8(u32 source, const char* name, int line);
 u16 cast_u32_to_u16(u32 source, const char* name, int line);
@@ -223,8 +239,8 @@ u64 is_alphabetic(u8 ch);
 
 u64 parse_decimal(String string);
 
-global const Hash64 fnv_offset = 14695981039346656037ull;
-global const u64 fnv_prime = 1099511628211ull;
+global_variable const Hash64 fnv_offset = 14695981039346656037ull;
+global_variable const u64 fnv_prime = 1099511628211ull;
 
 Hash32 hash32_fib_end(Hash32 hash);
 Hash32 hash64_fib_end(Hash64 hash);

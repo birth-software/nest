@@ -42,16 +42,16 @@ STRUCT(Arena)
 };
 
 #if __APPLE__
-    const global u64 page_size = KB(16);
+    const global_variable u64 page_size = KB(16);
 #else
-    const global u64 page_size = KB(4);
+    const global_variable u64 page_size = KB(4);
 #endif
 
-global u64 minimum_granularity = page_size;
-// global u64 middle_granularity = MB(2);
-global u64 default_size = GB(4);
+global_variable u64 minimum_granularity = page_size;
+// global_variable u64 middle_granularity = MB(2);
+global_variable u64 default_size = GB(4);
 
-void print(const char* format, ...);
+EXPORT void print(const char* format, ...);
 void run_command(Arena* arena, CStringSlice arguments, char* envp[]);
 String file_read(Arena* arena, String path);
 
