@@ -1,7 +1,10 @@
+#define unreachable() __builtin_unreachable()
+#include <llvm-c/Core.h>
 #include <std/os.h>
 #include <nest/base.h>
 
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
@@ -12,68 +15,38 @@
 
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
+#include <llvm-c/TargetMachine.h>
 
 #define string_ref(lit) StringRef(lit, strlit_len(lit))
 
 namespace llvm
 {
-    // #define LLVMAttributeMembers(cb) \
-    //     cb(LLVMAttribute, naked), \
-    //     cb(LLVMAttribute, noreturn), \
-    //     cb(LLVMAttribute, nounwind), \
-    //     cb(LLVMAttribute, inreg), \
-    //     cb(LLVMAttribute, noalias), \
-    //     cb(LLVMAttribute, signext), \
-    //     cb(LLVMAttribute, zeroext), \
-    //
-    // typedef enum LLVMAttributeId : u32
-    // {
-    //     LLVMAttributeMembers(NamedEnumMemberEnum)
-    //     LLVM_ATTRIBUTE_COUNT,
-    // } LLVMAttribute;
-    //
-    // String llvm_attribute_names[] = {
-    //     LLVMAttributeMembers(NamedEnumMemberString)
-    // };
-    //
-    // STRUCT(LLVMAttributeLookupTable)
-    // {
-    //     u32 ids[LLVM_ATTRIBUTE_COUNT];
-    // };
-    //
-    // fn u32 llvm_attribute_id(String string)
-    // {
-    //     auto result = LLVMGetEnumAttributeKindForName(string_to_c(string), string.length);
-    //     static_assert(sizeof(result) == sizeof(u32));
-    //     return result;
-    // }
-
-#define llvm_initialize_target(target) \
+#define llvm_initialize_macro(target) \
     LLVMInitialize ## target ## Target();\
     LLVMInitialize ## target ## TargetInfo();\
     LLVMInitialize ## target ## TargetMC();\
     LLVMInitialize ## target ## AsmParser();\
     LLVMInitialize ## target ## AsmPrinter()
 
-    fn void llvm_initialize_cpu(CpuArchitecture architecture)
+    fn void target_initialize(CpuArchitecture architecture)
     {
         // These are meant to be called globally, so if this code is ever threaded, we need to call this code only once
         switch (architecture)
         {
             case CPU_ARCH_X86_64:
                 {
-                    llvm_initialize_target(X86);
+                    llvm_initialize_macro(X86);
                 } break;
             case CPU_ARCH_AARCH64:
                 {
-                    llvm_initialize_target(AArch64);
+                    llvm_initialize_macro(AArch64);
                 } break;
         }
     }
 
-    extern "C" void llvm_codegen(CodegenOptions options)
+    EXPORT void llvm_codegen(CodegenOptions options, String object_path)
     {
-        llvm_initialize_cpu(options.target.cpu);
+        target_initialize(options.target.cpu);
 
         auto context = LLVMContext();
         auto module = Module(string_ref("first"), context);
@@ -142,7 +115,7 @@ namespace llvm
         module.setTargetTriple(target_triple);
 
         // TODO:
-        auto cpu_model = string_ref("baseline");
+        auto cpu_model = string_ref("");
         auto cpu_features = string_ref("");
 
         TargetOptions target_options;
@@ -154,5 +127,29 @@ namespace llvm
         auto* target_machine = target->createTargetMachine(target_triple, cpu_model, cpu_features, target_options, relocation_model, code_model, codegen_optimization_level, jit);
         auto data_layout = target_machine->createDataLayout();
         module.setDataLayout(data_layout);
+
+        // TODO: optimizations
+
+        SmallString<0> object_string;
+        raw_svector_ostream object_stream(object_string);
+        auto file_type = CodeGenFileType::ObjectFile;
+        legacy::PassManager pass;
+
+        assert(target_machine->isCompatibleDataLayout(module.getDataLayout()));
+        raw_pwrite_stream* dwo_stream = 0;
+        if (target_machine->addPassesToEmitFile(pass, object_stream, dwo_stream, file_type)) {
+            failed_execution();
+        }
+
+        pass.run(module);
+
+        assert(object_path.pointer);
+        assert(object_path.length);
+
+        file_write(FileWriteOptions{
+            .path = object_path,
+            .content = { .pointer = (u8*)object_string.str().data(), .length = object_string.str().size() },
+            .executable = 1,
+        });
     }
 }
