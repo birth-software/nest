@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.10)
 project(nest)
 
+include(CMakePrintHelpers)
+cmake_print_variables("Build type: ${CMAKE_BUILD_TYPE}")
+cmake_print_variables("C flags Debug: ${CMAKE_C_FLAGS_DEBUG}")
+cmake_print_variables("CXX flags Debug: ${CMAKE_CXX_FLAGS_DEBUG}")
+cmake_print_variables("C flags MinSizeRel: ${CMAKE_C_FLAGS_MINSIZEREL}")
+cmake_print_variables("CXX flags MinSizeRel: ${CMAKE_CXX_FLAGS_MINSIZEREL}")
+cmake_print_variables("C flags RelWithDebInfo: ${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+cmake_print_variables("CXX flags RelWithDebInfo: ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+cmake_print_variables("C flags Release: ${CMAKE_C_FLAGS_RELEASE}")
+cmake_print_variables("CXX flags Release: ${CMAKE_CXX_FLAGS_RELEASE}")
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
@@ -116,6 +127,7 @@ add_executable("${COMPILER_NAME}"
 )
 
 target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})
+cmake_print_variables("LLVM definitions: ${LLVM_DEFINITIONS}")
 target_include_directories(${COMPILER_NAME} PRIVATE ${LLVM_INCLUDE_DIRS})
 target_link_directories(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARY_DIRS})
 target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME} ${LLVM_LIBRARIES})

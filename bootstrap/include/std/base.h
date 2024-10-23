@@ -1,9 +1,9 @@
 #pragma once 
 
 #ifdef NDEBUG
-#define _DEBUG 0
+#define NEST_DEBUG 0
 #else
-#define _DEBUG 1
+#define NEST_DEBUG 1
 #endif
 
 #ifdef STATIC
@@ -166,7 +166,7 @@ const may_be_unused global_variable u8 bracket_close = ']';
 #define s_get_slice(T, s, start, end) (Slice(T)){ .pointer = ((s).pointer) + (start), .length = (end) - (start) }
 #define s_equal(a, b) ((a).length == (b).length && memcmp((a).pointer, (b).pointer, sizeof(*((a).pointer)) * (a).length) == 0)
 
-#if _DEBUG
+#if NEST_DEBUG
 #define assert(x) if (unlikely(!(x))) { bad_exit("Assert failed: \"" # x "\"", __FILE__, __LINE__); }
 #else
 #define assert(x) unlikely(!(x))
@@ -177,7 +177,7 @@ const may_be_unused global_variable u8 bracket_close = ']';
 #ifdef unreachable
 #undef unreachable
 #endif
-#if _DEBUG
+#if NEST_DEBUG
 #define unreachable() bad_exit("Unreachable triggered", __FILE__, __LINE__)
 #else
 #define unreachable() __builtin_unreachable()
