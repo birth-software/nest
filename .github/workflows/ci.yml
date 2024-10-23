@@ -8,204 +8,55 @@ on:
   schedule:
     - cron: "0 0 * * *"
 
+env:
+  LLVM_VERSION: "19.1.2"
+  LINUX_IMAGE: "ubuntu-24.04"
+  MACOS_IMAGE: "macos-15"
+  WINDOWS_IMAGE: "windows-2022"
+
 jobs:
-  linux_Debug:
-    runs-on: ubuntu-24.04
+  build_and_test:
+    runs-on: ${{ matrix.os}}
     timeout-minutes: 15
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+        build_type: [Debug, MinSizeRel, RelWithDebInfo, Release]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install dependencies
-        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
-      - name: System information
+
+      - name: System Info (Linux)
+        if: matrix.os == env.LINUX_IMAGE
         run: |
           uname -a
           lsb_release -a
-          clang -v
-      - name: Build and test
-        run: |
-          ./project.sh "build_type=Debug" test all
-  linux_MinSizeRel:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
-      - name: System information
-        run: |
-          uname -a
-          lsb_release -a
-          clang -v
-      - name: Build and test
-        run: |
-          ./project.sh "build_type=MinSizeRel" test all
-  linux_RelWithDebInfo:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
-      - name: System information
-        run: |
-          uname -a
-          lsb_release -a
-          clang -v
-      - name: Build and test
-        run: |
-          ./project.sh "build_type=RelWithDebInfo" test all
-  linux_Release:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
-      - name: System information
-        run: |
-          uname -a
-          lsb_release -a
-          clang -v
-      - name: Build and test
-        run: |
-          ./project.sh "build_type=Release" test all
-  macos_Debug:
-    runs-on: macos-15
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          brew install llvm ninja
-      - name: System information
+      - name: System Info (macOS)
+        if: matrix.os == env.MACOS_IMAGE
         run: |
           uname -a
           sw_vers -productVersion
-          clang -v
+      - name: System Info (Windows)
+        if: matrix.os == 'windows-2022'
+        run: 
+          systeminfo
+
+      - name: Install dependencies (Linux)
+        if: matrix.os == env.LINUX_IMAGE
+        run: sudo apt update && sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
+      - name: Install dependencies (MacOS)
+        if: matrix.os == env.MACOS_IMAGE
+        run: brew install llvm ninja
+      - name: Install dependencies (Windows)
+        if: matrix.os == env.WINDOWS_IMAGE
+        run: choco install ninja && pwsh ./fetch-llvm.ps1
+
+      - name: Clang version
+        run: clang -v
+
       - name: Build and test
-        run: ./project.sh "build_type=Debug" test all
-  macos_MinSizeRel:
-    runs-on: macos-15
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          brew install llvm ninja
-      - name: System information
-        run: |
-          uname -a
-          sw_vers -productVersion
-          clang -v
-      - name: Build and test
-        run: ./project.sh "build_type=MinSizeRel" test all
-  macos_RelWithDebInfo:
-    runs-on: macos-15
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          brew install llvm ninja
-      - name: System information
-        run: |
-          uname -a
-          sw_vers -productVersion
-          clang -v
-      - name: Build and test
-        run: ./project.sh "build_type=RelWithDebInfo" test all
-  macos_Release:
-    runs-on: macos-15
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          brew install llvm ninja
-      - name: System information
-        run: |
-          uname -a
-          sw_vers -productVersion
-          clang -v
-      - name: Build and test
-        run: ./project.sh "build_type=Release" test all
-  windows_Debug:
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          choco install ninja
-          pwsh ./fetch-llvm.ps1
-      # - name: System information
-      #   run: |
-      #     systeminfo
-      #     clang -v
-      - name: Build and test
-        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=Debug" test all
-        env:
-          LANG: en_US.UTF-8  # Ensure UTF-8 encoding
-  windows_MinSizeRel:
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          choco install ninja
-          pwsh ./fetch-llvm.ps1
-      # - name: System information
-      #   run: |
-      #     systeminfo
-      #     clang -v
-      - name: Build and test
-        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=MinSizeRel" test all
-        env:
-          LANG: en_US.UTF-8  # Ensure UTF-8 encoding
-  windows_RelWithDebInfo:
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          choco install ninja
-          pwsh ./fetch-llvm.ps1
-      # - name: System information
-      #   run: |
-      #     systeminfo
-      #     clang -v
-      - name: Build and test
-        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=RelWithDebInfo" test all
-        env:
-          LANG: en_US.UTF-8  # Ensure UTF-8 encoding
-  windows_Release:
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          choco install ninja
-          pwsh ./fetch-llvm.ps1
-      # - name: System information
-      #   run: |
-      #     systeminfo
-      #     clang -v
-      - name: Build and test
-        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=Release" test all
-        env:
-          LANG: en_US.UTF-8  # Ensure UTF-8 encoding
+        if: matrix.os == env.LINUX_IMAGE || matrix.os == env.MACOS_IMAGE
+        run: ./project.sh "build_type=${{ matrix.build_type }}" test all
+      - name: Build and test (Windows)
+        if: matrix.os == env.WINDOWS_IMAGE
+        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=${{ matrix.build_type }}" test all
