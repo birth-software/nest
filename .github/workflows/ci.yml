@@ -19,6 +19,7 @@ jobs:
     runs-on: ${{ matrix.os}}
     timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2022]
         build_type: [Debug, MinSizeRel, RelWithDebInfo, Release]
@@ -31,15 +32,18 @@ jobs:
         run: |
           uname -a
           lsb_release -a
+          df -h
       - name: System Info (macOS)
         if: matrix.os == env.MACOS_IMAGE
         run: |
           uname -a
           sw_vers -productVersion
+          df -h
       - name: System Info (Windows)
-        if: matrix.os == 'windows-2022'
-        run: 
+        if: matrix.os == env.WINDOWS_IMAGE
+        run: |
           systeminfo
+          wmic logicaldisk get name, size, freespace
 
       - name: Install dependencies (Linux)
         if: matrix.os == env.LINUX_IMAGE
@@ -49,7 +53,7 @@ jobs:
         run: brew install llvm ninja
       - name: Install dependencies (Windows)
         if: matrix.os == env.WINDOWS_IMAGE
-        run: choco install ninja && pwsh ./fetch-llvm.ps1
+        run: choco install ninja && pwsh ./fetch-llvm.ps1 "${{ matrix.build_type }}"
 
       - name: Clang version
         run: clang -v
@@ -59,4 +63,4 @@ jobs:
         run: ./project.sh "build_type=${{ matrix.build_type }}" test all
       - name: Build and test (Windows)
         if: matrix.os == env.WINDOWS_IMAGE
-        run: pwsh ./project.ps1 "-DCMAKE_PREFIX_PATH=clang+llvm-19.1.2-x86_64-pc-windows-msvc" "build_type=${{ matrix.build_type }}" test all
+        run: pwsh ./project.ps1 "build_type=${{ matrix.build_type }}" test all
