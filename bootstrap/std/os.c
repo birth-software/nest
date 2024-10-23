@@ -1350,6 +1350,23 @@ String file_read(Arena* arena, String path)
     return result;
 }
 
+void file_write(FileWriteOptions options)
+{
+    auto fd = os_file_open(options.path, (OSFileOpenFlags) {
+        .write = 1,
+        .truncate = 1,
+        .create = 1,
+        .executable = options.executable,
+    }, (OSFilePermissions) {
+        .readable = 1,
+        .writable = 1,
+        .executable = options.executable,
+    });
+    assert(os_file_descriptor_is_valid(fd));
+
+    os_file_write(fd, options.content);
+    os_file_close(fd);
+}
 
 void run_command(Arena* arena, CStringSlice arguments, char* envp[])
 {

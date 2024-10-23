@@ -22,28 +22,12 @@ typedef enum CMakeBuildType
 fn void run(Arena* arena, char** envp, String compiler_path, CompilerBackend compiler_backend, u8 debug, char* nest_source_path)
 {
     CStringSlice args = {};
-    char* compiler_backend_string;
-    switch (compiler_backend)
-    {
-    // case COMPILER_BACKEND_C:
-    //     compiler_backend_string = "c";
-    //     break;
-    // case COMPILER_BACKEND_INTERPRETER:
-    //     compiler_backend_string = "i";
-    //     break;
-
-    // TODO: change ch
-    case COMPILER_BACKEND_NEST:
-        compiler_backend_string = "m";
-        break;
-    case COMPILER_BACKEND_COUNT:
-        unreachable();
-    }
+    auto compiler_backend_string = compiler_backend_to_string(compiler_backend);
 
 #define common_compile_and_run_args \
                 string_to_c(compiler_path), \
                 nest_source_path, \
-                compiler_backend_string, \
+                string_to_c(compiler_backend_string), \
                 0,
 
     if (debug)
@@ -113,26 +97,12 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
         for (u32 engine_i = 0; engine_i < test_options->compiler_backends.length; engine_i += 1)
         {
             CompilerBackend compiler_backend = test_options->compiler_backends.pointer[engine_i];
-            char* compiler_backend_string;
-            switch (compiler_backend)
-            {
-                // case COMPILER_BACKEND_C:
-                //     compiler_backend_string = "c";
-                //     break;
-                // case COMPILER_BACKEND_INTERPRETER:
-                //     compiler_backend_string = "i";
-                //     break;
-                case COMPILER_BACKEND_NEST:
-                    compiler_backend_string = "m";
-                    break;
-                case COMPILER_BACKEND_COUNT:
-                    unreachable();
-            }
+            auto compiler_backend_string = compiler_backend_to_string(compiler_backend);
 
             char* arguments[] = {
                 string_to_c(compiler_path),
                 test_path_c,
-                compiler_backend_string,
+                string_to_c(compiler_backend_string),
                 0,
             };
 
@@ -185,7 +155,11 @@ void entry_point(int argc, char* argv[], char* envp[])
         char* c_argument = argv[i];
         auto argument = cstr(c_argument);
 
-        if (string_starts_with(argument, strlit("build_type=")))
+        if (string_to_compiler_backend(argument) != COMPILER_BACKEND_COUNT)
+        {
+            preferred_compiler_backend = string_to_compiler_backend(argument);
+        }
+        else if (string_starts_with(argument, strlit("build_type=")))
         {
             auto release_start = cast_to(u32, s32, string_first_ch(argument, '=') + 1);
             auto release_string = s_get_slice(u8, argument, release_start, argument.length);
@@ -200,18 +174,6 @@ void entry_point(int argc, char* argv[], char* envp[])
             }
 
             assert(build_type != CMAKE_BUILD_TYPE_COUNT);
-        }
-        // else if (s_equal(argument, strlit("i")))
-        // {
-        //     preferred_compiler_backend = COMPILER_BACKEND_INTERPRETER;
-        // }
-        // else if (s_equal(argument, strlit("c")))
-        // {
-        //     preferred_compiler_backend = COMPILER_BACKEND_C;
-        // }
-        else if (s_equal(argument, strlit("m")))
-        {
-            preferred_compiler_backend = COMPILER_BACKEND_NEST;
         }
         else if (s_equal(argument, strlit("test")))
         {
@@ -314,10 +276,10 @@ void entry_point(int argc, char* argv[], char* envp[])
                  // strlit("tests/comparison.nat"),
             };
             CompilerBackend all_compiler_backends[] = {
-                // COMPILER_BACKEND_INTERPRETER,
-                // COMPILER_BACKEND_C,
                 COMPILER_BACKEND_NEST,
+                COMPILER_BACKEND_LLVM,
             };
+            static_assert(array_length(all_compiler_backends) == COMPILER_BACKEND_COUNT);
 
             Slice(CompilerBackend) compiler_backend_selection;
 

@@ -23572,12 +23572,32 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
 
 fn void code_generation(Thread* restrict thread, CodegenOptions options)
 {
-    // TODO: delete, this is testing
-    llvm_codegen(options);
-
     auto cfg_builder = cfg_builder_init(thread);
     auto* restrict builder = &cfg_builder;
     VirtualBuffer(u8) code = {};
+
+    auto object_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
+        strlit("nest/"),
+        options.test_name,
+        strlit(".o"),
+        // options.backend == COMPILER_BACKEND_C ? strlit(".c") : strlit(".o"),
+    })));
+
+    auto exe_path_view = s_get_slice(u8, object_path, 0, object_path.length - 2);
+    u32 extra_bytes = 0;
+#if _WIN32
+    extra_bytes = strlen(".exe");
+#endif
+    String exe_path = {
+        .pointer = arena_allocate_bytes(thread->arena, exe_path_view.length + extra_bytes + 1, 1),
+        .length = exe_path_view.length + extra_bytes,
+    };
+
+    memcpy(exe_path.pointer, exe_path_view.pointer, exe_path_view.length);
+#if _WIN32
+    memcpy(exe_path.pointer + exe_path_view.length, ".exe", extra_bytes);
+#endif
+    exe_path.pointer[exe_path_view.length + extra_bytes] = 0;
 
     for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
     {
@@ -24309,66 +24329,14 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
         }
     }
 
-    auto object_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
-        strlit("nest/"),
-        options.test_name,
-        strlit(".o"),
-        // options.backend == COMPILER_BACKEND_C ? strlit(".c") : strlit(".o"),
-    })));
-
-    auto exe_path_view = s_get_slice(u8, object_path, 0, object_path.length - 2);
-    u32 extra_bytes = 0;
-#if _WIN32
-    extra_bytes = strlen(".exe");
-#endif
-    String exe_path = {
-        .pointer = arena_allocate_bytes(thread->arena, exe_path_view.length + extra_bytes + 1, 1),
-        .length = exe_path_view.length + extra_bytes,
-    };
-
-    memcpy(exe_path.pointer, exe_path_view.pointer, exe_path_view.length);
-#if _WIN32
-    memcpy(exe_path.pointer + exe_path_view.length, ".exe", extra_bytes);
-#endif
-    exe_path.pointer[exe_path_view.length + extra_bytes] = 0;
-
     switch (options.backend)
     {
-    // case COMPILER_BACKEND_C:
-    //     {
-    //         auto lowered_source = c_lower(thread);
-    //         // print("Transpiled to C:\n```\n{s}\n```\n", lowered_source);
-    //
-    //         file_write(object_path, lowered_source);
-    //
-    //         char* command[] = {
-    //             clang_path, "-g",
-    //             "-o", exe_path,
-    //             string_to_c(object_path),
-    //             0,
-    //         };
-    //
-    //         run_command((CStringSlice) array_to_slice(command), envp);
-    //         todo();
-    //     } break;
-    // case COMPILER_BACKEND_INTERPRETER:
-    //     {
-    //         // auto* main_function = &thread->buffer.functions.pointer[thread->main_function];
-    //         // auto* interpreter = interpreter_create(thread);
-    //         // interpreter->function = main_function;
-    //         // interpreter->arguments = (Slice(String)) array_to_slice(((String[]) {
-    //         //     test_name,
-    //         // }));
-    //         // auto exit_code = interpreter_run(interpreter, thread);
-    //         // print("Interpreter exited with exit code: {u32}\n", exit_code);
-    //         // syscall_exit(exit_code);
-    //         todo();
-    //     } break;
-    // case COMPILER_BACKEND_LLVM:
-    //     {
-    //         // TODO
-    //     } break;
-    case COMPILER_BACKEND_NEST:
+        case COMPILER_BACKEND_LLVM:
+            {
+                // TODO: delete, this is testing
+                llvm_codegen(options, object_path);
+            } break;
+        case COMPILER_BACKEND_NEST:
         {
             auto code_slice = (Slice(u8)) { .pointer = code.pointer, .length = code.length, };
             auto object_options = (ObjectOptions) {
@@ -24396,39 +24364,11 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                     } break;
             }
 
-            auto fd = os_file_open(object_options.exe_path, (OSFileOpenFlags) {
-                    .write = 1,
-                    .truncate = 1,
-                    .create = 1,
-                    .executable = 1,
-                    }, (OSFilePermissions) {
-                    .readable = 1,
-                    .writable = 1,
-                    .executable = 1,
-                    });
-// #if _WIN32
-//             if (!os_file_descriptor_is_valid(fd))
-//             {
-//                 auto err = GetLastError();
-//                 LPSTR lpMsgBuf;
-//                 DWORD bufSize = FormatMessageA(
-//                         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-//                         NULL,
-//                         err,
-//                         LANG_NEUTRAL, // Use default language
-//                         (LPSTR)&lpMsgBuf,
-//                         0,
-//                         NULL
-//                         );
-//                 unused(bufSize);
-//                 print("Error opening file \"{s}\": {cstr}\n", object_options.exe_path, lpMsgBuf);
-//                 failed_execution();
-//             }
-// #endif
-            assert(os_file_descriptor_is_valid(fd));
-
-            os_file_write(fd, (String) { executable.pointer, executable.length });
-            os_file_close(fd);
+            file_write((FileWriteOptions) {
+                .path = exe_path,
+                .content = (String) { executable.pointer, executable.length },
+                .executable = 1,
+            });
         } break;
     case COMPILER_BACKEND_COUNT:
         unreachable();
@@ -24851,7 +24791,12 @@ void entry_point(int argc, char* argv[], char* envp[])
     }
 
     String source_file_path = arguments.pointer[1];
-    CompilerBackend compiler_backend = arguments.pointer[2].pointer[0];
+    CompilerBackend compiler_backend = string_to_compiler_backend(arguments.pointer[2]);
+    if (compiler_backend == COMPILER_BACKEND_COUNT)
+    {
+        print("Invalid backend: {s}\n", arguments.pointer[2]);
+        failed_execution();
+    }
     u8 emit_ir = arguments.length >= 4 && arguments.pointer[3].pointer[0] == 'y';
 
     Target target = {
@@ -24879,7 +24824,6 @@ void entry_point(int argc, char* argv[], char* envp[])
 
     if (thread->main_function == -1)
     {
-
         failed_execution();
     }
 

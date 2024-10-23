@@ -118,6 +118,7 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
 #define breakpoint() __builtin_debugtrap()
 #define failed_execution() trap()
 
+EXPORT void print(const char* format, ...);
 
 #define trap() bad_exit("Trap reached", __FILE__, __LINE__)
 #define array_length(arr) sizeof(arr) / sizeof((arr)[0])
