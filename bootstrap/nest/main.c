@@ -23573,11 +23573,45 @@ may_be_unused fn String write_macho(Thread* restrict thread, ObjectOptions optio
 fn void code_generation(Thread* restrict thread, CodegenOptions options)
 {
     // TODO: delete, this is testing
-    llvm_codegen(options);
+    auto s = llvm_codegen(options);
+    print("Object size: {u64} bytes\n", s.length);
+    auto f = file_read(thread->arena, strlit("foo"));
+    for (u64 i = 0; i < s.length; i += 1)
+    {
+        auto memory = s.pointer[i];
+        auto file = f.pointer[i];
+        if (memory != file)
+        {
+            print("Diff at [{u64}]. Memory: 0x{u32:x}. File: 0x{u32:x}\n", i, memory, file);
+        }
+    }
 
     auto cfg_builder = cfg_builder_init(thread);
     auto* restrict builder = &cfg_builder;
     VirtualBuffer(u8) code = {};
+
+    auto object_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
+        strlit("nest/"),
+        options.test_name,
+        strlit(".o"),
+        // options.backend == COMPILER_BACKEND_C ? strlit(".c") : strlit(".o"),
+    })));
+
+    auto exe_path_view = s_get_slice(u8, object_path, 0, object_path.length - 2);
+    u32 extra_bytes = 0;
+#if _WIN32
+    extra_bytes = strlen(".exe");
+#endif
+    String exe_path = {
+        .pointer = arena_allocate_bytes(thread->arena, exe_path_view.length + extra_bytes + 1, 1),
+        .length = exe_path_view.length + extra_bytes,
+    };
+
+    memcpy(exe_path.pointer, exe_path_view.pointer, exe_path_view.length);
+#if _WIN32
+    memcpy(exe_path.pointer + exe_path_view.length, ".exe", extra_bytes);
+#endif
+    exe_path.pointer[exe_path_view.length + extra_bytes] = 0;
 
     for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
     {
@@ -24309,29 +24343,6 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
         }
     }
 
-    auto object_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
-        strlit("nest/"),
-        options.test_name,
-        strlit(".o"),
-        // options.backend == COMPILER_BACKEND_C ? strlit(".c") : strlit(".o"),
-    })));
-
-    auto exe_path_view = s_get_slice(u8, object_path, 0, object_path.length - 2);
-    u32 extra_bytes = 0;
-#if _WIN32
-    extra_bytes = strlen(".exe");
-#endif
-    String exe_path = {
-        .pointer = arena_allocate_bytes(thread->arena, exe_path_view.length + extra_bytes + 1, 1),
-        .length = exe_path_view.length + extra_bytes,
-    };
-
-    memcpy(exe_path.pointer, exe_path_view.pointer, exe_path_view.length);
-#if _WIN32
-    memcpy(exe_path.pointer + exe_path_view.length, ".exe", extra_bytes);
-#endif
-    exe_path.pointer[exe_path_view.length + extra_bytes] = 0;
-
     switch (options.backend)
     {
     // case COMPILER_BACKEND_C:
@@ -24406,25 +24417,6 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                     .writable = 1,
                     .executable = 1,
                     });
-// #if _WIN32
-//             if (!os_file_descriptor_is_valid(fd))
-//             {
-//                 auto err = GetLastError();
-//                 LPSTR lpMsgBuf;
-//                 DWORD bufSize = FormatMessageA(
-//                         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-//                         NULL,
-//                         err,
-//                         LANG_NEUTRAL, // Use default language
-//                         (LPSTR)&lpMsgBuf,
-//                         0,
-//                         NULL
-//                         );
-//                 unused(bufSize);
-//                 print("Error opening file \"{s}\": {cstr}\n", object_options.exe_path, lpMsgBuf);
-//                 failed_execution();
-//             }
-// #endif
             assert(os_file_descriptor_is_valid(fd));
 
             os_file_write(fd, (String) { executable.pointer, executable.length });
@@ -24879,7 +24871,6 @@ void entry_point(int argc, char* argv[], char* envp[])
 
     if (thread->main_function == -1)
     {
-
         failed_execution();
     }
 
