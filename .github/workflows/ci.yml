@@ -24,6 +24,16 @@ jobs:
         os: [ubuntu-24.04, macos-15, windows-2022]
         build_type: [Debug, MinSizeRel, RelWithDebInfo, Release]
     steps:
+      - name: Maximize build space
+        if: matrix.os == env.LINUX_IMAGE
+        uses: AdityaGarg8/remove-unwanted-software@v4.1
+        with:
+          remove-android: 'true'
+          remove-dotnet: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          remove-cached-tools: 'true'
       - name: Checkout
         uses: actions/checkout@v4
 
