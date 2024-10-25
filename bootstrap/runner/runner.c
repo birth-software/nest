@@ -22,7 +22,7 @@ typedef enum CMakeBuildType
 fn void run(Arena* arena, char** envp, String compiler_path, CompilerBackend compiler_backend, u8 debug, char* nest_source_path)
 {
     CStringSlice args = {};
-    auto compiler_backend_string = compiler_backend_to_string(compiler_backend);
+    auto compiler_backend_string = compiler_backend_to_one_char_string(compiler_backend);
 
 #define common_compile_and_run_args \
                 string_to_c(compiler_path), \
@@ -87,6 +87,8 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
     print("COMPILER BUILD [OK]\n");
     print("===========================\n\n");
 
+    Target target = native_target_get();
+
     for (u32 test_i = 0; test_i < test_options->test_paths.length; test_i += 1)
     {
         String test_path = test_options->test_paths.pointer[test_i];
@@ -97,7 +99,7 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
         for (u32 engine_i = 0; engine_i < test_options->compiler_backends.length; engine_i += 1)
         {
             CompilerBackend compiler_backend = test_options->compiler_backends.pointer[engine_i];
-            auto compiler_backend_string = compiler_backend_to_string(compiler_backend);
+            auto compiler_backend_string = compiler_backend_to_one_char_string(compiler_backend);
 
             char* arguments[] = {
                 string_to_c(compiler_path),
@@ -110,16 +112,15 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
 
             // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
             {
-                String path_split[] = {
-                    strlit("./" nest_dir "/"),
-                    test_name,
-#if _WIN32
-                    strlit(".exe"),
-#endif
-                };
-                String out_program = arena_join_string(arena, ((Slice(String)) array_to_slice(path_split)));
+                auto executable = binary_path_from_options(arena, (BinaryPathOptions) {
+                    .build_directory = strlit(nest_dir),
+                    .name = test_name,
+                    .target = target,
+                    .backend = compiler_backend,
+                    .binary_file_type = BINARY_FILE_EXECUTABLE,
+                });
                 char* run_arguments[] = {
-                    string_to_c(out_program),
+                    string_to_c(executable),
                     0,
                 };
                 run_command(arena, (CStringSlice) array_to_slice(run_arguments), envp);
@@ -155,9 +156,9 @@ void entry_point(int argc, char* argv[], char* envp[])
         char* c_argument = argv[i];
         auto argument = cstr(c_argument);
 
-        if (string_to_compiler_backend(argument) != COMPILER_BACKEND_COUNT)
+        if (one_char_string_to_compiler_backend(argument) != COMPILER_BACKEND_COUNT)
         {
-            preferred_compiler_backend = string_to_compiler_backend(argument);
+            preferred_compiler_backend = one_char_string_to_compiler_backend(argument);
         }
         else if (string_starts_with(argument, strlit("build_type=")))
         {
