@@ -23576,28 +23576,21 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     auto* restrict builder = &cfg_builder;
     VirtualBuffer(u8) code = {};
 
-    auto object_path = arena_join_string(thread->arena, (Slice(String)) array_to_slice(((String[]) {
-        strlit("nest/"),
-        options.test_name,
-        strlit(".o"),
-        // options.backend == COMPILER_BACKEND_C ? strlit(".c") : strlit(".o"),
-    })));
+    auto object_path = binary_path_from_options(thread->arena, (BinaryPathOptions) {
+        .build_directory = strlit("nest"),
+        .name = options.test_name,
+        .target = options.target,
+        .backend = options.backend,
+        .binary_file_type = BINARY_FILE_OBJECT,
+    });
 
-    auto exe_path_view = s_get_slice(u8, object_path, 0, object_path.length - 2);
-    u32 extra_bytes = 0;
-#if _WIN32
-    extra_bytes = strlen(".exe");
-#endif
-    String exe_path = {
-        .pointer = arena_allocate_bytes(thread->arena, exe_path_view.length + extra_bytes + 1, 1),
-        .length = exe_path_view.length + extra_bytes,
-    };
-
-    memcpy(exe_path.pointer, exe_path_view.pointer, exe_path_view.length);
-#if _WIN32
-    memcpy(exe_path.pointer + exe_path_view.length, ".exe", extra_bytes);
-#endif
-    exe_path.pointer[exe_path_view.length + extra_bytes] = 0;
+    auto exe_path = binary_path_from_options(thread->arena, (BinaryPathOptions) {
+        .build_directory = strlit("nest"),
+        .name = options.test_name,
+        .target = options.target,
+        .backend = options.backend,
+        .binary_file_type = BINARY_FILE_EXECUTABLE,
+    });
 
     for (u32 function_i = 0; function_i < thread->buffer.functions.length; function_i += 1)
     {
@@ -24791,7 +24784,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     }
 
     String source_file_path = arguments.pointer[1];
-    CompilerBackend compiler_backend = string_to_compiler_backend(arguments.pointer[2]);
+    CompilerBackend compiler_backend = one_char_string_to_compiler_backend(arguments.pointer[2]);
     if (compiler_backend == COMPILER_BACKEND_COUNT)
     {
         print("Invalid backend: {s}\n", arguments.pointer[2]);
@@ -24799,20 +24792,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     }
     u8 emit_ir = arguments.length >= 4 && arguments.pointer[3].pointer[0] == 'y';
 
-    Target target = {
-#if _WIN32
-        .cpu = CPU_ARCH_X86_64,
-        .os = OPERATING_SYSTEM_WINDOWS,
-#elif defined(__APPLE__)
-        .cpu = CPU_ARCH_AARCH64,
-        .os = OPERATING_SYSTEM_MAC,
-#elif defined(__linux__)
-        .cpu = CPU_ARCH_X86_64,
-        .os = OPERATING_SYSTEM_LINUX,
-#else
-#error "Unknown platform"
-#endif
-    };
+    Target target = native_target_get();
 
     os_directory_make(strlit("nest"));
 

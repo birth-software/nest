@@ -1352,6 +1352,7 @@ String file_read(Arena* arena, String path)
 
 void file_write(FileWriteOptions options)
 {
+    print("Writing file \"{s}\"...\n", options.path);
     auto fd = os_file_open(options.path, (OSFileOpenFlags) {
         .write = 1,
         .truncate = 1,

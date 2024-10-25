@@ -1,3 +1,5 @@
+#pragma once
+
 #include <std/base.h>
 
 STRUCT(OSFileOpenFlags)
