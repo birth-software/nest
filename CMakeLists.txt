@@ -69,6 +69,11 @@ execute_process(
     OUTPUT_VARIABLE LLVM_LINK_MODE
     OUTPUT_STRIP_TRAILING_WHITESPACE)
 
+cmake_print_variables("LLVM libs: ${LLVM_LIBRARIES}")
+cmake_print_variables("LLVM libdirs: ${LLVM_LIBDIRS}")
+cmake_print_variables("LLVM system libs: ${LLVM_SYSTEM_LIBS}")
+cmake_print_variables("LLVM link mode: ${LLVM_LINK_MODE}")
+
 if (${LLVM_LINK_MODE} STREQUAL "shared")
     # We always ask for the system libs corresponding to static linking,
     # since on some distros LLD is only available as a static library
@@ -79,11 +84,33 @@ if (${LLVM_LINK_MODE} STREQUAL "shared")
         ERROR_QUIET # Some installations have no static libs, we just ignore the failure
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     string(REPLACE " " ";" LLVM_STATIC_SYSTEM_LIBS "${LLVM_STATIC_SYSTEM_LIBS_SPACES}")
+    find_library(LLD_COFF NAMES liblldCOFF.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_COMMON NAMES liblldCommon.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_ELF NAMES liblldELF.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_MACHO NAMES liblldMachO.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_MINGW NAMES liblldMinGW.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_WASM NAMES liblldWasm.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
 
     set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS} ${LLVM_STATIC_SYSTEM_LIBS})
 else()
+    find_library(LLD_COFF NAMES lldCOFF.lib lldCOFF.a liblldCOFF.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_COMMON NAMES lldCommon.lib lldCommon.a liblldCommon.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_ELF NAMES lldELF.lib lldELF.a liblldELF.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_MACHO NAMES lldMachO.lib lldMachO.a liblldMachO.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_MINGW NAMES lldMinGW.lib lldMinGW.a liblldMinGW.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+    find_library(LLD_WASM NAMES lldWasm.lib lldWasm.a liblldWasm.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+
     set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS})
 endif()
+
+set(lld_libs
+    ${LLD_COFF}
+    ${LLD_ELF}
+    ${LLD_COMMON}
+    ${LLD_MINGW}
+    ${LLD_MACHO}
+    ${LLD_WASM}
+)
 
 execute_process(
     COMMAND ${LLVM_CONFIG_EXE} --includedir
@@ -124,11 +151,13 @@ add_executable("${COMPILER_NAME}"
     "bootstrap/bloat-buster/main.c"
     "bootstrap/bloat-buster/pdb_image.c"
     "bootstrap/bloat-buster/llvm.cpp"
+    "bootstrap/bloat-buster/lld_driver.c"
+    "bootstrap/bloat-buster/lld_api.cpp"
 )
 
 target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})
 cmake_print_variables("LLVM definitions: ${LLVM_DEFINITIONS}")
 target_include_directories(${COMPILER_NAME} PRIVATE ${LLVM_INCLUDE_DIRS})
 target_link_directories(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARY_DIRS})
-target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME} ${LLVM_LIBRARIES})
+target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME} ${LLVM_LIBRARIES} ${lld_libs})
 

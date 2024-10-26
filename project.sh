@@ -6,6 +6,7 @@ C_COMPILER_PATH=clang
 CXX_COMPILER_PATH=clang++
 ASM_COMPILER_PATH=clang
 
+
 if [[ -z "${BIRTH_OS-}" ]]; then
     case "$OSTYPE" in
         msys*)
@@ -22,6 +23,16 @@ if [[ -z "${BIRTH_OS-}" ]]; then
             ;;
     esac
 fi
+
+case "$BIRTH_OS" in
+    linux)
+        ls -las /
+        ls -las /usr
+        ls -las /usr/lib
+        ;;
+    *)
+        ;;
+esac
 
 if [[ -z "${BIRTH_ARCH-}" ]]; then
     case "$(uname -m)" in
@@ -42,7 +53,7 @@ if [[ -z "${CMAKE_BUILD_TYPE-}" ]]; then
 fi
 
 if [[ -z "${CMAKE_PREFIX_PATH-}" ]]; then
-    CMAKE_PREFIX_PATH=""
+    CMAKE_PREFIX_PATH="$HOME/Downloads/llvm-$BIRTH_ARCH-$BIRTH_OS-$CMAKE_BUILD_TYPE"
 fi
 
 
@@ -59,6 +70,14 @@ case $BIRTH_OS in
         ASM_COMPILER_OPT_ARG=""
         ;;
 esac
+case $BIRTH_OS in
+    linux)
+        USE_MOLD_OPT_ARG=-DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold"
+        ;;
+    *)
+        USE_MOLD_OPT_ARG=""
+        ;;
+esac
 
 mkdir -p $build_dir
 cmake . \
@@ -69,9 +88,11 @@ cmake . \
     -DCMAKE_C_COMPILER=$C_COMPILER_PATH \
     -DCMAKE_CXX_COMPILER=$CXX_COMPILER_PATH \
     -DCMAKE_ASM_COMPILER=$ASM_COMPILER_PATH \
+    $USE_MOLD_OPT_ARG \
     $C_COMPILER_OPT_ARG \
     $CXX_COMPILER_OPT_ARG \
     $ASM_COMPILER_OPT_ARG
+    
 cd $build_dir
 ninja -v
 cd $original_dir

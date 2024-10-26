@@ -202,3 +202,13 @@ fn Target native_target_get()
 
     return target;
 }
+
+STRUCT(LinkerArguments)
+{
+    Target target;
+    String out_path;
+    Slice(String) objects;
+    Slice(String) libraries;
+    u8 link_libc:1;
+    u8 link_libcpp:1;
+};
