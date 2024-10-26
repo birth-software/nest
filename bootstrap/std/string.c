@@ -61,3 +61,27 @@ u8 string_starts_with(String string, String start)
 
     return result;
 }
+
+u8 string_ends_with(String string, String end)
+{
+    u8 result = 0;
+
+    if (likely(end.length <= string.length))
+    {
+        u64 i;
+        u64 offset = string.length - end.length;
+        for (i = 0; i < end.length; i += 1)
+        {
+            auto start_ch = end.pointer[i];
+            auto string_ch = string.pointer[i + offset];
+            if (unlikely(string_ch != start_ch))
+            {
+                break;
+            }
+        }
+
+        result = i == end.length;
+    }
+
+    return result;
+}

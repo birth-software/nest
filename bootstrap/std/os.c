@@ -849,11 +849,10 @@ FileDescriptor os_file_open(String path, OSFileOpenFlags flags, OSFilePermission
 {
     assert(path.pointer[path.length] == 0);
 #if _WIN32
-
     DWORD dwDesiredAccess = 0;
-    dwDesiredAccess |= permissions.readable * GENERIC_READ;
-    dwDesiredAccess |= permissions.writable * GENERIC_WRITE;
-    dwDesiredAccess |= permissions.executable * GENERIC_EXECUTE;
+    dwDesiredAccess |= flags.read * GENERIC_READ;
+    dwDesiredAccess |= flags.write * GENERIC_WRITE;
+    dwDesiredAccess |= flags.executable * GENERIC_EXECUTE;
     DWORD dwShareMode = 0;
     LPSECURITY_ATTRIBUTES lpSecurityAttributes = 0;
     DWORD dwCreationDisposition = 0;
@@ -861,8 +860,10 @@ FileDescriptor os_file_open(String path, OSFileOpenFlags flags, OSFilePermission
     dwCreationDisposition |= flags.create * CREATE_ALWAYS;
     DWORD dwFlagsAndAttributes = 0;
     dwFlagsAndAttributes |= FILE_ATTRIBUTE_NORMAL;
+    dwFlagsAndAttributes |= flags.directory * FILE_FLAG_BACKUP_SEMANTICS;
     HANDLE hTemplateFile = 0;
-    auto handle = CreateFileA((char*)path.pointer, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
+
+    auto handle = CreateFileA(string_to_c(path), dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
     return handle;
 #else
     int posix_flags = 0;
@@ -1431,7 +1432,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         DWORD exit_code;
         if (GetExitCodeProcess(process_information.hProcess, &exit_code))
         {
-            print("Process ran with exit code: {u32:x}\n", exit_code);
+            print("Process ran with exit code: 0x{u32:x}\n", exit_code);
             if (exit_code != 0)
             {
                 failed_execution();
@@ -1541,5 +1542,17 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
             ;
         print("Command run successfully in {f64} {cstr}\n", ms, ticks ? "ticks" : "ms");
     }
+#endif
+}
+
+void print_string(String message)
+{
+#ifndef SILENT
+    // TODO: check writes
+    os_file_write(os_stdout_get(), message);
+    // assert(result >= 0);
+    // assert((u64)result == message.length);
+#else
+        unused(message);
 #endif
 }

@@ -1,5 +1,6 @@
 #include <std/base.h>
 
-s32 string_first_ch(String string, u8 ch);
-s64 string_last_ch(String string, u8 ch);
-u8 string_starts_with(String string, String start);
+EXPORT s32 string_first_ch(String string, u8 ch);
+EXPORT s64 string_last_ch(String string, u8 ch);
+EXPORT u8 string_starts_with(String string, String start);
+EXPORT u8 string_ends_with(String string, String end);

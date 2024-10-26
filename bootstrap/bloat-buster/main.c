@@ -8,6 +8,8 @@
 #include <bloat-buster/base.h>
 #include <bloat-buster/pdb_image.h>
 #include <bloat-buster/llvm.h>
+#include <bloat-buster/lld_driver.h>
+#include <bloat-buster/lld_api.h>
 
 #ifdef __APPLE__
 #define clang_path "/opt/homebrew/opt/llvm/bin/clang"
@@ -38,17 +40,6 @@ STRUCT(GetOrPut(T)) \
 
 auto compiler_name = strlit("bb");
 
-fn void print_string(String message)
-{
-#ifndef SILENT
-    // TODO: check writes
-    os_file_write(os_stdout_get(), message);
-    // assert(result >= 0);
-    // assert((u64)result == message.length);
-#else
-        unused(message);
-#endif
-}
 
 STRUCT(ElfRelocation)
 {
@@ -20821,21 +20812,21 @@ may_be_unused fn String write_pe(Thread* thread, ObjectOptions options)
     auto pdb = pdb_build(thread);
 
     // TODO:
-#if _WIN32
-    auto pdb_path = arena_join_string(thread->arena, (Slice(String))array_to_slice(to_join));
-    auto fd = os_file_open(strlit("mydbg.pdb"), (OSFileOpenFlags) {
-        .write = 1,
-        .truncate = 1,
-        .create = 1,
-    }, (OSFilePermissions) {
-        .readable = 1,
-        .writable = 1,
-    });
-
-    os_file_write(fd, pdb);
-
-    os_file_close(fd);
-#endif
+// #if _WIN32
+//     auto pdb_path = arena_join_string(thread->arena, (Slice(String))array_to_slice(to_join));
+//     auto fd = os_file_open(strlit("mydbg.pdb"), (OSFileOpenFlags) {
+//         .write = 1,
+//         .truncate = 1,
+//         .create = 1,
+//     }, (OSFilePermissions) {
+//         .readable = 1,
+//         .writable = 1,
+//     });
+//
+//     os_file_write(fd, pdb);
+//
+//     os_file_close(fd);
+// #endif
 
     // Check if file matches
 #define CHECK_PE_MATCH 0
@@ -24328,6 +24319,39 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
             {
                 // TODO: delete, this is testing
                 llvm_codegen(options, object_path);
+
+                auto lld_args = lld_driver(thread->arena, (LinkerArguments) {
+                    .target = options.target,
+                    .out_path = exe_path,
+                    .objects = (Slice(String)) { .pointer = &object_path, .length = 1 },
+                    .link_libc = 1,
+                });
+
+                LLDArguments arguments = {
+                    .disable_output = 0,
+                    .exit_early = 1,
+                    .argument_pointer = (const char**)lld_args.pointer,
+                    .argument_count = lld_args.length,
+                };
+
+                u8 result;
+                switch (options.target.os)
+                {
+                case OPERATING_SYSTEM_LINUX:
+                    result = lld_elf_link(arguments);
+                    break;
+                case OPERATING_SYSTEM_MAC:
+                    result = lld_macho_link(arguments);
+                    break;
+                case OPERATING_SYSTEM_WINDOWS:
+                    result = lld_coff_link(arguments);
+                    break;
+                }
+
+                if (!result)
+                {
+                    failed_execution();
+                }
             } break;
         case COMPILER_BACKEND_BB:
         {

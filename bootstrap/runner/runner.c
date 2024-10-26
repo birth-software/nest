@@ -83,10 +83,6 @@ STRUCT(TestOptions)
 
 fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const test_options, char** envp)
 {
-    print("\n===========================\n");
-    print("COMPILER BUILD [OK]\n");
-    print("===========================\n\n");
-
     Target target = native_target_get();
 
     for (u32 test_i = 0; test_i < test_options->test_paths.length; test_i += 1)

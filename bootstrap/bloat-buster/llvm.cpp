@@ -100,7 +100,7 @@ namespace llvm
                 target_triple = string_ref("aarch64-apple-macosx-none");
                 break;
             case OPERATING_SYSTEM_WINDOWS:
-                target_triple = string_ref("x86_64-windows-gnu");
+                target_triple = string_ref("x86_64-pc-windows-msvc");
                 break;
         }
 

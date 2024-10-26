@@ -9,6 +9,7 @@ STRUCT(OSFileOpenFlags)
     u32 write:1;
     u32 read:1;
     u32 create:1;
+    u32 directory:1;
 };
 
 STRUCT(OSFilePermissions)
@@ -91,3 +92,5 @@ EXPORT FileDescriptor os_stdout_get();
 EXPORT void os_directory_make(String path);
 
 EXPORT void calibrate_cpu_timer();
+
+EXPORT void print_string(String string);
