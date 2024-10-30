@@ -3,29 +3,45 @@ name: CI
 on:
   pull_request:
   push:
+    tags:
+      - "**"
     branches:
       - main
   schedule:
     - cron: "0 0 * * *"
 
-env:
-  LLVM_VERSION: "19.1.2"
-  LINUX_IMAGE: "ubuntu-24.04"
-  MACOS_IMAGE: "macos-15"
-  WINDOWS_IMAGE: "windows-2022"
-
 jobs:
+  generate-config:
+    runs-on: ubuntu-latest
+    outputs:
+      BIRTH_GITHUB_TARGETS: ${{ steps.generate-config.outputs.BIRTH_GITHUB_TARGETS }}
+      BIRTH_CMAKE_BUILD_TYPES: ${{ steps.generate-config.outputs.BIRTH_CMAKE_BUILD_TYPES }}
+      BIRTH_MACOS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
+      BIRTH_LINUX_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
+      BIRTH_WINDOWS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Generate config
+        id: generate-config
+        uses: birth-software/github-config@v2
+
   build_and_test:
-    runs-on: ${{ matrix.os}}
-    timeout-minutes: 15
+    needs: generate-config
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-2022]
-        build_type: [Debug, MinSizeRel, RelWithDebInfo, Release]
+        os: ${{ fromJSON(needs.generate-config.outputs.BIRTH_GITHUB_TARGETS) }}
+        CMAKE_BUILD_TYPE: ${{ fromJSON(needs.generate-config.outputs.BIRTH_CMAKE_BUILD_TYPES) }}
+    runs-on: ${{ matrix.os }}
+    env:
+      BIRTH_LINUX_IMAGE: ${{ needs.generate-config.outputs.BIRTH_LINUX_IMAGE }}
+      BIRTH_MACOS_IMAGE: ${{ needs.generate-config.outputs.BIRTH_MACOS_IMAGE }}
+      BIRTH_WINDOWS_IMAGE: ${{ needs.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
     steps:
       - name: Maximize build space
-        if: matrix.os == env.LINUX_IMAGE
+        if: matrix.os == env.BIRTH_LINUX_IMAGE
         uses: AdityaGarg8/remove-unwanted-software@v4.1
         with:
           remove-android: 'true'
@@ -33,44 +49,20 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
           remove-docker-images: 'true'
+          remove-large-packages: 'true'
           remove-cached-tools: 'true'
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: System Info (Linux)
-        if: matrix.os == env.LINUX_IMAGE
-        run: |
-          uname -a
-          lsb_release -a
-          df -h
-      - name: System Info (macOS)
-        if: matrix.os == env.MACOS_IMAGE
-        run: |
-          uname -a
-          sw_vers -productVersion
-          df -h
-      - name: System Info (Windows)
-        if: matrix.os == env.WINDOWS_IMAGE
-        run: |
-          systeminfo
-          wmic logicaldisk get name, size, freespace
-
-      - name: Install dependencies (Linux)
-        if: matrix.os == env.LINUX_IMAGE
-        run: sudo apt update && sudo apt install -y llvm llvm-dev ninja-build mold curl libssl-dev libcurl4-openssl-dev
-      - name: Install dependencies (MacOS)
-        if: matrix.os == env.MACOS_IMAGE
-        run: brew install llvm ninja
-      - name: Install dependencies (Windows)
-        if: matrix.os == env.WINDOWS_IMAGE
-        run: choco install ninja && pwsh ./fetch-llvm.ps1 "${{ matrix.build_type }}"
-
-      - name: Clang version
-        run: clang -v
-
+          remove-swapfile: 'true'
+      - uses: actions/checkout@v4
+      - uses: birth-software/github-setup@v2
+      - name: Fetch LLVM
+        id: FETCH
+        run: ./fetch-llvm.sh
+        shell: bash
+        env:
+          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
       - name: Build and test
-        if: matrix.os == env.LINUX_IMAGE || matrix.os == env.MACOS_IMAGE
-        run: ./project.sh "build_type=${{ matrix.build_type }}" test all
-      - name: Build and test (Windows)
-        if: matrix.os == env.WINDOWS_IMAGE
-        run: pwsh ./project.ps1 "build_type=${{ matrix.build_type }}" test all
+        run: ./project.sh test all
+        shell: bash
+        env:
+          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
+          CMAKE_PREFIX_PATH: ${{steps.FETCH.outputs.CMAKE_PREFIX_PATH}}
