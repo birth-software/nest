@@ -1,10 +1,51 @@
 #!/usr/bin/env bash
-set -ex
+set -eux
 original_dir=$PWD
 build_dir=build
 C_COMPILER_PATH=clang
 CXX_COMPILER_PATH=clang++
 ASM_COMPILER_PATH=clang
+
+if [[ -z "${BIRTH_OS-}" ]]; then
+    case "$OSTYPE" in
+        msys*)
+            BIRTH_OS=windows
+            ;;
+        linux*)
+            BIRTH_OS=linux
+            ;;
+        darwin*)
+            BIRTH_OS=macos
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+fi
+
+if [[ -z "${BIRTH_ARCH-}" ]]; then
+    case "$(uname -m)" in
+        x86_64)
+            BIRTH_ARCH=x86_64
+            ;;
+        arm64)
+            BIRTH_ARCH=aarch64
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+fi
+
+if [[ -z "${CMAKE_BUILD_TYPE-}" ]]; then
+    CMAKE_BUILD_TYPE=Debug
+fi
+
+if [[ -z "${CMAKE_PREFIX_PATH-}" ]]; then
+    CMAKE_PREFIX_PATH=""
+fi
+
+
 
 case $BIRTH_OS in
     windows)
