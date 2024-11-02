@@ -3,7 +3,7 @@
 
 u8 cast_u32_to_u8(u32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > UINT8_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -19,7 +19,7 @@ u8 cast_u32_to_u8(u32 source, const char* name, int line)
 
 u16 cast_u32_to_u16(u32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > UINT16_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -35,7 +35,7 @@ u16 cast_u32_to_u16(u32 source, const char* name, int line)
 
 s16 cast_u32_to_s16(u32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > INT16_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -51,7 +51,7 @@ s16 cast_u32_to_s16(u32 source, const char* name, int line)
 
 s32 cast_u32_to_s32(u32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > INT32_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -67,7 +67,7 @@ s32 cast_u32_to_s32(u32 source, const char* name, int line)
 
 u8 cast_u64_to_u8(u64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > UINT8_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -83,7 +83,7 @@ u8 cast_u64_to_u8(u64 source, const char* name, int line)
 
 u16 cast_u64_to_u16(u64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > UINT16_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -99,7 +99,7 @@ u16 cast_u64_to_u16(u64 source, const char* name, int line)
 
 u32 cast_u64_to_u32(u64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > UINT32_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -115,7 +115,7 @@ u32 cast_u64_to_u32(u64 source, const char* name, int line)
 
 s32 cast_u64_to_s32(u64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > INT32_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -131,7 +131,7 @@ s32 cast_u64_to_s32(u64 source, const char* name, int line)
 
 s64 cast_u64_to_s64(u64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > INT64_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -147,7 +147,7 @@ s64 cast_u64_to_s64(u64 source, const char* name, int line)
 
 u8 cast_s32_to_u8(s32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < 0)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -168,7 +168,7 @@ u8 cast_s32_to_u8(s32 source, const char* name, int line)
 
 u16 cast_s32_to_u16(s32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < 0)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -189,7 +189,7 @@ u16 cast_s32_to_u16(s32 source, const char* name, int line)
 
 u32 cast_s32_to_u32(s32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < 0)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -205,7 +205,7 @@ u32 cast_s32_to_u32(s32 source, const char* name, int line)
 
 u64 cast_s32_to_u64(s32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < 0)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -221,7 +221,7 @@ u64 cast_s32_to_u64(s32 source, const char* name, int line)
 
 s16 cast_s32_to_s16(s32 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source > INT16_MAX)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -242,7 +242,7 @@ s16 cast_s32_to_s16(s32 source, const char* name, int line)
 
 u16 cast_s64_to_u16(s64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < 0)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -263,7 +263,7 @@ u16 cast_s64_to_u16(s64 source, const char* name, int line)
 
 u32 cast_s64_to_u32(s64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < 0)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -279,7 +279,7 @@ u32 cast_s64_to_u32(s64 source, const char* name, int line)
 
 u64 cast_s64_to_u64(s64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < 0)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);
@@ -295,7 +295,7 @@ u64 cast_s64_to_u64(s64 source, const char* name, int line)
 
 s32 cast_s64_to_s32(s64 source, const char* name, int line)
 {
-#if NEST_DEBUG
+#if BB_DEBUG
     if (source < INT32_MIN)
     {
         print("Cast failed at {cstr}:{u32}\n", name, line);

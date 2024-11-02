@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(nest)
+project(bloat-buster)
 
 include(CMakePrintHelpers)
 cmake_print_variables("Build type: ${CMAKE_BUILD_TYPE}")
@@ -106,7 +106,7 @@ link_directories("${LLVM_LIBDIRS}")
 
 set(LIBRARY_NAME "std")
 set(RUNNER_NAME "runner")
-set(COMPILER_NAME "nest")
+set(COMPILER_NAME "bb")
 
 add_library("${LIBRARY_NAME}"
     "bootstrap/std/base.c"
@@ -121,9 +121,9 @@ add_executable("${RUNNER_NAME}" "bootstrap/runner/runner.c")
 target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 
 add_executable("${COMPILER_NAME}"
-    "bootstrap/nest/main.c"
-    "bootstrap/nest/pdb_image.c"
-    "bootstrap/nest/llvm.cpp"
+    "bootstrap/bloat-buster/main.c"
+    "bootstrap/bloat-buster/pdb_image.c"
+    "bootstrap/bloat-buster/llvm.cpp"
 )
 
 target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})

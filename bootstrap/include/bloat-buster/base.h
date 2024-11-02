@@ -3,6 +3,8 @@
 #include <std/base.h>
 #include <std/os.h>
 
+#define cache_dir "bb"
+
 typedef enum CpuArchitecture : u8
 {
     CPU_ARCH_X86_64,
@@ -48,7 +50,7 @@ STRUCT(Target)
 
 typedef enum CompilerBackend : u8
 {
-    COMPILER_BACKEND_NEST,
+    COMPILER_BACKEND_BB,
     COMPILER_BACKEND_LLVM,
     COMPILER_BACKEND_COUNT,
 } CompilerBackend;
@@ -57,8 +59,8 @@ fn String compiler_backend_to_one_char_string(CompilerBackend backend)
 {
     switch (backend)
     {
-    case COMPILER_BACKEND_NEST:
-        return strlit("n");
+    case COMPILER_BACKEND_BB:
+        return strlit("b");
     case COMPILER_BACKEND_LLVM:
         return strlit("l");
     case COMPILER_BACKEND_COUNT:
@@ -70,8 +72,8 @@ fn String compiler_backend_to_string(CompilerBackend backend)
 {
     switch (backend)
     {
-    case COMPILER_BACKEND_NEST:
-        return strlit("nest");
+    case COMPILER_BACKEND_BB:
+        return strlit("bb");
     case COMPILER_BACKEND_LLVM:
         return strlit("llvm");
     case COMPILER_BACKEND_COUNT:

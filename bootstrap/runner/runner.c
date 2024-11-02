@@ -4,9 +4,9 @@
 #include <std/virtual_buffer.h>
 #include <std/string.h>
 
-#include <nest/base.h>
+#include <bloat-buster/base.h>
 
-#define nest_dir "nest"
+#define bb_dir "bb"
 
 declare_slice(CompilerBackend);
 
@@ -19,14 +19,14 @@ typedef enum CMakeBuildType
     CMAKE_BUILD_TYPE_COUNT,
 } CMakeBuildType;
 
-fn void run(Arena* arena, char** envp, String compiler_path, CompilerBackend compiler_backend, u8 debug, char* nest_source_path)
+fn void run(Arena* arena, char** envp, String compiler_path, CompilerBackend compiler_backend, u8 debug, char* bb_source_path)
 {
     CStringSlice args = {};
     auto compiler_backend_string = compiler_backend_to_one_char_string(compiler_backend);
 
 #define common_compile_and_run_args \
                 string_to_c(compiler_path), \
-                nest_source_path, \
+                bb_source_path, \
                 string_to_c(compiler_backend_string), \
                 0,
 
@@ -113,7 +113,7 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
             // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
             {
                 auto executable = binary_path_from_options(arena, (BinaryPathOptions) {
-                    .build_directory = strlit(nest_dir),
+                    .build_directory = strlit(bb_dir),
                     .name = test_name,
                     .target = target,
                     .backend = compiler_backend,
@@ -237,7 +237,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     {
         if (preferred_compiler_backend == COMPILER_BACKEND_COUNT)
         {
-            preferred_compiler_backend = COMPILER_BACKEND_NEST;
+            preferred_compiler_backend = COMPILER_BACKEND_BB;
         }
     }
 
@@ -246,7 +246,7 @@ void entry_point(int argc, char* argv[], char* envp[])
         build_type = CMAKE_BUILD_TYPE_DEBUG;
     }
 
-    String compiler_path = strlit("build/nest");
+    String compiler_path = strlit("build/bb");
 
     switch (command)
     {
@@ -277,7 +277,7 @@ void entry_point(int argc, char* argv[], char* envp[])
                  // strlit("tests/comparison.nat"),
             };
             CompilerBackend all_compiler_backends[] = {
-                COMPILER_BACKEND_NEST,
+                COMPILER_BACKEND_BB,
                 COMPILER_BACKEND_LLVM,
             };
             static_assert(array_length(all_compiler_backends) == COMPILER_BACKEND_COUNT);

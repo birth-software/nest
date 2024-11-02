@@ -5,9 +5,9 @@
 #include <std/md5.h>
 #include <std/string.h>
 
-#include <nest/base.h>
-#include <nest/pdb_image.h>
-#include <nest/llvm.h>
+#include <bloat-buster/base.h>
+#include <bloat-buster/pdb_image.h>
+#include <bloat-buster/llvm.h>
 
 #ifdef __APPLE__
 #define clang_path "/opt/homebrew/opt/llvm/bin/clang"
@@ -36,7 +36,7 @@ STRUCT(GetOrPut(T)) \
     u8 existing;\
 }
 
-auto compiler_name = strlit("nest");
+auto compiler_name = strlit("bb");
 
 fn void print_string(String message)
 {
@@ -9502,7 +9502,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
             // comp_dir: strx1
             {
-                auto string = strlit("/home/david/dev/nest/tests");
+                auto string = strlit("/home/david/dev/bb/tests");
                 auto string_offset = debug_str.length;
                 vb_copy_string_zero_terminated(&debug_str, string);
                 auto string_offset_index = debug_str_offsets.length;
@@ -9763,7 +9763,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             u8 directory_index = 0;
             auto directory_string_offset = debug_line_str.length;
             {
-                auto string = strlit("/home/david/dev/nest/tests");
+                auto string = strlit("/home/david/dev/bloat-buster/tests");
                 vb_copy_string_zero_terminated(&debug_line_str, string);
             }
             u32 paths[] = { directory_string_offset };
@@ -9800,7 +9800,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 MD5Result hash;
             };
             // MD5Result md5_hash = { { 0x05, 0xAB, 0x89, 0xF5, 0x48, 0x1B, 0xC9, 0xF2, 0xD0, 0x37, 0xE7, 0x88, 0x66, 0x41, 0xE9, 0x19 } };
-            String dummy_file = file_read(thread->arena, strlit("/home/david/dev/nest/tests/first.nat"));
+            String dummy_file = file_read(thread->arena, strlit("/home/david/dev/bloat-buster/tests/first.nat"));
             auto md5_hash = md5_string(dummy_file);
 
             auto filename_string_offset = debug_line_str.length;
@@ -23577,7 +23577,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     VirtualBuffer(u8) code = {};
 
     auto object_path = binary_path_from_options(thread->arena, (BinaryPathOptions) {
-        .build_directory = strlit("nest"),
+        .build_directory = strlit(cache_dir),
         .name = options.test_name,
         .target = options.target,
         .backend = options.backend,
@@ -23585,7 +23585,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     });
 
     auto exe_path = binary_path_from_options(thread->arena, (BinaryPathOptions) {
-        .build_directory = strlit("nest"),
+        .build_directory = strlit(cache_dir),
         .name = options.test_name,
         .target = options.target,
         .backend = options.backend,
@@ -24329,7 +24329,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                 // TODO: delete, this is testing
                 llvm_codegen(options, object_path);
             } break;
-        case COMPILER_BACKEND_NEST:
+        case COMPILER_BACKEND_BB:
         {
             auto code_slice = (Slice(u8)) { .pointer = code.pointer, .length = code.length, };
             auto object_options = (ObjectOptions) {
@@ -24794,7 +24794,7 @@ void entry_point(int argc, char* argv[], char* envp[])
 
     Target target = native_target_get();
 
-    os_directory_make(strlit("nest"));
+    os_directory_make(strlit(cache_dir));
 
     File file = {
         .path = source_file_path,
