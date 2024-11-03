@@ -74,26 +74,23 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          # Get the current date in YYYY-MM-DD format
-          DATE=$(date +"%Y-%m-%d")
-
-          # Get the current commit hash (first 7 characters)
+          DATE=$(date +"%Y-%m-%d-%H%:M:%S")
           COMMIT_HASH=$(git rev-parse --short HEAD)
-
-          # Create the tag with the format "release-YYYY-MM-DD-commit"
           TAG="automatic-release-${DATE}-${COMMIT_HASH}"
-
-          # Create the annotated tag
           git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH"
-
-          # Push the tag to the remote repository
           git push origin "$TAG"
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          prerelease: true
+          name: "Development build"
+          tag_name: ${{env.RELEASE_TAG}}
+          fail_on_unmatched_files: true
+          make_latest: true
           files: |
             ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z
             ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z.b2sum
