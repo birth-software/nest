@@ -78,8 +78,8 @@ jobs:
           DATE=$(date +"%Y-%m-%d %H:%M:%S")
           COMMIT_HASH=$(git rev-parse --short HEAD)
           TAG="latest-${BIRTH_ARCH}-${BIRTH_OS}-${CMAKE_BUILD_TYPE}"
-          git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH"
-          git push origin "$TAG"
+          git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH" -f
+          git push origin "$TAG" -f
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
       - name: Release
         uses: softprops/action-gh-release@v2

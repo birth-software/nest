@@ -118,5 +118,10 @@ if [ "$BUSTER_GITHUB_RUN" == "true" ]; then
     7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=64m -ms=on $BB_INSTALL_NAME.7z $BB_INSTALL_PATH
     b2sum $BB_INSTALL_NAME.7z > "$BB_INSTALL_NAME.7z.b2sum"
 
+    case "$BIRTH_OS" in
+        windows) BB_INSTALL_PATH="$(cygpath -w ${BB_INSTALL_PATH})" ;;
+        *) ;;
+    esac
+
     echo "BLOAT_BUSTER_RELEASE_PATH_BASE=$BB_INSTALL_PATH" >> $GITHUB_ENV
 fi
