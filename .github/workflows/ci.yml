@@ -74,12 +74,14 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          DATE=$(date +"%Y-%m-%d-%H%_%M_%S")
+          DATE=$(date +"%Y-%m-%d %H:%M:%S")
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          TAG="automatic-release-${DATE}-${COMMIT_HASH}"
+          TAG="latest-${BIRTH_ARCH}-${BIRTH_OS}-${CMAKE_BUILD_TYPE}"
           git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH"
           git push origin "$TAG"
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+        env:
+          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
@@ -90,7 +92,6 @@ jobs:
           name: "Development build"
           tag_name: ${{env.RELEASE_TAG}}
           fail_on_unmatched_files: true
-          make_latest: true
           files: |
             ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z
             ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z.b2sum
