@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -eux
 original_dir=$PWD
-build_dir=build
+build_dir=$original_dir/build
 C_COMPILER_PATH=clang
 CXX_COMPILER_PATH=clang++
 ASM_COMPILER_PATH=clang
-
 
 if [[ -z "${BIRTH_OS-}" ]]; then
     case "$OSTYPE" in
@@ -56,7 +55,9 @@ if [[ -z "${CMAKE_PREFIX_PATH-}" ]]; then
     CMAKE_PREFIX_PATH="$HOME/Downloads/llvm-$BIRTH_ARCH-$BIRTH_OS-$CMAKE_BUILD_TYPE"
 fi
 
-
+if [[ -z "${BUSTER_GITHUB_RUN-}" ]]; then
+    BUSTER_GITHUB_RUN=false
+fi
 
 case $BIRTH_OS in
     windows)
@@ -99,4 +100,23 @@ cd $original_dir
 
 if [ "$#" -ne 0 ]; then
     $build_dir/runner $@
+fi
+
+if [ "$BUSTER_GITHUB_RUN" == "true" ]; then
+    case "$BIRTH_OS" in
+        windows)
+            OPT_EXTENSION=".exe";;
+        *)
+            OPT_EXTENSION="";;
+    esac
+
+    BB_EXE_PATH="$build_dir/bb$OPT_EXTENSION"
+    BB_INSTALL_NAME=bloat-buster-$BIRTH_ARCH-$BIRTH_OS-$CMAKE_BUILD_TYPE
+    BB_INSTALL_PATH="$PWD/$BB_INSTALL_NAME"
+    mkdir -p $BB_INSTALL_PATH
+    cp $BB_EXE_PATH $BB_INSTALL_PATH
+    7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=64m -ms=on $BB_INSTALL_NAME.7z $BB_INSTALL_PATH
+    b2sum $BB_INSTALL_NAME.7z > "$BB_INSTALL_NAME.7z.b2sum"
+
+    echo "BLOAT_BUSTER_RELEASE_PATH_BASE=$BB_INSTALL_PATH" >> $GITHUB_ENV
 fi
