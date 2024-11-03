@@ -74,7 +74,7 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          DATE=$(date +"%Y-%m-%d-%H%:M:%S")
+          DATE=$(date +"%Y-%m-%d-%H%_%M_%S")
           COMMIT_HASH=$(git rev-parse --short HEAD)
           TAG="automatic-release-${DATE}-${COMMIT_HASH}"
           git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH"
