@@ -20,7 +20,7 @@ jobs:
       BIRTH_MACOS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_LINUX_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_WINDOWS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
-      RELEASE_TAG_NAME: ${{ steps.generate-config.outputs.RELEASE_TAG_NAME }}  # Define job output here
+      RELEASE_TAG_NAME: ${{ steps.generate-tag.outputs.RELEASE_TAG_NAME }}  # Define job output here
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -30,6 +30,7 @@ jobs:
       - name: Create tag
         if: github.ref == 'refs/heads/main'
         shell: bash
+        id: generate-tag
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
