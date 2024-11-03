@@ -36,8 +36,8 @@ jobs:
           git config --global user.email "github-actions@github.com"
           DATE=$(date +"%Y-%m-%d %H:%M:%S")
           COMMIT_HASH=$(git rev-parse --short HEAD)
-          TAG="latest"
-          git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH" -f
+          TAG="dev"
+          git tag "$TAG" -f
           git push origin "$TAG" -f
           echo "RELEASE_TAG_NAME=$TAG" >> $GITHUB_OUTPUT
   build_and_test:
@@ -88,10 +88,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          prerelease: true
           name: "Development build"
           tag_name: ${{env.RELEASE_TAG_NAME}}
           fail_on_unmatched_files: true
+          make_latest: true
           files: |
             ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z
             ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z.b2sum
