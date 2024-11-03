@@ -69,8 +69,9 @@ jobs:
           BUSTER_GITHUB_RUN: "true"
       - name: Create tag
         if: github.ref == 'refs/heads/main'
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
@@ -80,8 +81,6 @@ jobs:
           git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH"
           git push origin "$TAG"
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
-        env:
-          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
