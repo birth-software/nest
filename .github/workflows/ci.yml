@@ -66,3 +66,13 @@ jobs:
         env:
           CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
           CMAKE_PREFIX_PATH: ${{steps.FETCH.outputs.CMAKE_PREFIX_PATH}}
+          BUSTER_GITHUB_RUN: "true"
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z
+            ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z.b2sum
