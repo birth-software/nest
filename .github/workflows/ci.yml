@@ -13,19 +13,32 @@ on:
 jobs:
   generate-config:
     runs-on: ubuntu-latest
+    permissions: write-all
     outputs:
       BIRTH_GITHUB_TARGETS: ${{ steps.generate-config.outputs.BIRTH_GITHUB_TARGETS }}
       BIRTH_CMAKE_BUILD_TYPES: ${{ steps.generate-config.outputs.BIRTH_CMAKE_BUILD_TYPES }}
       BIRTH_MACOS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_LINUX_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_WINDOWS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
+      RELEASE_TAG_NAME: ${{ steps.set_tag.outputs.RELEASE_TAG_NAME }}  # Define job output here
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Generate config
         id: generate-config
         uses: birth-software/github-config@v2
-
+      - name: Create tag
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          DATE=$(date +"%Y-%m-%d %H:%M:%S")
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          TAG="latest"
+          git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH" -f
+          git push origin "$TAG" -f
+          echo "RELEASE_TAG_NAME=$TAG" >> $GITHUB_OUTPUT
   build_and_test:
     needs: generate-config
     permissions: write-all
@@ -39,6 +52,7 @@ jobs:
       BIRTH_LINUX_IMAGE: ${{ needs.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_MACOS_IMAGE: ${{ needs.generate-config.outputs.BIRTH_MACOS_IMAGE }}
       BIRTH_WINDOWS_IMAGE: ${{ needs.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
+      RELEASE_TAG_NAME: ${{ needs.generate-config.outputs.RELEASE_TAG_NAME }}
     steps:
       - name: Maximize build space
         if: matrix.os == env.BIRTH_LINUX_IMAGE
@@ -67,20 +81,6 @@ jobs:
           CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
           CMAKE_PREFIX_PATH: ${{steps.FETCH.outputs.CMAKE_PREFIX_PATH}}
           BUSTER_GITHUB_RUN: "true"
-      - name: Create tag
-        if: github.ref == 'refs/heads/main'
-        shell: bash
-        env:
-          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          DATE=$(date +"%Y-%m-%d %H:%M:%S")
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-          TAG="latest-${BIRTH_ARCH}-${BIRTH_OS}-${CMAKE_BUILD_TYPE}"
-          git tag -a "$TAG" -m "Release on $DATE for commit $COMMIT_HASH" -f
-          git push origin "$TAG" -f
-          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
@@ -89,7 +89,7 @@ jobs:
         with:
           prerelease: true
           name: "Development build"
-          tag_name: ${{env.RELEASE_TAG}}
+          tag_name: ${{env.RELEASE_TAG_NAME}}
           fail_on_unmatched_files: true
           files: |
             ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z
