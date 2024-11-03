@@ -20,7 +20,7 @@ jobs:
       BIRTH_MACOS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_LINUX_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_WINDOWS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
-      RELEASE_TAG_NAME: ${{ steps.set_tag.outputs.RELEASE_TAG_NAME }}  # Define job output here
+      RELEASE_TAG_NAME: ${{ steps.generate-config.outputs.RELEASE_TAG_NAME }}  # Define job output here
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
