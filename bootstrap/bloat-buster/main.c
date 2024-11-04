@@ -23591,528 +23591,528 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
         cfg_build_and_global_schedule(builder, thread, function, (GlobalScheduleOptions) {
             .dataflow = 1,
         });
+
         auto node_count = thread->buffer.nodes.length;
-
-        u32 max_ins = 0;
-        u32 virtual_register_count = 1;
-        auto* virtual_register_map = arena_allocate(thread->arena, u32, round_up_to_next_power_of_2( node_count + 16));
-        VirtualBuffer(u32) spills = {};
-
-        for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
+        VirtualBuffer(VirtualRegister) virtual_registers = {};
+        auto* virtual_register_map = arena_allocate(thread->arena, u32, round_up_to_next_power_of_2(node_count + 16));
         {
-            auto basic_block_index = Index(BasicBlock, i);
-            BasicBlock* basic_block = &builder->basic_blocks.pointer[i];
+            u32 max_ins = 0;
+            u32 virtual_register_count = 1;
+            VirtualBuffer(u32) spills = {};
 
-            cfg_list_schedule(thread, builder, function, basic_block_index);
-
-            auto max_item_count = thread_worklist_length(thread, builder->worker);
-            print("Item count: {u32}\n", max_item_count);
-
-            basic_block->items.length = 0;
-
-            for (u32 i = 0; i < max_item_count; i += 1)
+            for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
             {
-                auto node_index = thread_worklist_get(thread, builder->worker, i);
-                basic_block_add_node(thread, basic_block, node_index, 5);
-                auto* node = thread_node_get(thread, node_index);
-                auto def_mask = node_constraint(thread, node, (Slice(RegisterMaskIndex)){});
-                auto inputs = node->input_count + node_tmp_count(node);
+                auto basic_block_index = Index(BasicBlock, i);
+                BasicBlock* basic_block = &builder->basic_blocks.pointer[i];
 
-                if (inputs > max_ins)
-                {
-                    max_ins = inputs;
-                }
+                cfg_list_schedule(thread, builder, function, basic_block_index);
 
-                u32 virtual_register_id = 0;
-                if (!index_equal(def_mask, empty_register_mask))
+                auto max_item_count = thread_worklist_length(thread, builder->worker);
+                print("Item count: {u32}\n", max_item_count);
+
+                basic_block->items.length = 0;
+
+                for (u32 i = 0; i < max_item_count; i += 1)
                 {
-                    if (node->id == MACHINE_MOVE)
+                    auto node_index = thread_worklist_get(thread, builder->worker, i);
+                    basic_block_add_node(thread, basic_block, node_index, 5);
+                    auto* node = thread_node_get(thread, node_index);
+                    auto def_mask = node_constraint(thread, node, (Slice(RegisterMaskIndex)){});
+                    auto inputs = node->input_count + node_tmp_count(node);
+
+                    if (inputs > max_ins)
                     {
-                        assert(node->output_count == 1);
-                        auto outputs = node_get_outputs(thread, node);
-                        auto phi_index = outputs.pointer[0];
-                        auto* phi = thread_node_get(thread, phi_index);
-                        assert(phi->id == IR_PHI);
+                        max_ins = inputs;
+                    }
 
-                        if (virtual_register_map[geti(phi_index)] == 0)
+                    u32 virtual_register_id = 0;
+                    if (!index_equal(def_mask, empty_register_mask))
+                    {
+                        if (node->id == MACHINE_MOVE)
                         {
-                            virtual_register_id = virtual_register_count;
-                            virtual_register_count += 1;
-                            virtual_register_map[geti(phi_index)] = virtual_register_id;
+                            assert(node->output_count == 1);
+                            auto outputs = node_get_outputs(thread, node);
+                            auto phi_index = outputs.pointer[0];
+                            auto* phi = thread_node_get(thread, phi_index);
+                            assert(phi->id == IR_PHI);
+
+                            if (virtual_register_map[geti(phi_index)] == 0)
+                            {
+                                virtual_register_id = virtual_register_count;
+                                virtual_register_count += 1;
+                                virtual_register_map[geti(phi_index)] = virtual_register_id;
+                            }
+                            else
+                            {
+                                todo();
+                            }
+                        }
+                        else if (node->id == IR_PHI && virtual_register_map[geti(node_index)] > 0)
+                        {
+                            virtual_register_id = virtual_register_map[geti(node_index)];
                         }
                         else
                         {
-                            todo();
+                            virtual_register_id = virtual_register_count;
+                            virtual_register_count += 1;
                         }
                     }
-                    else if (node->id == IR_PHI && virtual_register_map[geti(node_index)] > 0)
-                    {
-                        virtual_register_id = virtual_register_map[geti(node_index)];
-                    }
-                    else
-                    {
-                        virtual_register_id = virtual_register_count;
-                        virtual_register_count += 1;
-                    }
-                }
 
-                virtual_register_map[geti(node_index)] = virtual_register_id;
-                print("Assigning VR{u32} to node #{u32} ({s})\n", virtual_register_id, geti(node_index), node_id_to_string(node->id));
-            }
-        }
-
-        auto ins = (Slice(RegisterMaskIndex)) {
-            .pointer = arena_allocate(thread->arena, RegisterMaskIndex, max_ins),
-            .length = max_ins,
-        };
-        // TODO: remove?
-        memset(ins.pointer, 0, sizeof(RegisterMaskIndex) * max_ins);
-
-        VirtualBuffer(VirtualRegister) virtual_registers = {};
-        vb_ensure_capacity(&virtual_registers, cast_to(u32, u64, round_up_to_next_power_of_2(virtual_register_count + 16)));
-        virtual_registers.length = virtual_register_count;
-
-        for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
-        {
-            auto* basic_block = &builder->basic_blocks.pointer[i];
-
-            print("BB items: {u32}\n", basic_block->items.length);
-            for (u32 i = 0; i < basic_block->items.length; i += 1)
-            {
-                auto node_index = basic_block->items.pointer[i];
-                auto* node = thread_node_get(thread, node_index);
-                auto virtual_register_id = virtual_register_map[geti(node_index)];
-                assert(virtual_register_id >= 0 && virtual_register_id < virtual_register_count);
-
-                if (virtual_register_id > 0 && node->id != MACHINE_MOVE)
-                {
-                    auto mask_index = node_constraint(thread, node, (Slice(RegisterMaskIndex)){});
-                    print("Node #{u32} ({s}), VR{u32}, mask: ", geti(node_index), node_id_to_string(node->id), virtual_register_id);
-                    if (validi(mask_index))
-                    {
-                        print("0x{u32:x}", thread_register_mask_get(thread, mask_index)->mask);
-                    }
-                    else
-                    {
-                        print("invalid");
-                    }
-                    print("\n");
-                    virtual_registers.pointer[virtual_register_id] = (VirtualRegister) {
-                        .mask = mask_index,
-                        .node_index = node_index,
-                        .assigned = -1,
-                        .spill_cost = NAN,
-                    };
+                    virtual_register_map[geti(node_index)] = virtual_register_id;
+                    print("Assigning VR{u32} to node #{u32} ({s})\n", virtual_register_id, geti(node_index), node_id_to_string(node->id));
                 }
             }
-        }
+            auto ins = (Slice(RegisterMaskIndex)) {
+                .pointer = arena_allocate(thread->arena, RegisterMaskIndex, max_ins),
+                    .length = max_ins,
+            };
+            // TODO: remove?
+            memset(ins.pointer, 0, sizeof(RegisterMaskIndex) * max_ins);
 
-        thread_worklist_clear(thread, builder->worker);
-
-        u32 max_registers_in_class = 0;
-        auto* fixed = arena_allocate(thread->arena, s32, REGISTER_CLASS_X86_64_COUNT);
-        auto* in_use = arena_allocate(thread->arena, u32, REGISTER_CLASS_X86_64_COUNT);
-
-        for (u32 class = 0; class < REGISTER_CLASS_X86_64_COUNT; class += 1)
-        {
-            auto count = register_count_per_class[class];
-            max_registers_in_class = MAX(max_registers_in_class, count);
-            auto base = virtual_registers.length;
-
-            for (u32 i = 0; i < count; i += 1)
-            {
-                auto mask = register_mask_intern(thread, (RegisterMask) {
-                    .class = class,
-                    .may_spill = 0,
-                    .mask = class == 0 ? i : ((u32)1 << i),
-                });
-
-                *vb_add(&virtual_registers, 1) = (VirtualRegister) {
-                    .mask = mask,
-                    .class = cast_to(s16, u32, class),
-                    .assigned = cast_to(s16, u32, i),
-                    .spill_cost = INFINITY,
-                };
-            }
-
-            fixed[class] = cast_to(s32, u32, base);
-        }
-
-        // Insert legalizing moves
-        for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
-        {
-            auto* basic_block = &builder->basic_blocks.pointer[i];
-            // auto basic_block_index = Index(BasicBlock, i);
-
-            for (u32 i = 0; i < basic_block->items.length; i += 1)
-            {
-                auto node_index = basic_block->items.pointer[i];
-                auto* node = thread_node_get(thread, node_index);
-                auto tmp_count = node_tmp_count(node);
-                node_constraint(thread, node, ins);
-
-                auto inputs = node_get_inputs(thread, node);
-                for (u16 i = 1; i < inputs.length; i += 1)
-                {
-                    auto input_index = inputs.pointer[i];
-                    if (validi(input_index))
-                    {
-                        // auto* input = thread_node_get(thread, input_index);
-                        auto in_mask_index = ins.pointer[i];
-
-                        if (!index_equal(in_mask_index, empty_register_mask))
-                        {
-                            auto in_mask = thread_register_mask_get(thread, in_mask_index);
-                            VirtualRegister* vreg = 0;
-                            auto vreg_index = virtual_register_map[geti(input_index)];
-                            if (vreg_index > 0)
-                            {
-                                vreg = &virtual_registers.pointer[vreg_index];
-                            }
-                            assert(vreg);
-                            auto vreg_mask = thread_register_mask_get(thread, vreg->mask);
-
-                            auto hint = fixed_register_mask(*in_mask);
-                            if (hint >= 0 && vreg_mask->class == in_mask->class)
-                            {
-                                vreg->hint_vreg = fixed[in_mask->class] + hint;
-                            }
-
-                            auto new_mask_index = register_mask_meet(thread, in_mask_index, vreg->mask);
-                            print("Input #{u32} ({s})\n", geti(input_index), node_id_to_string(thread_node_get(thread, input_index)->id));
-                            print("IN mask index: {u32}. TODO: not equal: {u32}, {u32}, {u32}\n", i, in_mask_index, empty_register_mask, new_mask_index);
-                            if (!index_equal(in_mask_index, empty_register_mask) && index_equal(new_mask_index, empty_register_mask))
-                            {
-                                // if (node->id == MACHINE_COPY)
-                                {
-                                    print("{s} input count: {u32}\n", node_id_to_string(node->id), (u32)node->input_count);
-                                }
-                                todo();
-                            }
-
-                            auto* new_mask = thread_register_mask_get(thread, new_mask_index);
-                            auto fixed = fixed_register_mask(*new_mask);
-
-                            if (fixed >= 0)
-                            {
-                                // auto fixed_mask = ((u32)1 << fixed);
-                                auto shared_edge = node_to_address(thread, input_index);
-
-                                if (shared_edge >= 0)
-                                {
-                                    auto* input_node = thread_node_get(thread, input_index);
-                                    auto p_shared_edge = cast_to(u16, s32, shared_edge);
-                                    assert(p_shared_edge < input_node->input_count);
-                                    auto inputs = node_get_inputs(thread, input_node);
-                                    for (u16 i = 1; i < input_node->input_count; i += 1)
-                                    {
-                                        if (i != shared_edge)
-                                        {
-                                            auto input_index = inputs.pointer[i];
-                                            if (validi(input_index))
-                                            {
-                                                todo();
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            vreg->mask = new_mask_index;
-                        }
-                    }
-                }
-
-                auto virtual_register_index = virtual_register_map[geti(node_index)];
-
-                if (tmp_count > 0)
-                {
-                    todo();
-                }
-
-                if (virtual_register_index > 0)
-                {
-                    auto* virtual_register = &virtual_registers.pointer[virtual_register_index];
-                    virtual_register->spill_cost = NAN;
-
-                    if (node->id == MACHINE_COPY)
-                    {
-                        auto* in = thread_node_get(thread, inputs.pointer[1]);
-                        if (in->id == IR_PHI)
-                        {
-                            thread_worklist_push(thread, builder->worker, node_index);
-                        }
-                    }
-                }
-            }
-        }
-
-        u8 changes = 0;
-
-        if (thread_worklist_length(thread, builder->worker) > 0)
-        {
-            // Compute ordinals
-            auto order = compute_ordinals(thread, builder->basic_blocks, node_count);
-            while (thread_worklist_length(thread, builder->worker) > 0)
-            {
-                auto node_index = thread_worklist_pop(thread, builder->worker);
-                auto* node = thread_node_get(thread, node_index);
-                assert(node->id == MACHINE_COPY);
-                auto id = virtual_register_map[geti(node_index)];
-                assert(id > 0);
-                // auto mask_index = virtual_registers.pointer[id].mask;
-                auto inputs = node_get_inputs(thread, node);
-
-                if (!interfere(thread, builder->scheduled, builder->basic_blocks, order, node_index, inputs.pointer[1]))
-                {
-                    auto basic_block_index = builder->scheduled.pointer[geti(node_index)];
-                    auto* basic_block = &builder->basic_blocks.pointer[geti(basic_block_index)];
-                    u64 i = 0;
-                    auto count = basic_block->items.length;
-                    while (i < count && !index_equal(basic_block->items.pointer[i], node_index))
-                    {
-                        i += 1;
-                    }
-
-                    assert(index_equal(basic_block->items.pointer[i], node_index));
-                    memmove(&basic_block->items.pointer[i], &basic_block->items.pointer[i + 1], (count - (i + 1)) * sizeof(NodeIndex));
-                    basic_block->items.length -= 1;
-                    builder->scheduled.pointer[geti(node_index)] = invalidi(BasicBlock);
-                    subsume_node_without_killing(thread, node_index, inputs.pointer[1]);
-                    changes = 1;
-                }
-            }
-        }
-
-        // TODO: spills
-        if (spills.length)
-        {
-            todo();
-            changes = 1;
-        }
-
-        if (changes)
-        {
-            redo_dataflow(thread, builder->worker, builder->basic_blocks, builder->scheduled, node_count);
-        }
-
-        auto al_index = 0;
-        // Allocate loop
-        while (1)
-        {
-            print("==============================\n#{u32} Allocate loop\n==============================\n", al_index++);
-
-            auto order = compute_ordinals(thread, builder->basic_blocks, node_count);
-
-            Bitset active = {};
-            bitset_ensure_length(&active, virtual_registers.length);
-            Bitset future_active = {};
-            bitset_ensure_length(&future_active, virtual_registers.length);
-            Bitset live_out = {};
-            bitset_ensure_length(&live_out, node_count);
-
-            for (u32 block_i = 0; block_i < builder->basic_blocks.length; block_i += 1)
-            {
-                auto* basic_block = &builder->basic_blocks.pointer[block_i];
-
-                for (u32 node_i = 0; node_i < basic_block->items.length; node_i += 1)
-                {
-                    auto node_index = basic_block->items.pointer[node_i];
-                    auto virtual_register_id = virtual_register_map[geti(node_index)];
-
-                    if (virtual_register_id > 0)
-                    {
-                        // auto* node = thread_node_get(thread, node_index);
-
-                        auto mask_index = virtual_registers.pointer[virtual_register_id].mask;
-                        auto mask_pointer = thread_register_mask_get(thread, mask_index);
-                        auto mask_value = *mask_pointer;
-                        auto reg = fixed_register_mask(mask_value);
-
-                        // print("Block #{u32}, Node index #{u32}, Node GVN #{u32}, Node id: {s}, VR{u32}. Mask: {u32:x}. Reg: {u32:x}\n", block_i, node_i, geti(node_index), node_id_to_string(node->id), virtual_register_id, mask_value.mask, reg);
-
-                        if (reg >= 0)
-                        {
-                            todo();
-                        }
-                    }
-                }
-            }
-
-            if (spills.length)
-            {
-                todo();
-            }
+            vb_ensure_capacity(&virtual_registers, cast_to(u32, u64, round_up_to_next_power_of_2(virtual_register_count + 16)));
+            virtual_registers.length = virtual_register_count;
 
             for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
             {
                 auto* basic_block = &builder->basic_blocks.pointer[i];
-                print("============\nBlock #{u32}\n============\n", i);
 
-                auto basic_block_index = Index(BasicBlock, i);
-
-                auto bb_live_in = &basic_block->live_in;
-                auto bb_live_out = &basic_block->live_out;
-
-                FOREACH_SET(j, &live_out) if (!bitset_get(bb_live_in, j))
-                {
-                    auto virtual_register_id = virtual_register_map[j];
-                    print("General live out not present in basic block live in: N{u64}, VR{u32}\n", j, virtual_register_id);
-                    if (virtual_register_id != 0)
-                    {
-                        u8 pause = 0;
-                        for (u32 k = i; k < builder->basic_blocks.length; k += 1)
-                        {
-                            auto* other_basic_block = &builder->basic_blocks.pointer[k];
-                            if (bitset_get(&other_basic_block->live_in, j))
-                            {
-                                unused(pause);
-                                todo();
-                            }
-                        }
-
-                        bitset_set_value(&active, virtual_register_id, 0);
-                        bitset_set_value(&live_out, j, 0);
-                    }
-                }
-
-                FOREACH_SET(j, bb_live_in) if (!bitset_get(&live_out, j))
-                {
-                    auto virtual_register_id = virtual_register_map[j];
-                    print("Basic block live in not present in general live out: N{u64}, VR{u32}\n", j, virtual_register_id);
-
-                    if (virtual_register_id > 0)
-                    {
-                        {
-                            auto* virtual_register = &virtual_registers.pointer[virtual_register_id];
-                            auto node_index = virtual_register->node_index;
-                            auto* node = thread_node_get(thread, node_index);
-                            print("[BB LIVE IN   ] Allocating register for node #{u32} ({s})\n", geti(node_index), node_id_to_string(node->id));
-                        }
-
-                        if (!register_allocate(thread, virtual_registers, &spills, &active, &future_active, builder->scheduled, builder->basic_blocks, order, virtual_register_id, 0))
-                        {
-                            todo();
-                        }
-                    }
-                }
-
+                print("BB items: {u32}\n", basic_block->items.length);
                 for (u32 i = 0; i < basic_block->items.length; i += 1)
                 {
-                    NodeIndex node_index = basic_block->items.pointer[i];
+                    auto node_index = basic_block->items.pointer[i];
                     auto* node = thread_node_get(thread, node_index);
-                    auto def = order.pointer[geti(node_index)];
-
-                    auto inputs = node_get_inputs(thread, node);
-
-                    print("Node #{u32} ({s}). Def: {u32}\n", geti(node_index), node_id_to_string(node->id), def);
-
-                    if (node->id == IR_PROJECTION && !index_equal(inputs.pointer[0], function->root))
-                    {
-                        print("Skipping...\n");
-                        continue;
-                    }
-
-                    if (node->id != IR_PHI)
-                    {
-                        print("Node is not PHI. Examining inputs ({u32})...\n", (u32)node->input_count);
-
-                        for (u16 i = 1; i < node->input_count; i += 1)
-                        {
-                            auto input_index = inputs.pointer[i];
-                            if (validi(input_index))
-                            {
-                                auto virtual_register_id = virtual_register_map[geti(input_index)];
-                                print("Input {u32}: node #{u32} ({s}). VR{u32}\n", i, geti(input_index), node_id_to_string(thread_node_get(thread, input_index)->id), virtual_register_id);
-                                if (virtual_register_id == 0)
-                                {
-                                    print("Invalid vreg id. Removing from general live out and skipping...\n");
-                                    bitset_set_value(&live_out, geti(input_index), 0);
-                                    continue;
-                                }
-
-                                if (!bitset_get(&live_out, geti(input_index)))
-                                {
-                                    print("Duplicate input. Skipping...\n");
-                                    continue;
-                                }
-
-                                auto* input = thread_node_get(thread, input_index);
-                                auto last_use = node_last_use_in_block(thread, builder->scheduled, order, input, basic_block_index);
-                                print("Last use: {u32}\n", last_use);
-
-                                if (bitset_get(bb_live_out, geti(input_index)))
-                                {
-                                    todo();
-                                }
-
-                                print("Removing node #{u32} from general liveout\n", geti(input_index));
-                                bitset_set_value(&live_out, geti(input_index), 0);
-
-                                auto pause = last_use > def;
-                                if (!pause)
-                                {
-                                    for (u32 i = geti(basic_block_index); i < builder->basic_blocks.length; i += 1)
-                                    {
-                                        auto* other = &builder->basic_blocks.pointer[i];
-                                        if (bitset_get(&other->live_in, geti(input_index)))
-                                        {
-                                            pause = 1;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if (pause)
-                                {
-                                    bitset_set_value(&future_active, virtual_register_id, 1);
-                                }
-
-                                print("Removing VR{u32} from general active\n", virtual_register_id);
-                                bitset_set_value(&active, virtual_register_id, 0);
-                            }
-                        }
-                    }
-
-                    for (u32 i = 0; i < REGISTER_CLASS_X86_64_COUNT; i += 1)
-                    {
-                        in_use[i] = 0;
-                    }
-
-                    // TODO: tmps
-                    
                     auto virtual_register_id = virtual_register_map[geti(node_index)];
+                    assert(virtual_register_id >= 0 && virtual_register_id < virtual_register_count);
 
-                    if (virtual_register_id > 0)
+                    if (virtual_register_id > 0 && node->id != MACHINE_MOVE)
                     {
-                        auto* virtual_register = &virtual_registers.pointer[virtual_register_id];
-                        auto class = virtual_register->class;
-                        auto in_use_local = in_use[class];
-                        print("[ALLOCATE LOOP] Allocating register for node #{u32} ({s}), VR{u32}\n", geti(node_index), node_id_to_string(node->id), virtual_register_id);
-                        if (!register_allocate(thread, virtual_registers, &spills, &active, &future_active, builder->scheduled, builder->basic_blocks, order, virtual_register_id, in_use_local))
+                        auto mask_index = node_constraint(thread, node, (Slice(RegisterMaskIndex)){});
+                        print("Node #{u32} ({s}), VR{u32}, mask: ", geti(node_index), node_id_to_string(node->id), virtual_register_id);
+                        if (validi(mask_index))
                         {
-                            todo();
+                            print("0x{u32:x}", thread_register_mask_get(thread, mask_index)->mask);
                         }
-
-                        print("[END ALLOCATE LOOP]\n");
-                        assert(virtual_register_map[geti(node_index)] == virtual_register_id);
-
-                        auto def = virtual_register->node_index;
-                        bitset_set_value(&live_out, geti(def), 1);
-                        print("Setting as general live out node #{u32} ({s})\n", geti(def), node_id_to_string(thread_node_get(thread, def)->id));
-                    }
-                    else if (type_pair_get_backend(node->type) == BACKEND_TYPE_TUPLE)
-                    {
-                        todo();
+                        else
+                        {
+                            print("invalid");
+                        }
+                        print("\n");
+                        virtual_registers.pointer[virtual_register_id] = (VirtualRegister) {
+                            .mask = mask_index,
+                                .node_index = node_index,
+                                .assigned = -1,
+                                .spill_cost = NAN,
+                        };
                     }
                 }
             }
 
-            break;
+            thread_worklist_clear(thread, builder->worker);
+
+            u32 max_registers_in_class = 0;
+            auto* fixed = arena_allocate(thread->arena, s32, REGISTER_CLASS_X86_64_COUNT);
+            auto* in_use = arena_allocate(thread->arena, u32, REGISTER_CLASS_X86_64_COUNT);
+
+            for (u32 class = 0; class < REGISTER_CLASS_X86_64_COUNT; class += 1)
+            {
+                auto count = register_count_per_class[class];
+                max_registers_in_class = MAX(max_registers_in_class, count);
+                auto base = virtual_registers.length;
+
+                for (u32 i = 0; i < count; i += 1)
+                {
+                    auto mask = register_mask_intern(thread, (RegisterMask) {
+                            .class = class,
+                            .may_spill = 0,
+                            .mask = class == 0 ? i : ((u32)1 << i),
+                            });
+
+                    *vb_add(&virtual_registers, 1) = (VirtualRegister) {
+                        .mask = mask,
+                            .class = cast_to(s16, u32, class),
+                            .assigned = cast_to(s16, u32, i),
+                            .spill_cost = INFINITY,
+                    };
+                }
+
+                fixed[class] = cast_to(s32, u32, base);
+            }
+
+            // Insert legalizing moves
+            for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
+            {
+                auto* basic_block = &builder->basic_blocks.pointer[i];
+                // auto basic_block_index = Index(BasicBlock, i);
+
+                for (u32 i = 0; i < basic_block->items.length; i += 1)
+                {
+                    auto node_index = basic_block->items.pointer[i];
+                    auto* node = thread_node_get(thread, node_index);
+                    auto tmp_count = node_tmp_count(node);
+                    node_constraint(thread, node, ins);
+
+                    auto inputs = node_get_inputs(thread, node);
+                    for (u16 i = 1; i < inputs.length; i += 1)
+                    {
+                        auto input_index = inputs.pointer[i];
+                        if (validi(input_index))
+                        {
+                            // auto* input = thread_node_get(thread, input_index);
+                            auto in_mask_index = ins.pointer[i];
+
+                            if (!index_equal(in_mask_index, empty_register_mask))
+                            {
+                                auto in_mask = thread_register_mask_get(thread, in_mask_index);
+                                VirtualRegister* vreg = 0;
+                                auto vreg_index = virtual_register_map[geti(input_index)];
+                                if (vreg_index > 0)
+                                {
+                                    vreg = &virtual_registers.pointer[vreg_index];
+                                }
+                                assert(vreg);
+                                auto vreg_mask = thread_register_mask_get(thread, vreg->mask);
+
+                                auto hint = fixed_register_mask(*in_mask);
+                                if (hint >= 0 && vreg_mask->class == in_mask->class)
+                                {
+                                    vreg->hint_vreg = fixed[in_mask->class] + hint;
+                                }
+
+                                auto new_mask_index = register_mask_meet(thread, in_mask_index, vreg->mask);
+                                print("Input #{u32} ({s})\n", geti(input_index), node_id_to_string(thread_node_get(thread, input_index)->id));
+                                print("IN mask index: {u32}. TODO: not equal: {u32}, {u32}, {u32}\n", i, in_mask_index, empty_register_mask, new_mask_index);
+                                if (!index_equal(in_mask_index, empty_register_mask) && index_equal(new_mask_index, empty_register_mask))
+                                {
+                                    // if (node->id == MACHINE_COPY)
+                                    {
+                                        print("{s} input count: {u32}\n", node_id_to_string(node->id), (u32)node->input_count);
+                                    }
+                                    todo();
+                                }
+
+                                auto* new_mask = thread_register_mask_get(thread, new_mask_index);
+                                auto fixed = fixed_register_mask(*new_mask);
+
+                                if (fixed >= 0)
+                                {
+                                    // auto fixed_mask = ((u32)1 << fixed);
+                                    auto shared_edge = node_to_address(thread, input_index);
+
+                                    if (shared_edge >= 0)
+                                    {
+                                        auto* input_node = thread_node_get(thread, input_index);
+                                        auto p_shared_edge = cast_to(u16, s32, shared_edge);
+                                        assert(p_shared_edge < input_node->input_count);
+                                        auto inputs = node_get_inputs(thread, input_node);
+                                        for (u16 i = 1; i < input_node->input_count; i += 1)
+                                        {
+                                            if (i != shared_edge)
+                                            {
+                                                auto input_index = inputs.pointer[i];
+                                                if (validi(input_index))
+                                                {
+                                                    todo();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                vreg->mask = new_mask_index;
+                            }
+                        }
+                    }
+
+                    auto virtual_register_index = virtual_register_map[geti(node_index)];
+
+                    if (tmp_count > 0)
+                    {
+                        todo();
+                    }
+
+                    if (virtual_register_index > 0)
+                    {
+                        auto* virtual_register = &virtual_registers.pointer[virtual_register_index];
+                        virtual_register->spill_cost = NAN;
+
+                        if (node->id == MACHINE_COPY)
+                        {
+                            auto* in = thread_node_get(thread, inputs.pointer[1]);
+                            if (in->id == IR_PHI)
+                            {
+                                thread_worklist_push(thread, builder->worker, node_index);
+                            }
+                        }
+                    }
+                }
+            }
+
+            u8 changes = 0;
+
+            if (thread_worklist_length(thread, builder->worker) > 0)
+            {
+                // Compute ordinals
+                auto order = compute_ordinals(thread, builder->basic_blocks, node_count);
+                while (thread_worklist_length(thread, builder->worker) > 0)
+                {
+                    auto node_index = thread_worklist_pop(thread, builder->worker);
+                    auto* node = thread_node_get(thread, node_index);
+                    assert(node->id == MACHINE_COPY);
+                    auto id = virtual_register_map[geti(node_index)];
+                    assert(id > 0);
+                    // auto mask_index = virtual_registers.pointer[id].mask;
+                    auto inputs = node_get_inputs(thread, node);
+
+                    if (!interfere(thread, builder->scheduled, builder->basic_blocks, order, node_index, inputs.pointer[1]))
+                    {
+                        auto basic_block_index = builder->scheduled.pointer[geti(node_index)];
+                        auto* basic_block = &builder->basic_blocks.pointer[geti(basic_block_index)];
+                        u64 i = 0;
+                        auto count = basic_block->items.length;
+                        while (i < count && !index_equal(basic_block->items.pointer[i], node_index))
+                        {
+                            i += 1;
+                        }
+
+                        assert(index_equal(basic_block->items.pointer[i], node_index));
+                        memmove(&basic_block->items.pointer[i], &basic_block->items.pointer[i + 1], (count - (i + 1)) * sizeof(NodeIndex));
+                        basic_block->items.length -= 1;
+                        builder->scheduled.pointer[geti(node_index)] = invalidi(BasicBlock);
+                        subsume_node_without_killing(thread, node_index, inputs.pointer[1]);
+                        changes = 1;
+                    }
+                }
+            }
+
+            // TODO: spills
+            if (spills.length)
+            {
+                todo();
+                changes = 1;
+            }
+
+            if (changes)
+            {
+                redo_dataflow(thread, builder->worker, builder->basic_blocks, builder->scheduled, node_count);
+            }
+
+            auto al_index = 0;
+            // Allocate loop
+            while (1)
+            {
+                print("==============================\n#{u32} Allocate loop\n==============================\n", al_index++);
+
+                auto order = compute_ordinals(thread, builder->basic_blocks, node_count);
+
+                Bitset active = {};
+                bitset_ensure_length(&active, virtual_registers.length);
+                Bitset future_active = {};
+                bitset_ensure_length(&future_active, virtual_registers.length);
+                Bitset live_out = {};
+                bitset_ensure_length(&live_out, node_count);
+
+                for (u32 block_i = 0; block_i < builder->basic_blocks.length; block_i += 1)
+                {
+                    auto* basic_block = &builder->basic_blocks.pointer[block_i];
+
+                    for (u32 node_i = 0; node_i < basic_block->items.length; node_i += 1)
+                    {
+                        auto node_index = basic_block->items.pointer[node_i];
+                        auto virtual_register_id = virtual_register_map[geti(node_index)];
+
+                        if (virtual_register_id > 0)
+                        {
+                            // auto* node = thread_node_get(thread, node_index);
+
+                            auto mask_index = virtual_registers.pointer[virtual_register_id].mask;
+                            auto mask_pointer = thread_register_mask_get(thread, mask_index);
+                            auto mask_value = *mask_pointer;
+                            auto reg = fixed_register_mask(mask_value);
+
+                            // print("Block #{u32}, Node index #{u32}, Node GVN #{u32}, Node id: {s}, VR{u32}. Mask: {u32:x}. Reg: {u32:x}\n", block_i, node_i, geti(node_index), node_id_to_string(node->id), virtual_register_id, mask_value.mask, reg);
+
+                            if (reg >= 0)
+                            {
+                                todo();
+                            }
+                        }
+                    }
+                }
+
+                if (spills.length)
+                {
+                    todo();
+                }
+
+                for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
+                {
+                    auto* basic_block = &builder->basic_blocks.pointer[i];
+                    print("============\nBlock #{u32}\n============\n", i);
+
+                    auto basic_block_index = Index(BasicBlock, i);
+
+                    auto bb_live_in = &basic_block->live_in;
+                    auto bb_live_out = &basic_block->live_out;
+
+                    FOREACH_SET(j, &live_out) if (!bitset_get(bb_live_in, j))
+                    {
+                        auto virtual_register_id = virtual_register_map[j];
+                        print("General live out not present in basic block live in: N{u64}, VR{u32}\n", j, virtual_register_id);
+                        if (virtual_register_id != 0)
+                        {
+                            u8 pause = 0;
+                            for (u32 k = i; k < builder->basic_blocks.length; k += 1)
+                            {
+                                auto* other_basic_block = &builder->basic_blocks.pointer[k];
+                                if (bitset_get(&other_basic_block->live_in, j))
+                                {
+                                    unused(pause);
+                                    todo();
+                                }
+                            }
+
+                            bitset_set_value(&active, virtual_register_id, 0);
+                            bitset_set_value(&live_out, j, 0);
+                        }
+                    }
+
+                    FOREACH_SET(j, bb_live_in) if (!bitset_get(&live_out, j))
+                    {
+                        auto virtual_register_id = virtual_register_map[j];
+                        print("Basic block live in not present in general live out: N{u64}, VR{u32}\n", j, virtual_register_id);
+
+                        if (virtual_register_id > 0)
+                        {
+                            {
+                                auto* virtual_register = &virtual_registers.pointer[virtual_register_id];
+                                auto node_index = virtual_register->node_index;
+                                auto* node = thread_node_get(thread, node_index);
+                                print("[BB LIVE IN   ] Allocating register for node #{u32} ({s})\n", geti(node_index), node_id_to_string(node->id));
+                            }
+
+                            if (!register_allocate(thread, virtual_registers, &spills, &active, &future_active, builder->scheduled, builder->basic_blocks, order, virtual_register_id, 0))
+                            {
+                                todo();
+                            }
+                        }
+                    }
+
+                    for (u32 i = 0; i < basic_block->items.length; i += 1)
+                    {
+                        NodeIndex node_index = basic_block->items.pointer[i];
+                        auto* node = thread_node_get(thread, node_index);
+                        auto def = order.pointer[geti(node_index)];
+
+                        auto inputs = node_get_inputs(thread, node);
+
+                        print("Node #{u32} ({s}). Def: {u32}\n", geti(node_index), node_id_to_string(node->id), def);
+
+                        if (node->id == IR_PROJECTION && !index_equal(inputs.pointer[0], function->root))
+                        {
+                            print("Skipping...\n");
+                            continue;
+                        }
+
+                        if (node->id != IR_PHI)
+                        {
+                            print("Node is not PHI. Examining inputs ({u32})...\n", (u32)node->input_count);
+
+                            for (u16 i = 1; i < node->input_count; i += 1)
+                            {
+                                auto input_index = inputs.pointer[i];
+                                if (validi(input_index))
+                                {
+                                    auto virtual_register_id = virtual_register_map[geti(input_index)];
+                                    print("Input {u32}: node #{u32} ({s}). VR{u32}\n", i, geti(input_index), node_id_to_string(thread_node_get(thread, input_index)->id), virtual_register_id);
+                                    if (virtual_register_id == 0)
+                                    {
+                                        print("Invalid vreg id. Removing from general live out and skipping...\n");
+                                        bitset_set_value(&live_out, geti(input_index), 0);
+                                        continue;
+                                    }
+
+                                    if (!bitset_get(&live_out, geti(input_index)))
+                                    {
+                                        print("Duplicate input. Skipping...\n");
+                                        continue;
+                                    }
+
+                                    auto* input = thread_node_get(thread, input_index);
+                                    auto last_use = node_last_use_in_block(thread, builder->scheduled, order, input, basic_block_index);
+                                    print("Last use: {u32}\n", last_use);
+
+                                    if (bitset_get(bb_live_out, geti(input_index)))
+                                    {
+                                        todo();
+                                    }
+
+                                    print("Removing node #{u32} from general liveout\n", geti(input_index));
+                                    bitset_set_value(&live_out, geti(input_index), 0);
+
+                                    auto pause = last_use > def;
+                                    if (!pause)
+                                    {
+                                        for (u32 i = geti(basic_block_index); i < builder->basic_blocks.length; i += 1)
+                                        {
+                                            auto* other = &builder->basic_blocks.pointer[i];
+                                            if (bitset_get(&other->live_in, geti(input_index)))
+                                            {
+                                                pause = 1;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    if (pause)
+                                    {
+                                        bitset_set_value(&future_active, virtual_register_id, 1);
+                                    }
+
+                                    print("Removing VR{u32} from general active\n", virtual_register_id);
+                                    bitset_set_value(&active, virtual_register_id, 0);
+                                }
+                            }
+                        }
+
+                        for (u32 i = 0; i < REGISTER_CLASS_X86_64_COUNT; i += 1)
+                        {
+                            in_use[i] = 0;
+                        }
+
+                        // TODO: tmps
+
+                        auto virtual_register_id = virtual_register_map[geti(node_index)];
+
+                        if (virtual_register_id > 0)
+                        {
+                            auto* virtual_register = &virtual_registers.pointer[virtual_register_id];
+                            auto class = virtual_register->class;
+                            auto in_use_local = in_use[class];
+                            print("[ALLOCATE LOOP] Allocating register for node #{u32} ({s}), VR{u32}\n", geti(node_index), node_id_to_string(node->id), virtual_register_id);
+                            if (!register_allocate(thread, virtual_registers, &spills, &active, &future_active, builder->scheduled, builder->basic_blocks, order, virtual_register_id, in_use_local))
+                            {
+                                todo();
+                            }
+
+                            print("[END ALLOCATE LOOP]\n");
+                            assert(virtual_register_map[geti(node_index)] == virtual_register_id);
+
+                            auto def = virtual_register->node_index;
+                            bitset_set_value(&live_out, geti(def), 1);
+                            print("Setting as general live out node #{u32} ({s})\n", geti(def), node_id_to_string(thread_node_get(thread, def)->id));
+                        }
+                        else if (type_pair_get_backend(node->type) == BACKEND_TYPE_TUPLE)
+                        {
+                            todo();
+                        }
+                    }
+                }
+
+                break;
+            }
         }
 
         // Basic block scheduling
-
         for (u32 i = 0; i < builder->basic_blocks.length; i += 1)
         {
             auto* basic_block = &builder->basic_blocks.pointer[i];
