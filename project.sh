@@ -55,8 +55,8 @@ if [[ -z "${CMAKE_PREFIX_PATH-}" ]]; then
     CMAKE_PREFIX_PATH="$HOME/Downloads/llvm-$BIRTH_ARCH-$BIRTH_OS-$CMAKE_BUILD_TYPE"
 fi
 
-if [[ -z "${BUSTER_GITHUB_RUN-}" ]]; then
-    BUSTER_GITHUB_RUN=false
+if [[ -z "${BUSTER_GITHUB_MAIN_RUN-}" ]]; then
+    BUSTER_GITHUB_MAIN_RUN=false
 fi
 
 case $BIRTH_OS in
@@ -102,7 +102,7 @@ if [ "$#" -ne 0 ]; then
     $build_dir/runner $@
 fi
 
-if [ "$BUSTER_GITHUB_RUN" == "true" ]; then
+if [ "$BUSTER_GITHUB_MAIN_RUN" == "true" ]; then
     case "$BIRTH_OS" in
         windows)
             OPT_EXTENSION=".exe";;
