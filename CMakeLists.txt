@@ -16,6 +16,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
 
+set(IS_CI OFF CACHE BOOL "Variable that determines if the cmake script is run on the CI or not")
+
+if (IS_CI)
+    message(STATUS "CMake is run on CI")
+else()
+    message(STATUS "CMake is not run on CI")
+endif()
+
 add_compile_options(
     -pedantic
     -Wall -Wextra -Wpedantic
@@ -44,7 +52,6 @@ if ("${LLVM_CONFIG_EXE}" STREQUAL "LLVM_CONFIG_EXE-NOTFOUND")
         message(FATAL_ERROR "unable to find llvm-config")
     endif()
 endif()
-
 
 execute_process(
     COMMAND ${LLVM_CONFIG_EXE} --libs

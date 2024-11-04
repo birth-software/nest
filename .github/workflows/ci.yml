@@ -82,6 +82,7 @@ jobs:
           CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
           CMAKE_PREFIX_PATH: ${{steps.FETCH.outputs.CMAKE_PREFIX_PATH}}
           BUSTER_GITHUB_MAIN_RUN: ${{ github.ref == 'refs/heads/main' }}
+          IS_CI: true
       - name: Release
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
