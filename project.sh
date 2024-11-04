@@ -36,14 +36,11 @@ esac
 if [[ -z "${BIRTH_ARCH-}" ]]; then
     case "$(uname -m)" in
         x86_64)
-            BIRTH_ARCH=x86_64
-            ;;
+            BIRTH_ARCH=x86_64;;
         arm64)
-            BIRTH_ARCH=aarch64
-            ;;
+            BIRTH_ARCH=aarch64;;
         *)
-            exit 1
-            ;;
+            exit 1;;
     esac
 fi
 
@@ -59,6 +56,12 @@ if [[ -z "${BUSTER_GITHUB_MAIN_RUN-}" ]]; then
     BUSTER_GITHUB_MAIN_RUN=false
 fi
 
+if [[ -n "${IS_CI-}" ]]; then
+    IS_CI=ON
+else
+    IS_CI=OFF
+fi
+
 case $BIRTH_OS in
     windows)
         C_COMPILER_OPT_ARG="-DCMAKE_C_COMPILER_TARGET=x86_64-pc-windows-msvc"
@@ -71,6 +74,7 @@ case $BIRTH_OS in
         ASM_COMPILER_OPT_ARG=""
         ;;
 esac
+
 case $BIRTH_OS in
     linux)
         USE_MOLD_OPT_ARG=-DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold"
@@ -89,6 +93,7 @@ cmake . \
     -DCMAKE_C_COMPILER=$C_COMPILER_PATH \
     -DCMAKE_CXX_COMPILER=$CXX_COMPILER_PATH \
     -DCMAKE_ASM_COMPILER=$ASM_COMPILER_PATH \
+    -DIS_CI=$IS_CI \
     $USE_MOLD_OPT_ARG \
     $C_COMPILER_OPT_ARG \
     $CXX_COMPILER_OPT_ARG \
