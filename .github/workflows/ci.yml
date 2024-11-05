@@ -76,19 +76,36 @@ jobs:
       - uses: actions/checkout@v4
       - uses: birth-software/github-setup@v2
       - name: Fetch LLVM
-        id: FETCH
+        id: fetch_llvm
         run: ./fetch-llvm.sh
         shell: bash
         env:
           CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
-      - name: Build and test
+      - name: Build
+        id: build
+        run: ./project.sh
+        shell: bash
+        env:
+          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
+          CMAKE_PREFIX_PATH: ${{steps.fetch_llvm.outputs.CMAKE_PREFIX_PATH}}
+          BB_IS_CI: true
+      - name: Test
         run: ./project.sh test all
         shell: bash
         env:
           CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
-          CMAKE_PREFIX_PATH: ${{steps.FETCH.outputs.CMAKE_PREFIX_PATH}}
+          CMAKE_PREFIX_PATH: ${{steps.fetch_llvm.outputs.CMAKE_PREFIX_PATH}}
           BB_IS_CI: true
-      - name: Upload artifact (7z)
+      - name: Package
+        id: package
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        run: ./package.sh
+        shell: bash
+        env:
+          CMAKE_BUILD_TYPE: ${{matrix.CMAKE_BUILD_TYPE}}
+          BB_IS_CI: true
+      - name: Upload artifact
+        if: ${{ always() && steps.package.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{env.BLOAT_BUSTER_RELEASE_NAME_BASE}}
