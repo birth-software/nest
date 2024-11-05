@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eux
-original_dir=$PWD
-build_dir=$original_dir/build
+ORIGINAL_DIR=$PWD
+BUILD_DIR=$ORIGINAL_DIR/build
 C_COMPILER_PATH=clang
 CXX_COMPILER_PATH=clang++
 ASM_COMPILER_PATH=clang
@@ -22,16 +22,6 @@ if [[ -z "${BIRTH_OS-}" ]]; then
             ;;
     esac
 fi
-
-case "$BIRTH_OS" in
-    linux)
-        ls -las /
-        ls -las /usr
-        ls -las /usr/lib
-        ;;
-    *)
-        ;;
-esac
 
 if [[ -z "${BIRTH_ARCH-}" ]]; then
     case "$(uname -m)" in
@@ -88,9 +78,9 @@ case $BIRTH_OS in
         ;;
 esac
 
-mkdir -p $build_dir
+mkdir -p $BUILD_DIR
 cmake . \
-    -B$build_dir \
+    -B$BUILD_DIR \
     -G Ninja \
     -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" \
     -DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH \
@@ -105,35 +95,15 @@ cmake . \
     $CXX_COMPILER_OPT_ARG \
     $ASM_COMPILER_OPT_ARG
     
-cd $build_dir
+cd $BUILD_DIR
 ninja -v
-cd $original_dir
+cd $ORIGINAL_DIR
 
 if [ "$#" -ne 0 ]; then
-    $build_dir/runner $@
+    $BUILD_DIR/runner $@
 fi
 
 if [ "$BB_IS_CI" == "ON" ]; then
-    case "$BIRTH_OS" in
-        windows)
-            OPT_EXTENSION=".exe";;
-        *)
-            OPT_EXTENSION="";;
-    esac
-
-    BB_EXE_PATH="$build_dir/$COMPILER_NAME$OPT_EXTENSION"
-    BB_INSTALL_NAME=bloat-buster-$BIRTH_ARCH-$BIRTH_OS-$CMAKE_BUILD_TYPE
-    BB_INSTALL_PATH="$PWD/$BB_INSTALL_NAME"
-    mkdir -p $BB_INSTALL_PATH
-    cp $BB_EXE_PATH $BB_INSTALL_PATH
-    7z a -t7z -m0=lzma2 -mx=9 -mfb=64 -md=64m -ms=on $BB_INSTALL_NAME.7z $BB_INSTALL_PATH
-    b2sum $BB_INSTALL_NAME.7z > "$BB_INSTALL_NAME.7z.b2sum"
-
-    case "$BIRTH_OS" in
-        windows) BB_INSTALL_PATH="$(cygpath -w ${BB_INSTALL_PATH})" ;;
-        *) ;;
-    esac
-
-    echo "BLOAT_BUSTER_RELEASE_NAME_BASE=$BB_INSTALL_NAME" >> $GITHUB_ENV
-    echo "BLOAT_BUSTER_RELEASE_PATH_BASE=$BB_INSTALL_PATH" >> $GITHUB_ENV
+    echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+    echo "COMPILER_NAME=$COMPILER_NAME" >> $GITHUB_ENV
 fi
