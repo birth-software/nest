@@ -10,6 +10,7 @@
 #include <bloat-buster/llvm.h>
 #include <bloat-buster/lld_driver.h>
 #include <bloat-buster/lld_api.h>
+#include <bloat-buster/gui.h>
 
 #ifdef __APPLE__
 #define clang_path "/opt/homebrew/opt/llvm/bin/clang"
@@ -24775,11 +24776,12 @@ fn void print_ir(Thread* restrict thread)
 
 void entry_point(int argc, char* argv[], char* envp[])
 {
-    unused(envp);
+    // unused(envp);
 #if DO_UNIT_TESTS
     unit_tests();
 #endif
 
+#if BB_CI
     Arena* global_arena = arena_init(MB(2), KB(64), KB(64));
 
     {
@@ -24788,11 +24790,7 @@ void entry_point(int argc, char* argv[], char* envp[])
 
         for (int i = 0; i < argc; i += 1)
         {
-            u64 len = strlen(argv[i]);
-            arguments.pointer[i] = (String) {
-                .pointer = (u8*)argv[i],
-                .length = len,
-            };
+            arguments.pointer[i] = cstr(argv[i]);
         }
     }
 
@@ -24851,4 +24849,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     }
 
     thread_clear(thread);
+#else
+    run_app();
+#endif
 }
