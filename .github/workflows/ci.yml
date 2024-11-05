@@ -34,12 +34,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -eux
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
           TAG="dev"
           gh release delete $TAG --yes
           git tag -d $TAG
-          git push origin $TAG
+          git push origin --delete $TAG
           git tag $TAG
           git push origin $TAG
           echo "RELEASE_TAG_NAME=$TAG" >> $GITHUB_OUTPUT
