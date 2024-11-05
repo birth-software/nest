@@ -111,16 +111,46 @@ jobs:
           name: ${{env.BLOAT_BUSTER_RELEASE_NAME_BASE}}
           if-no-files-found: 'error'
           path: ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z*
-      - name: Release
+      - name: Release - Attempt 1
+        id: release_attempt_1
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           name: "Development build"
-          tag_name: ${{env.RELEASE_TAG_NAME}}
+          tag_name: ${{ env.RELEASE_TAG_NAME }}
           fail_on_unmatched_files: true
           make_latest: true
           files: |
-            ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z
-            ${{env.BLOAT_BUSTER_RELEASE_PATH_BASE}}.7z.b2sum
+            ${{ env.BLOAT_BUSTER_RELEASE_PATH_BASE }}.7z
+            ${{ env.BLOAT_BUSTER_RELEASE_PATH_BASE }}.7z.b2sum
+        continue-on-error: true
+      - name: Release - Attempt 2
+        id: release_attempt_2
+        if: ${{ steps.release_attempt_1.outcome == 'failure' && github.ref == 'refs/heads/main' }}
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: "Development build"
+          tag_name: ${{ env.RELEASE_TAG_NAME }}
+          fail_on_unmatched_files: true
+          make_latest: true
+          files: |
+            ${{ env.BLOAT_BUSTER_RELEASE_PATH_BASE }}.7z
+            ${{ env.BLOAT_BUSTER_RELEASE_PATH_BASE }}.7z.b2sum
+        continue-on-error: true
+      - name: Release - Attempt 3
+        if: ${{ steps.release_attempt_2.outcome == 'failure' && github.ref == 'refs/heads/main' }}
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: "Development build"
+          tag_name: ${{ env.RELEASE_TAG_NAME }}
+          fail_on_unmatched_files: true
+          make_latest: true
+          files: |
+            ${{ env.BLOAT_BUSTER_RELEASE_PATH_BASE }}.7z
+            ${{ env.BLOAT_BUSTER_RELEASE_PATH_BASE }}.7z.b2sum
