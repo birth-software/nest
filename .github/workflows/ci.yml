@@ -34,11 +34,10 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
-          DATE=$(date +"%Y-%m-%d %H:%M:%S")
-          COMMIT_HASH=$(git rev-parse --short HEAD)
           TAG="dev"
-          git tag "$TAG" -f
-          git push origin "$TAG" -f
+          gh release delete $TAG --yes
+          git tag "$TAG"
+          git push origin "$TAG"
           echo "RELEASE_TAG_NAME=$TAG" >> $GITHUB_OUTPUT
   build_and_test:
     needs: generate-config
