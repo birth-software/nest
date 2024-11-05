@@ -6,8 +6,6 @@
 
 #include <bloat-buster/base.h>
 
-#define bb_dir "bb"
-
 declare_slice(CompilerBackend);
 
 typedef enum CMakeBuildType
@@ -109,7 +107,7 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
             // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
             {
                 auto executable = binary_path_from_options(arena, (BinaryPathOptions) {
-                    .build_directory = strlit(bb_dir),
+                    .build_directory = strlit(BB_DIR),
                     .name = test_name,
                     .target = target,
                     .backend = compiler_backend,
@@ -242,7 +240,7 @@ void entry_point(int argc, char* argv[], char* envp[])
         build_type = CMAKE_BUILD_TYPE_DEBUG;
     }
 
-    String compiler_path = strlit("build/bb");
+    String compiler_path = strlit(BUILD_DIR "/" COMPILER_NAME);
 
     switch (command)
     {
