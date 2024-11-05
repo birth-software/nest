@@ -41,6 +41,8 @@ jobs:
           gh release delete $TAG --yes || true
           git tag -d $TAG || true
           git push origin --delete $TAG || true
+          git fetch --tags
+          git tag -l
           git tag $TAG
           git push origin $TAG
           echo "RELEASE_TAG_NAME=$TAG" >> $GITHUB_OUTPUT
