@@ -39,8 +39,8 @@ jobs:
           git config --global user.email "github-actions@github.com"
           TAG="dev"
           gh release delete $TAG --yes || true
-          git tag -d $TAG
-          git push origin --delete $TAG
+          git tag -d $TAG || true
+          git push origin --delete $TAG || true
           git tag $TAG
           git push origin $TAG
           echo "RELEASE_TAG_NAME=$TAG" >> $GITHUB_OUTPUT
