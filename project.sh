@@ -52,14 +52,18 @@ if [[ -z "${CMAKE_PREFIX_PATH-}" ]]; then
     CMAKE_PREFIX_PATH="$HOME/Downloads/llvm-$BIRTH_ARCH-$BIRTH_OS-$CMAKE_BUILD_TYPE"
 fi
 
-if [[ -z "${BUSTER_GITHUB_MAIN_RUN-}" ]]; then
-    BUSTER_GITHUB_MAIN_RUN=false
+if [[ -n "${BB_IS_CI-}" ]]; then
+    BB_IS_CI=ON
+else
+    BB_IS_CI=OFF
 fi
 
-if [[ -n "${IS_CI-}" ]]; then
-    IS_CI=ON
-else
-    IS_CI=OFF
+if [[ -z "${COMPILER_NAME-}" ]]; then
+    COMPILER_NAME=bb
+fi
+
+if [[ -z "${BB_DIR-}" ]]; then
+    BB_DIR=$COMPILER_NAME
 fi
 
 case $BIRTH_OS in
@@ -93,7 +97,9 @@ cmake . \
     -DCMAKE_C_COMPILER=$C_COMPILER_PATH \
     -DCMAKE_CXX_COMPILER=$CXX_COMPILER_PATH \
     -DCMAKE_ASM_COMPILER=$ASM_COMPILER_PATH \
-    -DIS_CI=$IS_CI \
+    -DCOMPILER_NAME=$COMPILER_NAME \
+    -DBB_DIR=$BB_DIR \
+    -DBB_IS_CI=$BB_IS_CI \
     $USE_MOLD_OPT_ARG \
     $C_COMPILER_OPT_ARG \
     $CXX_COMPILER_OPT_ARG \
@@ -107,7 +113,7 @@ if [ "$#" -ne 0 ]; then
     $build_dir/runner $@
 fi
 
-if [ "$BUSTER_GITHUB_MAIN_RUN" == "true" ]; then
+if [ "$BB_IS_CI" == "ON" ]; then
     case "$BIRTH_OS" in
         windows)
             OPT_EXTENSION=".exe";;
@@ -115,7 +121,7 @@ if [ "$BUSTER_GITHUB_MAIN_RUN" == "true" ]; then
             OPT_EXTENSION="";;
     esac
 
-    BB_EXE_PATH="$build_dir/bb$OPT_EXTENSION"
+    BB_EXE_PATH="$build_dir/$COMPILER_NAME$OPT_EXTENSION"
     BB_INSTALL_NAME=bloat-buster-$BIRTH_ARCH-$BIRTH_OS-$CMAKE_BUILD_TYPE
     BB_INSTALL_PATH="$PWD/$BB_INSTALL_NAME"
     mkdir -p $BB_INSTALL_PATH
@@ -128,5 +134,6 @@ if [ "$BUSTER_GITHUB_MAIN_RUN" == "true" ]; then
         *) ;;
     esac
 
+    echo "BLOAT_BUSTER_RELEASE_NAME_BASE=$BB_INSTALL_NAME" >> $GITHUB_ENV
     echo "BLOAT_BUSTER_RELEASE_PATH_BASE=$BB_INSTALL_PATH" >> $GITHUB_ENV
 fi

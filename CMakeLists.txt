@@ -16,13 +16,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
 
-set(IS_CI OFF CACHE BOOL "Variable that determines if the cmake script is run on the CI or not")
+set(LIBRARY_NAME "std")
+set(RUNNER_NAME "runner")
+if (NOT COMPILER_NAME)
+    set(COMPILER_NAME "bb" CACHE STRING)
+endif()
 
-if (IS_CI)
-    set(IS_CI_C_FLAG "-DBB_CI=1")
+set(BB_IS_CI OFF CACHE BOOL "Variable that determines if the cmake script is run on the CI or not")
+
+if (BB_IS_CI)
+    set(BB_IS_CI_C_FLAG "-DBB_CI=1")
     message(STATUS "CMake is run on CI")
 else()
-    set(IS_CI_C_FLAG "-DBB_CI=0")
+    set(BB_IS_CI_C_FLAG "-DBB_CI=0")
     message(STATUS "CMake is not run on CI")
 endif()
 
@@ -33,7 +39,7 @@ add_compile_options(
     -fno-exceptions -fno-stack-protector
     -fdiagnostics-color=always -ferror-limit=1
     -march=native
-    ${IS_CI_C_FLAG}
+    ${BB_IS_CI_C_FLAG} -DCOMPILER_NAME=\"${COMPILER_NAME}\" -DBUILD_DIR=\"${CMAKE_BINARY_DIR}\" -DBB_DIR=\"${BB_DIR}\"
 )
 include_directories("bootstrap/include")
 
@@ -141,10 +147,6 @@ endif()
 
 link_directories("${LLVM_LIBDIRS}")
 
-set(LIBRARY_NAME "std")
-set(RUNNER_NAME "runner")
-set(COMPILER_NAME "bb")
-
 add_library("${LIBRARY_NAME}"
     "bootstrap/std/base.c"
     "bootstrap/std/string.c"
@@ -172,7 +174,7 @@ target_include_directories(${COMPILER_NAME} PRIVATE ${LLVM_INCLUDE_DIRS})
 target_link_directories(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARY_DIRS})
 target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME} ${LLVM_LIBRARIES} ${lld_libs})
 
-if (NOT IS_CI)
+if (NOT BB_IS_CI)
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)

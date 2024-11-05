@@ -3,8 +3,6 @@
 #include <std/base.h>
 #include <std/os.h>
 
-#define cache_dir "bb"
-
 typedef enum CpuArchitecture : u8
 {
     CPU_ARCH_X86_64,

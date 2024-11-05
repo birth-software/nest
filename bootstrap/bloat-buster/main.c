@@ -23569,7 +23569,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     VirtualBuffer(u8) code = {};
 
     auto object_path = binary_path_from_options(thread->arena, (BinaryPathOptions) {
-        .build_directory = strlit(cache_dir),
+        .build_directory = strlit(BB_DIR),
         .name = options.test_name,
         .target = options.target,
         .backend = options.backend,
@@ -23577,7 +23577,7 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
     });
 
     auto exe_path = binary_path_from_options(thread->arena, (BinaryPathOptions) {
-        .build_directory = strlit(cache_dir),
+        .build_directory = strlit(BB_DIR),
         .name = options.test_name,
         .target = options.target,
         .backend = options.backend,
@@ -24816,7 +24816,7 @@ void entry_point(int argc, char* argv[], char* envp[])
 
     Target target = native_target_get();
 
-    os_directory_make(strlit(cache_dir));
+    os_directory_make(strlit(BB_DIR));
 
     File file = {
         .path = source_file_path,
