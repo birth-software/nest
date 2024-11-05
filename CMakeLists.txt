@@ -19,8 +19,10 @@ set(CMAKE_CXX_STANDARD 23)
 set(IS_CI OFF CACHE BOOL "Variable that determines if the cmake script is run on the CI or not")
 
 if (IS_CI)
+    set(IS_CI_C_FLAG "-DBB_CI=1")
     message(STATUS "CMake is run on CI")
 else()
+    set(IS_CI_C_FLAG "-DBB_CI=0")
     message(STATUS "CMake is not run on CI")
 endif()
 
@@ -31,6 +33,7 @@ add_compile_options(
     -fno-exceptions -fno-stack-protector
     -fdiagnostics-color=always -ferror-limit=1
     -march=native
+    ${IS_CI_C_FLAG}
 )
 include_directories("bootstrap/include")
 
@@ -160,6 +163,7 @@ add_executable("${COMPILER_NAME}"
     "bootstrap/bloat-buster/llvm.cpp"
     "bootstrap/bloat-buster/lld_driver.c"
     "bootstrap/bloat-buster/lld_api.cpp"
+    "bootstrap/bloat-buster/gui.cpp"
 )
 
 target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})
@@ -168,3 +172,44 @@ target_include_directories(${COMPILER_NAME} PRIVATE ${LLVM_INCLUDE_DIRS})
 target_link_directories(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARY_DIRS})
 target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME} ${LLVM_LIBRARIES} ${lld_libs})
 
+if (NOT IS_CI)
+    set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    # set(GLFW_USE_WAYLAND OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+
+    add_subdirectory(dependencies/glfw-3.4)
+
+    target_link_libraries(${COMPILER_NAME} PRIVATE glfw)
+
+    if(CMAKE_SYSTEM_NAME STREQUAL Windows)
+        set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL Linux)
+        set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_XLIB_KHR)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
+        set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_MACOS_MVK)
+    endif()
+
+    add_subdirectory(dependencies/volk-1.3.301 volk)
+    target_link_libraries(${COMPILER_NAME} PRIVATE volk)
+
+    set(IMGUI_DIR "dependencies/imgui-1.91.4-docking")
+    add_library(imgui
+        "${IMGUI_DIR}/imgui.cpp"
+        "${IMGUI_DIR}/imgui_draw.cpp"
+        "${IMGUI_DIR}/imgui_tables.cpp"
+        "${IMGUI_DIR}/imgui_widgets.cpp"
+        "${IMGUI_DIR}/imgui_demo.cpp"
+        "${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp"
+        "${IMGUI_DIR}/backends/imgui_impl_glfw.cpp"
+    )
+    target_include_directories(imgui PRIVATE ${IMGUI_DIR})
+    target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
+    target_compile_definitions(${COMPILER_NAME} PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
+    
+    target_link_libraries(${COMPILER_NAME} PRIVATE imgui)
+    target_include_directories(${COMPILER_NAME} PRIVATE ${IMGUI_DIR})
+    target_include_directories(${COMPILER_NAME} PRIVATE ${IMGUI_DIR}/backends)
+endif()
