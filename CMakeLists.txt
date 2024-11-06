@@ -165,7 +165,7 @@ add_executable("${COMPILER_NAME}"
     "bootstrap/bloat-buster/llvm.cpp"
     "bootstrap/bloat-buster/lld_driver.c"
     "bootstrap/bloat-buster/lld_api.cpp"
-    "bootstrap/bloat-buster/gui.cpp"
+    "bootstrap/bloat-buster/gui.c"
 )
 
 target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})
@@ -178,12 +178,14 @@ if (NOT BB_IS_CI)
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(ON CACHE BOOL "" FORCE)
     # set(GLFW_USE_WAYLAND OFF CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
-    set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
+    # set(GLFW_BUILD_X11 ON CACHE BOOL "" FORCE)
+    # set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE)
 
     add_subdirectory(dependencies/glfw-3.4)
 
+    target_compile_definitions(${COMPILER_NAME} PRIVATE GLFW_EXPOSE_NATIVE_X11)
     target_link_libraries(${COMPILER_NAME} PRIVATE glfw)
 
     if(CMAKE_SYSTEM_NAME STREQUAL Windows)
@@ -196,22 +198,4 @@ if (NOT BB_IS_CI)
 
     add_subdirectory(dependencies/volk-1.3.301 volk)
     target_link_libraries(${COMPILER_NAME} PRIVATE volk)
-
-    set(IMGUI_DIR "dependencies/imgui-1.91.4-docking")
-    add_library(imgui
-        "${IMGUI_DIR}/imgui.cpp"
-        "${IMGUI_DIR}/imgui_draw.cpp"
-        "${IMGUI_DIR}/imgui_tables.cpp"
-        "${IMGUI_DIR}/imgui_widgets.cpp"
-        "${IMGUI_DIR}/imgui_demo.cpp"
-        "${IMGUI_DIR}/backends/imgui_impl_vulkan.cpp"
-        "${IMGUI_DIR}/backends/imgui_impl_glfw.cpp"
-    )
-    target_include_directories(imgui PRIVATE ${IMGUI_DIR})
-    target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
-    target_compile_definitions(${COMPILER_NAME} PRIVATE IMGUI_IMPL_VULKAN_USE_VOLK)
-    
-    target_link_libraries(${COMPILER_NAME} PRIVATE imgui)
-    target_include_directories(${COMPILER_NAME} PRIVATE ${IMGUI_DIR})
-    target_include_directories(${COMPILER_NAME} PRIVATE ${IMGUI_DIR}/backends)
 endif()
