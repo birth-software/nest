@@ -247,7 +247,8 @@ void entry_point(int argc, char* argv[], char* envp[])
     case COMMAND_DEBUG:
         if (!source_file_path.pointer)
         {
-            failed_execution();
+            source_file_path = strlit("foo");
+            // failed_execution();
         }
 
         run(arena, envp, compiler_path, preferred_compiler_backend, 1, string_to_c(source_file_path));
