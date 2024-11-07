@@ -178,6 +178,7 @@ void run_app(Arena* arena)
     int initial_width = 1024;
     int initial_height = 768;
     GLFWwindow* window = glfwCreateWindow(initial_width, initial_height, "Bloat Buster", 0, 0);
+
     if (!window)
     {
         failed_execution();
@@ -307,9 +308,9 @@ void run_app(Arena* arena)
         }
     }
 
-    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceCapabilitiesKHR original_capabilities;
     {
-        VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities);
+        VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &original_capabilities);
         if (result != VK_SUCCESS)
         {
             failed_execution();
@@ -317,30 +318,31 @@ void run_app(Arena* arena)
     }
 
     VkSwapchainKHR swapchain = 0;
+    VkSwapchainCreateInfoKHR swapchain_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext = 0,
+        .flags = 0,
+        .surface = surface,
+        .minImageCount = original_capabilities.minImageCount,
+        .imageFormat = VK_FORMAT_B8G8R8A8_UNORM,
+        .imageColorSpace = 0,
+        .imageExtent = original_capabilities.currentExtent,
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = 0,
+        .preTransform = original_capabilities.currentTransform,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = VK_PRESENT_MODE_FIFO_KHR,
+        .clipped = 0,
+        .oldSwapchain = swapchain,
+    };
+
     {
-        VkSwapchainCreateInfoKHR create_info = {
-            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-            .pNext = 0,
-            .flags = 0,
-            .surface = surface,
-            .minImageCount = capabilities.minImageCount,
-            .imageFormat = VK_FORMAT_B8G8R8A8_UNORM,
-            .imageColorSpace = 0,
-            .imageExtent = { .width = (u32)initial_width, .height = (u32)initial_height, },
-            .imageArrayLayers = 1,
-            .imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .queueFamilyIndexCount = 0,
-            .pQueueFamilyIndices = 0,
-            .preTransform = capabilities.currentTransform,
-            .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode = VK_PRESENT_MODE_FIFO_KHR,
-            .clipped = 0,
-            .oldSwapchain = swapchain,
-        };
 
         VkSwapchainKHR new_swapchain;
-        VkResult result = vkCreateSwapchainKHR(device, &create_info, allocation_callbacks, &new_swapchain);
+        VkResult result = vkCreateSwapchainKHR(device, &swapchain_create_info, allocation_callbacks, &new_swapchain);
         if (result != VK_SUCCESS)
         {
             failed_execution();
@@ -450,37 +452,81 @@ void run_app(Arena* arena)
     {
         glfwPollEvents();
 
+        int width;
+        int height;
+        glfwGetWindowSize(window, &width, &height);
+
+        if (width == 0 || height == 0)
+        {
+            continue;
+        }
+
         u32 frame_index = frame_number % frame_overlap;
-        u32 fence_count = 1;
-        VkBool32 wait_all = 1;
-        auto timeout = ~(u64)0;
-
-        {
-            VkResult result = vkWaitForFences(device, fence_count, &render_fences[frame_index], wait_all, timeout);
-            if (result != VK_SUCCESS)
-            {
-                failed_execution();
-            }
-        }
-
-        {
-            VkResult result = vkResetFences(device, fence_count, &render_fences[frame_index]);
-            if (result != VK_SUCCESS)
-            {
-                failed_execution();
-            }
-        }
-
         u32 swapchain_image_index;
+
         {
-            VkFence image_fence = 0;
-            VkResult result = vkAcquireNextImageKHR(device, swapchain, timeout, swapchain_semaphores[frame_index], image_fence, &swapchain_image_index);
-            if (result != VK_SUBOPTIMAL_KHR)
+            auto timeout = ~(u64)0;
+
             {
-                if (result != VK_SUCCESS)
+                u32 fence_count = 1;
+                {
+                    VkBool32 wait_all = 1;
+                    VkResult result = vkWaitForFences(device, fence_count, &render_fences[frame_index], wait_all, timeout);
+                    if (result != VK_SUCCESS)
+                    {
+                        failed_execution();
+                    }
+                }
+
+                {
+                    VkResult result = vkResetFences(device, fence_count, &render_fences[frame_index]);
+                    if (result != VK_SUCCESS)
+                    {
+                        failed_execution();
+                    }
+                }
+            }
+
+            {
+                VkSurfaceCapabilitiesKHR capabilities;
+                {
+                    VkResult result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities);
+                    if (result != VK_SUCCESS)
+                    {
+                        failed_execution();
+                    }
+                }
+
+                assert(capabilities.minImageCount ==          original_capabilities.minImageCount);
+                assert(capabilities.maxImageCount ==          original_capabilities.maxImageCount);
+                assert(capabilities.currentExtent.width == original_capabilities.currentExtent.width);
+                assert(capabilities.currentExtent.height == original_capabilities.currentExtent.height);
+                assert(capabilities.minImageExtent.width ==         original_capabilities.minImageExtent.width);
+                assert(capabilities.minImageExtent.height ==         original_capabilities.minImageExtent.height);
+                assert(capabilities.maxImageExtent.width ==         original_capabilities.maxImageExtent.width);
+                assert(capabilities.maxImageExtent.height ==         original_capabilities.maxImageExtent.height);
+                assert(capabilities.maxImageArrayLayers ==    original_capabilities.maxImageArrayLayers);
+                assert(capabilities.supportedTransforms ==    original_capabilities.supportedTransforms);
+                assert(capabilities.currentTransform ==       original_capabilities.currentTransform);
+                assert(capabilities.supportedCompositeAlpha ==original_capabilities.supportedCompositeAlpha);
+                assert(capabilities.supportedUsageFlags ==    original_capabilities.supportedUsageFlags)
+
+                assert(capabilities.currentExtent.width == initial_width);
+                assert(capabilities.currentExtent.height == initial_height);
+                assert(capabilities.currentTransform == swapchain_create_info.preTransform);
+
+                print("Window size: {u32}x{u32}\nCapabilities: {u32}x{u32}\n", width, height, capabilities.currentExtent.width, capabilities.currentExtent.height);
+
+                VkFence image_fence = 0;
+                VkResult result = vkAcquireNextImageKHR(device, swapchain, timeout, swapchain_semaphores[frame_index], image_fence, &swapchain_image_index);
+                // if (result != VK_SUBOPTIMAL_KHR)
+                // {
+                print("Acquire result: {u32}\n", result);
+                if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
                 {
                     failed_execution();
                 }
+                // }
             }
         }
 
@@ -598,14 +644,23 @@ void run_app(Arena* arena)
         };
 
         result = vkQueuePresentKHR(graphics_queue, &present_info);
-        if (result != VK_SUBOPTIMAL_KHR)
+        print("Present result: {u32}\n", result);
+        if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
         {
-            if (result != VK_SUCCESS)
-            {
-                failed_execution();
-            }
+            failed_execution();
         }
+        // }
     }
+
+    // {
+    //     VkResult result = vkDeviceWaitIdle(device);
+    //     if (result != VK_SUCCESS)
+    //     {
+    //         failed_execution();
+    //     }
+    // }
+    //
+    // vkDestroyInstance(instance, allocation_callbacks);
 }
 
 #endif
