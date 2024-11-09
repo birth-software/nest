@@ -32,6 +32,8 @@ else()
     message(STATUS "CMake is not run on CI")
 endif()
 
+set (USE_LLVM ${BB_IS_CI} CACHE BOOL "Variable that determines if LLVM should be linked to the target")
+
 add_compile_options(
     -pedantic
     -Wall -Wextra -Wpedantic
@@ -42,110 +44,6 @@ add_compile_options(
     ${BB_IS_CI_C_FLAG} -DCOMPILER_NAME=\"${COMPILER_NAME}\" -DBUILD_DIR=\"${CMAKE_BINARY_DIR}\" -DBB_DIR=\"${BB_DIR}\"
 )
 include_directories("bootstrap/include")
-
-find_package(LLVM REQUIRED CONFIG)
-
-find_program(LLVM_CONFIG_EXE
-    NAMES llvm-config-19 llvm-config-19.0 llvm-config190 llvm-config19 llvm-config NAMES_PER_DIR
-    PATHS
-    "/mingw64/bin"
-    "/c/msys64/mingw64/bin"
-    "c:/msys64/mingw64/bin"
-    "C:/Libraries/llvm-19.0.0/bin")
-
-if ("${LLVM_CONFIG_EXE}" STREQUAL "LLVM_CONFIG_EXE-NOTFOUND")
-    if (NOT LLVM_CONFIG_ERROR_MESSAGES STREQUAL "")
-        list(JOIN LLVM_CONFIG_ERROR_MESSAGES "\n" LLVM_CONFIG_ERROR_MESSAGE)
-        message(FATAL_ERROR ${LLVM_CONFIG_ERROR_MESSAGE})
-    else()
-        message(FATAL_ERROR "unable to find llvm-config")
-    endif()
-endif()
-
-execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --libs
-    OUTPUT_VARIABLE LLVM_LIBRARIES_SPACES
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-string(REPLACE " " ";" LLVM_LIBRARIES "${LLVM_LIBRARIES_SPACES}")
-
-execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --libdir
-    OUTPUT_VARIABLE LLVM_LIBDIRS_SPACES
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-string(REPLACE " " ";" LLVM_LIBDIRS "${LLVM_LIBDIRS_SPACES}")
-
-execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --system-libs
-    OUTPUT_VARIABLE LLVM_SYSTEM_LIBS_SPACES
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-string(REPLACE " " ";" LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS_SPACES}")
-
-execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --shared-mode
-    OUTPUT_VARIABLE LLVM_LINK_MODE
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-cmake_print_variables("LLVM libs: ${LLVM_LIBRARIES}")
-cmake_print_variables("LLVM libdirs: ${LLVM_LIBDIRS}")
-cmake_print_variables("LLVM system libs: ${LLVM_SYSTEM_LIBS}")
-cmake_print_variables("LLVM link mode: ${LLVM_LINK_MODE}")
-
-if (${LLVM_LINK_MODE} STREQUAL "shared")
-    # We always ask for the system libs corresponding to static linking,
-    # since on some distros LLD is only available as a static library
-    # and we need these libraries to link it successfully
-    execute_process(
-        COMMAND ${LLVM_CONFIG_EXE} --system-libs --link-static
-        OUTPUT_VARIABLE LLVM_STATIC_SYSTEM_LIBS_SPACES
-        ERROR_QUIET # Some installations have no static libs, we just ignore the failure
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
-    string(REPLACE " " ";" LLVM_STATIC_SYSTEM_LIBS "${LLVM_STATIC_SYSTEM_LIBS_SPACES}")
-    find_library(LLD_COFF NAMES liblldCOFF.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_COMMON NAMES liblldCommon.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_ELF NAMES liblldELF.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_MACHO NAMES liblldMachO.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_MINGW NAMES liblldMinGW.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_WASM NAMES liblldWasm.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-
-    set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS} ${LLVM_STATIC_SYSTEM_LIBS})
-else()
-    find_library(LLD_COFF NAMES lldCOFF.lib lldCOFF.a liblldCOFF.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_COMMON NAMES lldCommon.lib lldCommon.a liblldCommon.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_ELF NAMES lldELF.lib lldELF.a liblldELF.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_MACHO NAMES lldMachO.lib lldMachO.a liblldMachO.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_MINGW NAMES lldMinGW.lib lldMinGW.a liblldMinGW.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-    find_library(LLD_WASM NAMES lldWasm.lib lldWasm.a liblldWasm.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
-
-    set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS})
-endif()
-
-set(lld_libs
-    ${LLD_COFF}
-    ${LLD_ELF}
-    ${LLD_COMMON}
-    ${LLD_MINGW}
-    ${LLD_MACHO}
-    ${LLD_WASM}
-)
-
-execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --includedir
-    OUTPUT_VARIABLE LLVM_INCLUDE_DIRS_SPACES
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-string(REPLACE " " ";" LLVM_INCLUDE_DIRS "${LLVM_INCLUDE_DIRS_SPACES}")
-
-if (APPLE)
-    if (MSVC)
-        list(REMOVE_ITEM LLVM_LIBRARIES "zstd.lib")
-    else()
-        list(REMOVE_ITEM LLVM_LIBRARIES "-lzstd")
-    endif()
-
-    find_library(ZSTD NAMES libzstd.a libzstdstatic.a zstd NAMES_PER_DIR)
-    list(APPEND LLVM_LIBRARIES "${ZSTD}")
-endif()
-
-link_directories("${LLVM_LIBDIRS}")
 
 add_library("${LIBRARY_NAME}"
     "bootstrap/std/base.c"
@@ -162,17 +60,127 @@ target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 add_executable("${COMPILER_NAME}"
     "bootstrap/bloat-buster/main.c"
     "bootstrap/bloat-buster/pdb_image.c"
-    "bootstrap/bloat-buster/llvm.cpp"
-    "bootstrap/bloat-buster/lld_driver.c"
-    "bootstrap/bloat-buster/lld_api.cpp"
     "bootstrap/bloat-buster/gui.c"
 )
+target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME})
 
-target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})
-cmake_print_variables("LLVM definitions: ${LLVM_DEFINITIONS}")
-target_include_directories(${COMPILER_NAME} PRIVATE ${LLVM_INCLUDE_DIRS})
-target_link_directories(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARY_DIRS})
-target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME} ${LLVM_LIBRARIES} ${lld_libs})
+if (USE_LLVM)
+    find_package(LLVM REQUIRED CONFIG)
+
+    find_program(LLVM_CONFIG_EXE
+        NAMES llvm-config-19 llvm-config-19.0 llvm-config190 llvm-config19 llvm-config NAMES_PER_DIR
+        PATHS
+        "/mingw64/bin"
+        "/c/msys64/mingw64/bin"
+        "c:/msys64/mingw64/bin"
+        "C:/Libraries/llvm-19.0.0/bin")
+
+    if ("${LLVM_CONFIG_EXE}" STREQUAL "LLVM_CONFIG_EXE-NOTFOUND")
+        if (NOT LLVM_CONFIG_ERROR_MESSAGES STREQUAL "")
+            list(JOIN LLVM_CONFIG_ERROR_MESSAGES "\n" LLVM_CONFIG_ERROR_MESSAGE)
+            message(FATAL_ERROR ${LLVM_CONFIG_ERROR_MESSAGE})
+        else()
+            message(FATAL_ERROR "unable to find llvm-config")
+        endif()
+    endif()
+
+    execute_process(
+        COMMAND ${LLVM_CONFIG_EXE} --libs
+        OUTPUT_VARIABLE LLVM_LIBRARIES_SPACES
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" LLVM_LIBRARIES "${LLVM_LIBRARIES_SPACES}")
+
+    execute_process(
+        COMMAND ${LLVM_CONFIG_EXE} --libdir
+        OUTPUT_VARIABLE LLVM_LIBDIRS_SPACES
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" LLVM_LIBDIRS "${LLVM_LIBDIRS_SPACES}")
+
+    execute_process(
+        COMMAND ${LLVM_CONFIG_EXE} --system-libs
+        OUTPUT_VARIABLE LLVM_SYSTEM_LIBS_SPACES
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS_SPACES}")
+
+    execute_process(
+        COMMAND ${LLVM_CONFIG_EXE} --shared-mode
+        OUTPUT_VARIABLE LLVM_LINK_MODE
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+    cmake_print_variables("LLVM libs: ${LLVM_LIBRARIES}")
+    cmake_print_variables("LLVM libdirs: ${LLVM_LIBDIRS}")
+    cmake_print_variables("LLVM system libs: ${LLVM_SYSTEM_LIBS}")
+    cmake_print_variables("LLVM link mode: ${LLVM_LINK_MODE}")
+
+    if (${LLVM_LINK_MODE} STREQUAL "shared")
+        # We always ask for the system libs corresponding to static linking,
+        # since on some distros LLD is only available as a static library
+        # and we need these libraries to link it successfully
+        execute_process(
+            COMMAND ${LLVM_CONFIG_EXE} --system-libs --link-static
+            OUTPUT_VARIABLE LLVM_STATIC_SYSTEM_LIBS_SPACES
+            ERROR_QUIET # Some installations have no static libs, we just ignore the failure
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        string(REPLACE " " ";" LLVM_STATIC_SYSTEM_LIBS "${LLVM_STATIC_SYSTEM_LIBS_SPACES}")
+        find_library(LLD_COFF NAMES liblldCOFF.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_COMMON NAMES liblldCommon.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_ELF NAMES liblldELF.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_MACHO NAMES liblldMachO.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_MINGW NAMES liblldMinGW.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_WASM NAMES liblldWasm.so PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+
+        set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS} ${LLVM_STATIC_SYSTEM_LIBS})
+    else()
+        find_library(LLD_COFF NAMES lldCOFF.lib lldCOFF.a liblldCOFF.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_COMMON NAMES lldCommon.lib lldCommon.a liblldCommon.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_ELF NAMES lldELF.lib lldELF.a liblldELF.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_MACHO NAMES lldMachO.lib lldMachO.a liblldMachO.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_MINGW NAMES lldMinGW.lib lldMinGW.a liblldMinGW.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+        find_library(LLD_WASM NAMES lldWasm.lib lldWasm.a liblldWasm.a PATHS ${LLVM_LIBRARY_DIRS} NO_DEFAULT_PATH)
+
+        set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBS})
+    endif()
+
+    set(lld_libs
+        ${LLD_COFF}
+        ${LLD_ELF}
+        ${LLD_COMMON}
+        ${LLD_MINGW}
+        ${LLD_MACHO}
+        ${LLD_WASM}
+    )
+
+    execute_process(
+        COMMAND ${LLVM_CONFIG_EXE} --includedir
+        OUTPUT_VARIABLE LLVM_INCLUDE_DIRS_SPACES
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" LLVM_INCLUDE_DIRS "${LLVM_INCLUDE_DIRS_SPACES}")
+
+    if (APPLE)
+        if (MSVC)
+            list(REMOVE_ITEM LLVM_LIBRARIES "zstd.lib")
+        else()
+            list(REMOVE_ITEM LLVM_LIBRARIES "-lzstd")
+        endif()
+
+        find_library(ZSTD NAMES libzstd.a libzstdstatic.a zstd NAMES_PER_DIR)
+        list(APPEND LLVM_LIBRARIES "${ZSTD}")
+    endif()
+
+    link_directories("${LLVM_LIBDIRS}")
+
+    target_compile_definitions(${COMPILER_NAME} PRIVATE ${LLVM_DEFINITIONS})
+    cmake_print_variables("LLVM definitions: ${LLVM_DEFINITIONS}")
+    target_include_directories(${COMPILER_NAME} PRIVATE ${LLVM_INCLUDE_DIRS})
+    target_link_directories(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARY_DIRS})
+    target_link_libraries(${COMPILER_NAME} PRIVATE ${LLVM_LIBRARIES} ${lld_libs})
+    target_sources(${COMPILER_NAME} PRIVATE
+        "bootstrap/bloat-buster/llvm.cpp"
+        "bootstrap/bloat-buster/lld_driver.c"
+        "bootstrap/bloat-buster/lld_api.cpp"
+    )
+endif()
+
 
 if (NOT BB_IS_CI)
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
