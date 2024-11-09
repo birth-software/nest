@@ -24,14 +24,11 @@
     if (unlikely(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)) wrong_vulkan_result(result, strlit(#call), strlit(__FILE__), __LINE__); \
 } while(0)
 
-STRUCT(Matrix4x4)
-{
-    float m[4][4];
-};
-
 STRUCT(GPUDrawPushConstants)
 {
     VkDeviceAddress vertex_buffer;
+    f32 width;
+    f32 height;
 };
 
 fn u8 vk_layer_is_supported(String layer_name)
@@ -979,23 +976,25 @@ void run_app(Arena* arena)
         Vec4 color;
     };
 
-        Vec4 color = { .v = { 1.0f, 0.0f, 0.0f, 1.0f } };
+    Vec4 color = { .v = { 1.0f, 0.0f, 0.0f, 1.0f } };
 
+    auto width_float = (f32)initial_width;
+    auto height_float = (f32)initial_height;
     Vertex vertices[] = {
         {
-            .position = { .v = { 0.5, -0.5, 0, 1 } },
+            .position = { .v = { (3 * width_float) / 4, height_float / 4, 0.0f, 1.0f } },
             .color = color,
         },
         {
-            .position = { .v = { 0.5, 0.5, 0, 1 } },
+            .position = { .v = { (3 * width_float) / 4, (3 * height_float) / 4, 0.0f, 1.0f } },
             .color = color,
         },
         {
-            .position = { .v = { -0.5, -0.5, 0, 1 } },
+            .position = { .v = { width_float / 4, height_float / 4, 0.0f, 1.0f } },
             .color = color,
         },
         {
-            .position = { .v = { -0.5, 0.5, 0, 1 } },
+            .position = { .v = { width_float / 4, (3 * height_float) / 4, 0.0f, 1.0f } },
             .color = color,
         },
     };
@@ -1153,6 +1152,8 @@ void run_app(Arena* arena)
 // typedef void (VKAPI_PTR *PFN_vkCmdPushConstants)(VkCommandBuffer commandBuffer, VkPipelineLayout layout, VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size, const void* pValues);
             GPUDrawPushConstants push_constants = {
                 .vertex_buffer = vertex_buffer_device_address,
+                .width = (f32)width,
+                .height = (f32)height,
             };
             VkShaderStageFlags shader_stage_flags = VK_SHADER_STAGE_VERTEX_BIT;
             u32 push_constant_offset = 0;
