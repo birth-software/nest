@@ -6,6 +6,8 @@
 #include <GLFW/glfw3native.h>
 #include <volk.h>
 
+#include <bloat-buster/shader_compilation.h>
+
 [[noreturn]] [[gnu::cold]] fn void wrong_vulkan_result(VkResult result, String call_string, String file, int line)
 {
     unused(result);
@@ -108,19 +110,14 @@ fn void vk_transition_image(VkCommandBuffer command_buffer, VkImage image, VkIma
     vkCmdPipelineBarrier2(command_buffer, &dependency_info);
 }
 
-fn VkShaderModule vk_shader_module_create(Arena* arena, VkDevice device, const VkAllocationCallbacks* allocator, String path)
+fn VkShaderModule vk_shader_module_create(Arena* arena, VkDevice device, const VkAllocationCallbacks* allocator, String path, ShaderStage shader_stage)
 {
-    auto file = file_read(arena, path);
-
-    if (file.length % sizeof(u32) != 0)
-    {
-        failed_execution();
-    }
+    auto binary = compile_shader(arena, path, shader_stage);
 
     VkShaderModuleCreateInfo create_info = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = file.length,
-        .pCode = (u32*)file.pointer,
+        .codeSize = binary.length,
+        .pCode = (u32*)binary.pointer,
     };
 
     VkShaderModule shader_module;
@@ -374,9 +371,8 @@ void run_app(Arena* arena)
             failed_execution();
         }
 
-        auto debug_utils_extension = strlit(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         const char* extensions[] = {
-            string_to_c(debug_utils_extension),
+            VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
             VK_KHR_SURFACE_EXTENSION_NAME,
             VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
         };
@@ -773,8 +769,8 @@ void run_app(Arena* arena)
     VkPipeline graphics_pipeline;
     VkPipelineLayout graphics_pipeline_layout;
     {
-        VkShaderModule vertex_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/triangle.vert.spv"));
-        VkShaderModule fragment_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/triangle.frag.spv"));
+        VkShaderModule vertex_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/triangle.vert"), SHADER_STAGE_VERTEX);
+        VkShaderModule fragment_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/triangle.frag"), SHADER_STAGE_FRAGMENT);
 
         VkPushConstantRange push_constant_ranges[] = {
             {
@@ -983,22 +979,24 @@ void run_app(Arena* arena)
         Vec4 color;
     };
 
+        Vec4 color = { .v = { 1.0f, 0.0f, 0.0f, 1.0f } };
+
     Vertex vertices[] = {
         {
             .position = { .v = { 0.5, -0.5, 0, 1 } },
-            .color = { .v = { 255.0f, 0, 0, 1 } },
+            .color = color,
         },
         {
             .position = { .v = { 0.5, 0.5, 0, 1 } },
-            .color = { .v = { 255.0f, 0, 0, 1 } },
+            .color = color,
         },
         {
             .position = { .v = { -0.5, -0.5, 0, 1 } },
-            .color = { .v = { 255.0f, 0, 0, 1 } },
+            .color = color,
         },
         {
             .position = { .v = { -0.5, 0.5, 0, 1 } },
-            .color = { .v = { 255.0f, 0, 0, 1 } },
+            .color = color,
         },
     };
 
