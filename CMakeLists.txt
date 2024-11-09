@@ -60,7 +60,6 @@ target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 add_executable("${COMPILER_NAME}"
     "bootstrap/bloat-buster/main.c"
     "bootstrap/bloat-buster/pdb_image.c"
-    "bootstrap/bloat-buster/gui.c"
 )
 target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME})
 
@@ -178,11 +177,14 @@ if (USE_LLVM)
         "bootstrap/bloat-buster/llvm.cpp"
         "bootstrap/bloat-buster/lld_driver.c"
         "bootstrap/bloat-buster/lld_api.cpp"
+        "bootstrap/bloat-buster/gui.c"
     )
 endif()
 
-
 if (NOT BB_IS_CI)
+    find_package(glslang REQUIRED)
+    target_link_libraries(${COMPILER_NAME} PRIVATE glslang::glslang glslang::SPIRV glslang::glslang-default-resource-limits)
+
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -206,4 +208,7 @@ if (NOT BB_IS_CI)
 
     add_subdirectory(dependencies/volk-1.3.301 volk)
     target_link_libraries(${COMPILER_NAME} PRIVATE volk)
+    target_sources(${COMPILER_NAME} PRIVATE
+        "bootstrap/bloat-buster/shader_compilation.c"
+    )
 endif()
