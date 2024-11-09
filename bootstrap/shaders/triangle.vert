@@ -17,15 +17,19 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer{
 layout( push_constant ) uniform constants
 {	
 	VertexBuffer vertexBuffer;
+    float width;
+    float height;
 } PushConstants;
 
 void main() 
 {	
 	//load vertex data from device address
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
+    float width = PushConstants.width;
+    float height = PushConstants.height;
 
 	//output data
-	gl_Position = v.position;
+	gl_Position = vec4(2 * v.position.x / width - 1, 1 - (2 * v.position.y) / height, v.position.z, v.position.w);
 	outColor = v.color;
     //debugPrintfEXT("Position: (%f, %f, %f)\n", v.position.x, v.position.y, v.position.z);
     //debugPrintfEXT("Color: (%f, %f, %f)\n", v.color.x, v.color.y, v.color.z);
