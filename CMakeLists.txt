@@ -60,6 +60,7 @@ target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 add_executable("${COMPILER_NAME}"
     "bootstrap/bloat-buster/main.c"
     "bootstrap/bloat-buster/pdb_image.c"
+    "bootstrap/bloat-buster/gui.c"
 )
 target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME})
 
@@ -177,7 +178,6 @@ if (USE_LLVM)
         "bootstrap/bloat-buster/llvm.cpp"
         "bootstrap/bloat-buster/lld_driver.c"
         "bootstrap/bloat-buster/lld_api.cpp"
-        "bootstrap/bloat-buster/gui.c"
     )
 endif()
 
