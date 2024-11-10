@@ -2,4 +2,15 @@
 
 *.c text eol=lf
 *.cpp text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
 *.h text eol=lf
+*.txt text eol=lf
+*.MD text eol=lf
+*.md text eol=lf
+*.vert text eol=lf
+*.frag text eol=lf
+*.tesc text eol=lf
+*.geom text eol=lf
+*.comp text eol=lf
+*.tese text eol=lf

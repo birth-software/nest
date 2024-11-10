@@ -7,7 +7,7 @@ STRUCT(TextureMemory)
     u32 width;
     u32 height;
     u32 channel_count;
-    u32 padding[1];
+    u32 depth;
 };
 
 EXPORT TextureMemory texture_load_from_file(Arena* arena, String path);
