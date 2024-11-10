@@ -64,7 +64,7 @@ fn u8 vk_layer_is_supported(String layer_name)
     return supported;
 }
 
-fn VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
+fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 {
     unused(message_severity);
     unused(message_type);
@@ -174,119 +174,6 @@ STRUCT(VulkanBuffer)
     VkDeviceSize size;
 };
 
-fn VulkanBuffer vk_buffer_create(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties physical_device_memory_properties, VkDeviceSize buffer_size, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_flags)
-{
-    VkBuffer buffer;
-    VkBufferCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .pNext = 0,
-        .flags = 0,
-        .size = buffer_size,
-        .usage = usage_flags,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = 0,
-    };
-    vkok(vkCreateBuffer(device, &create_info, allocation_callbacks, &buffer));
-
-    VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(device, buffer, &memory_requirements);
-
-    u8 use_device_address_bit = (create_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0;
-    VkDeviceMemory memory = vk_allocate_memory(device, allocation_callbacks, physical_device_memory_properties, memory_requirements, memory_flags, use_device_address_bit);
-
-    VkDeviceSize memory_offset = 0;
-    vkok(vkBindBufferMemory(device, buffer, memory, memory_offset));
-
-    void* data = 0;
-    if (memory_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-    {
-        VkDeviceSize offset = 0;
-        VkMemoryMapFlags map_flags = 0;
-        vkok(vkMapMemory(device, memory, offset, memory_requirements.size, map_flags, &data));
-    }
-
-    VulkanBuffer result = {
-        .handle = buffer,
-        .cpu_data = data,
-        .gpu_data = memory,
-        .size = buffer_size,
-    };
-
-    return result;
-}
-
-STRUCT(VulkanImageCreate)
-{
-    u32 width;
-    u32 height;
-    u32 mip_levels;
-    VkFormat format;
-    VkImageUsageFlags usage;
-};
-
-STRUCT(VulkanImage)
-{
-    VkImage handle;
-    VkImageView view;
-    VkDeviceMemory memory;
-};
-
-fn VulkanImage vk_image_create(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties memory_properties, VulkanImageCreate create)
-{
-    VulkanImage result = {};
-
-    VkImageCreateInfo create_info = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .pNext = 0,
-        .flags = 0,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format = create.format,
-        .extent = {
-            .width = create.width,
-            .height = create.height,
-            .depth = 1,
-        },
-        .mipLevels = create.mip_levels,
-        .arrayLayers = 1,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = create.usage,
-        .sharingMode = 0,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = 0,
-        .initialLayout = 0,
-    };
-    vkok(vkCreateImage(device, &create_info, allocation_callbacks, &result.handle));
-
-    VkMemoryRequirements memory_requirements;
-    vkGetImageMemoryRequirements(device, result.handle, &memory_requirements);
-
-    VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-    u8 use_device_address_bit = 0;
-    result.memory = vk_allocate_memory(device, allocation_callbacks, memory_properties, memory_requirements, flags, use_device_address_bit);
-
-    VkDeviceSize memory_offset = 0;
-    vkok(vkBindImageMemory(device, result.handle, result.memory, memory_offset));
-
-    VkImageViewCreateInfo view_create_info = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = result.handle,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = create_info.format,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-            .baseMipLevel = 0,
-            .levelCount = create.mip_levels,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-    };
-
-    vkok(vkCreateImageView(device, &view_create_info, allocation_callbacks, &result.view));
-    return result;
-}
-
 STRUCT(ImmediateContext)
 {
     VkDevice device;
@@ -347,19 +234,19 @@ fn void immediate_end(ImmediateContext context)
     auto timeout = ~(u64)0;
     vkok(vkWaitForFences(context.device, array_length(fences), fences, wait_all, timeout));
 }
-STRUCT(CopyImage)
+STRUCT(VulkanCopyImage)
 {
     VkImage handle;
     VkExtent2D extent;
 };
 
-STRUCT(CopyImageArgs)
+STRUCT(VulkanCopyImageArgs)
 {
-    CopyImage source;
-    CopyImage destination;
+    VulkanCopyImage source;
+    VulkanCopyImage destination;
 };
 
-fn void vk_copy_image_to_image(VkCommandBuffer command_buffer, CopyImageArgs args)
+fn void vk_image_copy(VkCommandBuffer command_buffer, VulkanCopyImageArgs args)
 {
     VkImageSubresourceLayers subresource_layers = {
         .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -405,12 +292,187 @@ fn void vk_copy_image_to_image(VkCommandBuffer command_buffer, CopyImageArgs arg
     vkCmdBlitImage2(command_buffer, &blit_info);
 }
 
+fn VulkanBuffer vk_buffer_create(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties physical_device_memory_properties, VkDeviceSize buffer_size, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_flags)
+{
+    VkBuffer buffer;
+    VkBufferCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = 0,
+        .flags = 0,
+        .size = buffer_size,
+        .usage = usage_flags,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = 0,
+    };
+    vkok(vkCreateBuffer(device, &create_info, allocation_callbacks, &buffer));
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(device, buffer, &memory_requirements);
+
+    u8 use_device_address_bit = (create_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0;
+    VkDeviceMemory memory = vk_allocate_memory(device, allocation_callbacks, physical_device_memory_properties, memory_requirements, memory_flags, use_device_address_bit);
+
+    VkDeviceSize memory_offset = 0;
+    vkok(vkBindBufferMemory(device, buffer, memory, memory_offset));
+
+    void* data = 0;
+    if (memory_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+    {
+        VkDeviceSize offset = 0;
+        VkMemoryMapFlags map_flags = 0;
+        vkok(vkMapMemory(device, memory, offset, memory_requirements.size, map_flags, &data));
+    }
+
+    VulkanBuffer result = {
+        .handle = buffer,
+        .cpu_data = data,
+        .gpu_data = memory,
+        .size = buffer_size,
+    };
+
+    return result;
+}
+
+STRUCT(VulkanImageCreate)
+{
+    u32 width;
+    u32 height;
+    u32 mip_levels;
+    VkFormat format;
+    VkImageUsageFlags usage;
+};
+
+STRUCT(VulkanImage)
+{
+    VkImage handle;
+    VkImageView view;
+    VkDeviceMemory memory;
+    VkFormat format;
+};
+
+fn VulkanImage vk_image_create(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties memory_properties, VulkanImageCreate create)
+{
+    assert(create.width);
+    assert(create.height);
+    VulkanImage result = {};
+    result.format = create.format;
+
+    VkImageCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = 0,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = create.format,
+        .extent = {
+            .width = create.width,
+            .height = create.height,
+            .depth = 1,
+        },
+        .mipLevels = create.mip_levels,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = create.usage,
+        .sharingMode = 0,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = 0,
+        .initialLayout = 0,
+    };
+    vkok(vkCreateImage(device, &create_info, allocation_callbacks, &result.handle));
+
+    VkMemoryRequirements memory_requirements;
+    vkGetImageMemoryRequirements(device, result.handle, &memory_requirements);
+
+    VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    u8 use_device_address_bit = 0;
+    result.memory = vk_allocate_memory(device, allocation_callbacks, memory_properties, memory_requirements, flags, use_device_address_bit);
+
+    VkDeviceSize memory_offset = 0;
+    vkok(vkBindImageMemory(device, result.handle, result.memory, memory_offset));
+
+    VkImageViewCreateInfo view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = result.handle,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = create_info.format,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = create.mip_levels,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    vkok(vkCreateImageView(device, &view_create_info, allocation_callbacks, &result.view));
+    return result;
+}
+
+STRUCT(ImageFromTextureOptions)
+{
+    u8 apply_gamma_correction;
+};
+
+fn VulkanImage vk_image_from_texture(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, ImmediateContext immediate_context, VkPhysicalDeviceMemoryProperties memory_properties, TextureMemory texture, ImageFromTextureOptions options)
+{
+    assert(texture.depth == 1);
+    VkFormat format = options.apply_gamma_correction ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+
+    VulkanImage result = vk_image_create(device, allocation_callbacks, memory_properties, (VulkanImageCreate) {
+        .width = texture.width,
+        .height = texture.height,
+        .mip_levels = 1,
+        .format = format,
+        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+    });
+
+    u32 channel_count = 4;
+    auto image_size = (u64)texture.depth * texture.width * texture.height * channel_count;
+    VkBufferUsageFlags buffer_usage_flags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VkMemoryPropertyFlags buffer_memory_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    auto transfer_buffer = vk_buffer_create(device, allocation_callbacks, memory_properties, image_size, buffer_usage_flags, buffer_memory_flags);
+    memcpy(transfer_buffer.cpu_data, texture.pointer, image_size);
+
+    immediate_start(immediate_context);
+
+    vk_image_transition(immediate_context.command_buffer, result.handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    VkBufferImageCopy copy_regions[] = {
+        {
+            .bufferOffset = 0,
+            .bufferRowLength = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel = 0,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+            .imageOffset = { .x = 0, .y = 0, .z = 0 },
+            .imageExtent = {
+                .width = texture.width,
+                .height = texture.height,
+                .depth = texture.depth,
+            },
+        }
+    };
+
+    vkCmdCopyBufferToImage(immediate_context.command_buffer, transfer_buffer.handle, result.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, array_length(copy_regions), copy_regions);
+
+    vk_image_transition(immediate_context.command_buffer, result.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    immediate_end(immediate_context);
+
+    return result;
+}
+
 void run_app(Arena* arena)
 {
 #if defined(VK_USE_PLATFORM_XLIB_KHR)
-	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
-	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
 #endif
 
     if (glfwInit() != GLFW_TRUE)
@@ -443,7 +505,18 @@ void run_app(Arena* arena)
         const char* extensions[] = {
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
             VK_KHR_SURFACE_EXTENSION_NAME,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+            VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#endif
+#ifdef VK_USE_PLATFORM_XLIB_KHR
             VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
+#endif
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+            VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+#endif
+#ifdef VK_USE_PLATFORM_MACOS_MVK
+            VK_KHR_COCOA_SURFACE_EXTENSION_NAME,
+#endif
         };
 
         VkDebugUtilsMessengerCreateInfoEXT msg_ci = {
@@ -499,12 +572,32 @@ void run_app(Arena* arena)
 
     VkSurfaceKHR surface;
     {
-        VkXlibSurfaceCreateInfoKHR ci = {
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+        VkWin32SurfaceCreateInfoKHR create_info = {
+            .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+            .pNext = 0,
+            .flags = 0,
+            .hinstance = GetModuleHandleW(0),
+            .hwnd = glfwGetWin32Window(window),
+        };
+        vkok(vkCreateWin32SurfaceKHR(instance, &create_info, allocation_callbacks, &surface));
+#endif
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+        VkXlibSurfaceCreateInfoKHR create_info = {
             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+            .pNext = 0,
+            .flags = 0,
             .dpy = glfwGetX11Display(),
             .window = glfwGetX11Window(window),
         };
-        vkok(vkCreateXlibSurfaceKHR(instance, &ci, allocation_callbacks, &surface));
+        vkok(vkCreateXlibSurfaceKHR(instance, &create_info, allocation_callbacks, &surface));
+#endif
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+            VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+#endif
+#ifdef VK_USE_PLATFORM_MACOS_MVK
+            VK_KHR_COCOA_SURFACE_EXTENSION_NAME,
+#endif
     }
 
     VkPhysicalDevice physical_device;
@@ -790,6 +883,29 @@ void run_app(Arena* arena)
         vkok(vkCreateFence(device, &fence_create_info, allocation_callbacks, &immediate.fence));
     }
 
+    VkDescriptorSetLayoutBinding descriptor_set_layout_bindings[] = {
+        {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = 0,
+        },
+    };
+    VkDescriptorSetLayout descriptor_set_layout;
+    {
+        VkDescriptorSetLayoutCreateInfo create_info = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .pNext = 0,
+            .flags = 0,
+            .bindingCount = array_length(descriptor_set_layout_bindings),
+            .pBindings = descriptor_set_layout_bindings,
+        };
+
+        vkok(vkCreateDescriptorSetLayout(device, &create_info, allocation_callbacks, &descriptor_set_layout));
+    }
+
+    VkDescriptorSetLayout descriptor_set_layouts[] = { descriptor_set_layout };
     VkPipeline graphics_pipeline;
     VkPipelineLayout graphics_pipeline_layout;
     {
@@ -807,8 +923,8 @@ void run_app(Arena* arena)
         VkPipelineLayoutCreateInfo create_info = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .flags = 0,
-            .setLayoutCount = 0,
-            .pSetLayouts = 0,
+            .setLayoutCount = array_length(descriptor_set_layouts),
+            .pSetLayouts = descriptor_set_layouts,
             .pushConstantRangeCount = array_length(push_constant_ranges),
             .pPushConstantRanges = push_constant_ranges,
         };
@@ -999,30 +1115,38 @@ void run_app(Arena* arena)
 
     STRUCT(Vertex)
     {
-        Vec4 position;
-        Vec4 color;
+        f32 x;
+        f32 y;
+        f32 uv_x;
+        f32 uv_y;
     };
-
-    Vec4 color = { .v = { 1.0f, 0.0f, 0.0f, 1.0f } };
 
     auto width_float = (f32)initial_width;
     auto height_float = (f32)initial_height;
     Vertex vertices[] = {
         {
-            .position = { .v = { (3 * width_float) / 4, height_float / 4, 0.0f, 1.0f } },
-            .color = color,
+            .x = (3 * width_float) / 4,
+            .y = height_float / 4,
+            .uv_x = 1.0f,
+            .uv_y = 1.0f,
         },
         {
-            .position = { .v = { (3 * width_float) / 4, (3 * height_float) / 4, 0.0f, 1.0f } },
-            .color = color,
+            .x = (3 * width_float) / 4,
+            .y = (3 * height_float) / 4,
+            .uv_x = 1.0f,
+            .uv_y = 0.0f,
         },
         {
-            .position = { .v = { width_float / 4, height_float / 4, 0.0f, 1.0f } },
-            .color = color,
+            .x = width_float / 4,
+            .y = height_float / 4,
+            .uv_x = 0.0f,
+            .uv_y = 1.0f,
         },
         {
-            .position = { .v = { width_float / 4, (3 * height_float) / 4, 0.0f, 1.0f } },
-            .color = color,
+            .x = width_float / 4,
+            .y = (3 * height_float) / 4,
+            .uv_x = 0.0f,
+            .uv_y = 0.0f,
         },
     };
 
@@ -1070,6 +1194,104 @@ void run_app(Arena* arena)
         vkCmdCopyBuffer(immediate.command_buffer, staging_buffer.handle, index_buffer.handle, array_length(index_copies), index_copies);
 
         immediate_end(immediate);
+    }
+
+    auto texture_path =
+#ifdef _WIN32
+        strlit("C:/Users/david/Pictures/buster.jpg");
+#elif defined(__linux__)
+        strlit("/home/david/Pictures/buster.jpeg");
+#else
+#endif
+    auto texture = texture_load_from_file(arena, texture_path);
+    auto texture_image = vk_image_from_texture(device, allocation_callbacks, immediate, physical_device_memory_properties, texture, (ImageFromTextureOptions) {
+        .apply_gamma_correction = 0,
+    });
+
+    VkSampler sampler;
+    {
+        VkFilter sampler_filter = VK_FILTER_LINEAR;
+        VkSamplerCreateInfo create_info = {
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .pNext = 0,
+            .flags = 0,
+            .magFilter = sampler_filter,
+            .minFilter = sampler_filter,
+            .mipmapMode = 0,
+            .addressModeU = 0,
+            .addressModeV = 0,
+            .addressModeW = 0,
+            .mipLodBias = 0,
+            .anisotropyEnable = 0,
+            .maxAnisotropy = 0,
+            .compareEnable = 0,
+            .compareOp = 0,
+            .minLod = 0,
+            .maxLod = 0,
+            .borderColor = 0,
+            .unnormalizedCoordinates = 0,
+        };
+
+        vkok(vkCreateSampler(device, &create_info, allocation_callbacks, &sampler));
+    }
+
+    VkDescriptorPool descriptor_pools[frame_overlap];
+    VkDescriptorSet descriptor_sets[frame_overlap];
+    for (u32 i = 0; i < frame_overlap; i += 1)
+    {
+        VkDescriptorPoolSize pool_sizes[] = {
+            {
+                .type = descriptor_set_layout_bindings[0].descriptorType,
+                .descriptorCount = array_length(descriptor_set_layout_bindings),
+            },
+        };
+        VkDescriptorPoolCreateInfo create_info = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .pNext = 0,
+            .flags = 0,
+            .maxSets = 1,
+            .poolSizeCount = array_length(pool_sizes),
+            .pPoolSizes = pool_sizes,
+        };
+
+        vkok(vkCreateDescriptorPool(device, &create_info, allocation_callbacks, &descriptor_pools[i]));
+
+        VkDescriptorSetAllocateInfo allocate_info = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .pNext = 0,
+            .descriptorPool = descriptor_pools[i],
+            .descriptorSetCount = array_length(descriptor_set_layouts),
+            .pSetLayouts = descriptor_set_layouts,
+        };
+
+        vkok(vkAllocateDescriptorSets(device, &allocate_info, &descriptor_sets[i]));
+
+        VkDescriptorImageInfo image_infos[] = {
+            {
+                .sampler = sampler,
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = texture_image.view,
+            },
+        };
+
+        VkWriteDescriptorSet write_descriptor_sets[] = {
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .pNext = 0,
+                .dstSet = descriptor_sets[i],
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = array_length(image_infos),
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = image_infos,
+                .pBufferInfo = 0,
+                .pTexelBufferView = 0,
+            },
+        };
+
+        u32 descriptor_copy_count = 0;
+        VkCopyDescriptorSet* descriptor_copies = 0;
+        vkUpdateDescriptorSets(device, array_length(write_descriptor_sets), write_descriptor_sets, descriptor_copy_count, descriptor_copies);
     }
 
     u32 frame_completed = 0;
@@ -1146,6 +1368,13 @@ void run_app(Arena* arena)
 
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
+            // Bind texture
+            u32 first_set = 0;
+            u32 descriptor_set_count = 1;
+            u32 dynamic_offset_count = 0;
+            u32* dynamic_offsets = 0;
+            vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout, first_set, descriptor_set_count, &descriptor_sets[frame_index], dynamic_offset_count, dynamic_offsets);
+
             VkViewport viewports[] = {
                 {
                     .x = 0,
@@ -1176,7 +1405,6 @@ void run_app(Arena* arena)
             u32 first_scissor = 0;
             vkCmdSetScissor(command_buffer, first_scissor, array_length(scissors), scissors);
 
-// typedef void (VKAPI_PTR *PFN_vkCmdPushConstants)(VkCommandBuffer commandBuffer, VkPipelineLayout layout, VkShaderStageFlags stageFlags, uint32_t offset, uint32_t size, const void* pValues);
             GPUDrawPushConstants push_constants = {
                 .vertex_buffer = vertex_buffer_device_address,
                 .width = (f32)width,
@@ -1200,7 +1428,7 @@ void run_app(Arena* arena)
             VkImage swapchain_image = swapchain_image_buffer[swapchain_image_index];
             vk_image_transition(command_buffer, swapchain_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-            vk_copy_image_to_image(command_buffer, (CopyImageArgs) {
+            vk_image_copy(command_buffer, (VulkanCopyImageArgs) {
                 .source = {
                     .handle = render_image.handle,
                     .extent = {
