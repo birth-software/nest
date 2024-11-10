@@ -1,5 +1,5 @@
-#include <bloat-buster/gui.h>
 #if BB_CI == 0
+#include <bloat-buster/gui.h>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -7,6 +7,7 @@
 #include <volk.h>
 
 #include <bloat-buster/shader_compilation.h>
+#include <bloat-buster/image_loader.h>
 
 [[noreturn]] [[gnu::cold]] fn void wrong_vulkan_result(VkResult result, String call_string, String file, int line)
 {
@@ -15,8 +16,8 @@
 }
 
 #define vkok(call) do {\
-    VkResult result = call; \
-    if (unlikely(result != VK_SUCCESS)) wrong_vulkan_result(result, strlit(#call), strlit(__FILE__), __LINE__); \
+    VkResult _r_e_s_u_l_t_ = call; \
+    if (unlikely(_r_e_s_u_l_t_ != VK_SUCCESS)) wrong_vulkan_result(_r_e_s_u_l_t_, strlit(#call), strlit(__FILE__), __LINE__); \
 } while(0)
 
 #define vkok_swapchain(call) do {\
@@ -78,7 +79,7 @@ fn VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlag
 
 #define frame_overlap (2)
 
-fn void vk_transition_image(VkCommandBuffer command_buffer, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout)
+fn void vk_image_transition(VkCommandBuffer command_buffer, VkImage image, VkImageLayout old_layout, VkImageLayout new_layout)
 {
     VkImageMemoryBarrier2 image_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -215,6 +216,77 @@ fn VulkanBuffer vk_buffer_create(VkDevice device, const VkAllocationCallbacks* a
     return result;
 }
 
+STRUCT(VulkanImageCreate)
+{
+    u32 width;
+    u32 height;
+    u32 mip_levels;
+    VkFormat format;
+    VkImageUsageFlags usage;
+};
+
+STRUCT(VulkanImage)
+{
+    VkImage handle;
+    VkImageView view;
+    VkDeviceMemory memory;
+};
+
+fn VulkanImage vk_image_create(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties memory_properties, VulkanImageCreate create)
+{
+    VulkanImage result = {};
+
+    VkImageCreateInfo create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = 0,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = create.format,
+        .extent = {
+            .width = create.width,
+            .height = create.height,
+            .depth = 1,
+        },
+        .mipLevels = create.mip_levels,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = create.usage,
+        .sharingMode = 0,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = 0,
+        .initialLayout = 0,
+    };
+    vkok(vkCreateImage(device, &create_info, allocation_callbacks, &result.handle));
+
+    VkMemoryRequirements memory_requirements;
+    vkGetImageMemoryRequirements(device, result.handle, &memory_requirements);
+
+    VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    u8 use_device_address_bit = 0;
+    result.memory = vk_allocate_memory(device, allocation_callbacks, memory_properties, memory_requirements, flags, use_device_address_bit);
+
+    VkDeviceSize memory_offset = 0;
+    vkok(vkBindImageMemory(device, result.handle, result.memory, memory_offset));
+
+    VkImageViewCreateInfo view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = result.handle,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = create_info.format,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = create.mip_levels,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    vkok(vkCreateImageView(device, &view_create_info, allocation_callbacks, &result.view));
+    return result;
+}
+
 STRUCT(ImmediateContext)
 {
     VkDevice device;
@@ -335,7 +407,7 @@ fn void vk_copy_image_to_image(VkCommandBuffer command_buffer, CopyImageArgs arg
 
 void run_app(Arena* arena)
 {
-    #if defined(VK_USE_PLATFORM_XLIB_KHR)
+#if defined(VK_USE_PLATFORM_XLIB_KHR)
 	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
@@ -648,58 +720,13 @@ void run_app(Arena* arena)
     VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
     vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
 
-    VkImage render_image;
-    VkImageView render_image_view;
-    {
-        VkImageCreateInfo create_info = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .pNext = 0,
-            .flags = 0,
-            .imageType = VK_IMAGE_TYPE_2D,
-            .format = common_image_format,
-            .extent = {
-                .width = initial_width,
-                .height = initial_height,
-                .depth = 1,
-            },
-            .mipLevels = 1,
-            .arrayLayers = 1,
-            .samples = VK_SAMPLE_COUNT_1_BIT,
-            .tiling = VK_IMAGE_TILING_OPTIMAL,
-            .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-            .sharingMode = 0,
-            .queueFamilyIndexCount = 0,
-            .pQueueFamilyIndices = 0,
-            .initialLayout = 0,
-        };
-        vkok(vkCreateImage(device, &create_info, allocation_callbacks, &render_image));
-
-        VkMemoryRequirements memory_requirements;
-        vkGetImageMemoryRequirements(device, render_image, &memory_requirements);
-
-        VkMemoryPropertyFlags flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        u8 use_device_address_bit = 0;
-        VkDeviceMemory memory = vk_allocate_memory(device, allocation_callbacks, physical_device_memory_properties, memory_requirements, flags, use_device_address_bit);
-
-        VkDeviceSize memory_offset = 0;
-        vkok(vkBindImageMemory(device, render_image, memory, memory_offset));
-
-        VkImageViewCreateInfo view_create_info = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = render_image,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = create_info.format,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-        };
-
-        vkok(vkCreateImageView(device, &view_create_info, allocation_callbacks, &render_image_view));
-    }
+    VulkanImage render_image = vk_image_create(device, allocation_callbacks, physical_device_memory_properties, (VulkanImageCreate) {
+        .width = initial_width,
+        .height = initial_height,
+        .mip_levels = 1,
+        .format = common_image_format,
+        .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+    });
 
     VkCommandPool command_pools[frame_overlap];
     VkCommandBuffer command_buffers[frame_overlap];
@@ -1089,12 +1116,12 @@ void run_app(Arena* arena)
                 vkok(vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info));
             }
 
-            vk_transition_image(command_buffer, render_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            vk_image_transition(command_buffer, render_image.handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
             VkRenderingAttachmentInfo color_attachments[] = {
                 {
                     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = render_image_view,
+                    .imageView = render_image.view,
                     .imageLayout = VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
                     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                     .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1168,14 +1195,14 @@ void run_app(Arena* arena)
             
             vkCmdEndRendering(command_buffer);
 
-            vk_transition_image(command_buffer, render_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            vk_image_transition(command_buffer, render_image.handle, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
             VkImage swapchain_image = swapchain_image_buffer[swapchain_image_index];
-            vk_transition_image(command_buffer, swapchain_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            vk_image_transition(command_buffer, swapchain_image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
             vk_copy_image_to_image(command_buffer, (CopyImageArgs) {
                 .source = {
-                    .handle = render_image,
+                    .handle = render_image.handle,
                     .extent = {
                         .width = initial_width,
                         .height = initial_height,
@@ -1190,7 +1217,7 @@ void run_app(Arena* arena)
                 },
             });
             
-            vk_transition_image(command_buffer, swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+            vk_image_transition(command_buffer, swapchain_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
             vkok(vkEndCommandBuffer(command_buffer));
         }

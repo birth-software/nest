@@ -210,5 +210,8 @@ if (NOT BB_IS_CI)
     target_link_libraries(${COMPILER_NAME} PRIVATE volk)
     target_sources(${COMPILER_NAME} PRIVATE
         "bootstrap/bloat-buster/shader_compilation.c"
+        "bootstrap/bloat-buster/image_loader.c"
     )
+
+    target_include_directories(${COMPILER_NAME} PRIVATE dependencies/stb)
 endif()
