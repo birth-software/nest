@@ -212,6 +212,7 @@ if (NOT BB_IS_CI)
     target_sources(${COMPILER_NAME} PRIVATE
         "bootstrap/bloat-buster/shader_compilation.c"
         "bootstrap/bloat-buster/image_loader.c"
+        "bootstrap/bloat-buster/font.c"
     )
 
     target_include_directories(${COMPILER_NAME} PRIVATE dependencies/stb)

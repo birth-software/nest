@@ -8,6 +8,7 @@
 
 #include <bloat-buster/shader_compilation.h>
 #include <bloat-buster/image_loader.h>
+#include <bloat-buster/font.h>
 
 [[noreturn]] [[gnu::cold]] fn void wrong_vulkan_result(VkResult result, String call_string, String file, int line)
 {
@@ -909,8 +910,8 @@ void run_app(Arena* arena)
     VkPipeline graphics_pipeline;
     VkPipelineLayout graphics_pipeline_layout;
     {
-        VkShaderModule vertex_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/triangle.vert"), SHADER_STAGE_VERTEX);
-        VkShaderModule fragment_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/triangle.frag"), SHADER_STAGE_FRAGMENT);
+        VkShaderModule vertex_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/quad.vert"), SHADER_STAGE_VERTEX);
+        VkShaderModule fragment_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/quad_tex.frag"), SHADER_STAGE_FRAGMENT);
 
         VkPushConstantRange push_constant_ranges[] = {
             {
@@ -1195,6 +1196,8 @@ void run_app(Arena* arena)
 
         immediate_end(immediate);
     }
+
+    auto texture_atlas = font_create_texture_atlas(arena, strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf"));
 
     auto texture_path =
 #ifdef _WIN32
