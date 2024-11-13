@@ -13,6 +13,9 @@
 [[noreturn]] [[gnu::cold]] fn void wrong_vulkan_result(VkResult result, String call_string, String file, int line)
 {
     unused(result);
+    unused(call_string);
+    unused(file);
+    unused(line);
     trap();
 }
 
@@ -70,7 +73,7 @@ fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT mes
     unused(message_severity);
     unused(message_type);
     unused(user_data);
-    print("Validation message ({cstr}): {cstr}\n", callback_data->pMessageIdName, callback_data->pMessage);
+    print("Validation message ({cstr}): {cstr}\n", callback_data->pMessageIdName ? callback_data->pMessageIdName : "ID_NONE", callback_data->pMessage);
     if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         failed_execution();
@@ -412,13 +415,12 @@ fn VulkanImage vk_image_create(VkDevice device, const VkAllocationCallbacks* all
 
 STRUCT(ImageFromTextureOptions)
 {
-    u8 apply_gamma_correction;
+    VkFormat format;
 };
 
-fn VulkanImage vk_image_from_texture(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, ImmediateContext immediate_context, VkPhysicalDeviceMemoryProperties memory_properties, TextureMemory texture, ImageFromTextureOptions options)
+fn VulkanImage vk_image_from_texture(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, ImmediateContext immediate_context, VkPhysicalDeviceMemoryProperties memory_properties, TextureMemory texture, VkFormat format)
 {
     assert(texture.depth == 1);
-    VkFormat format = options.apply_gamma_correction ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
     VulkanImage result = vk_image_create(device, allocation_callbacks, memory_properties, (VulkanImageCreate) {
         .width = texture.width,
@@ -428,8 +430,7 @@ fn VulkanImage vk_image_from_texture(VkDevice device, const VkAllocationCallback
         .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
     });
 
-    u32 channel_count = 4;
-    auto image_size = (u64)texture.depth * texture.width * texture.height * channel_count;
+    auto image_size = (u64)texture.depth * texture.width * texture.height * texture.channel_count;
     VkBufferUsageFlags buffer_usage_flags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     VkMemoryPropertyFlags buffer_memory_flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     auto transfer_buffer = vk_buffer_create(device, allocation_callbacks, memory_properties, image_size, buffer_usage_flags, buffer_memory_flags);
@@ -530,7 +531,7 @@ void run_app(Arena* arena)
 
         VkValidationFeatureEnableEXT enabled_validation_features[] =
         {
-            VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT,
+            // VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT,
         };
 
         VkValidationFeaturesEXT validation_features = { 
@@ -892,6 +893,13 @@ void run_app(Arena* arena)
             .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
             .pImmutableSamplers = 0,
         },
+        // {
+        //     .binding = 1,
+        //     .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        //     .descriptorCount = 1,
+        //     .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+        //     .pImmutableSamplers = 0,
+        // },
     };
     VkDescriptorSetLayout descriptor_set_layout;
     {
@@ -910,8 +918,8 @@ void run_app(Arena* arena)
     VkPipeline graphics_pipeline;
     VkPipelineLayout graphics_pipeline_layout;
     {
-        VkShaderModule vertex_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/quad.vert"), SHADER_STAGE_VERTEX);
-        VkShaderModule fragment_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/quad_tex.frag"), SHADER_STAGE_FRAGMENT);
+        VkShaderModule vertex_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/font.vert"), SHADER_STAGE_VERTEX);
+        VkShaderModule fragment_shader = vk_shader_module_create(arena, device, allocation_callbacks, strlit("bootstrap/shaders/font.frag"), SHADER_STAGE_FRAGMENT);
 
         VkPushConstantRange push_constant_ranges[] = {
             {
@@ -1023,13 +1031,13 @@ void run_app(Arena* arena)
 
         VkPipelineColorBlendAttachmentState attachments[] = {
             {
-                .blendEnable = 0,
-                .srcColorBlendFactor = 0,
-                .dstColorBlendFactor = 0,
-                .colorBlendOp = 0,
-                .srcAlphaBlendFactor = 0,
-                .dstAlphaBlendFactor = 0,
-                .alphaBlendOp = 0,
+                .blendEnable = 1,
+                .srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
+                .dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                .colorBlendOp = VK_BLEND_OP_ADD,
+                .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+                .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+                .alphaBlendOp = VK_BLEND_OP_ADD,
                 .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
             },
         };
@@ -1097,119 +1105,32 @@ void run_app(Arena* arena)
         vkok(vkCreateGraphicsPipelines(device, pipeline_cache, array_length(create_infos), create_infos, allocation_callbacks, &graphics_pipeline));
     }
 
-    UNION(Vec3)
-    {
-        struct
-        {
-            f32 x, y, z;
-        };
-        f32 v[3];
-    };
-    UNION(Vec4)
-    {
-        struct
-        {
-            f32 x, y, z, w;
-        };
-        f32 v[4];
-    };
-
-    STRUCT(Vertex)
-    {
-        f32 x;
-        f32 y;
-        f32 uv_x;
-        f32 uv_y;
-    };
-
-    auto width_float = (f32)initial_width;
-    auto height_float = (f32)initial_height;
-    Vertex vertices[] = {
-        {
-            .x = (3 * width_float) / 4,
-            .y = height_float / 4,
-            .uv_x = 1.0f,
-            .uv_y = 1.0f,
-        },
-        {
-            .x = (3 * width_float) / 4,
-            .y = (3 * height_float) / 4,
-            .uv_x = 1.0f,
-            .uv_y = 0.0f,
-        },
-        {
-            .x = width_float / 4,
-            .y = height_float / 4,
-            .uv_x = 0.0f,
-            .uv_y = 1.0f,
-        },
-        {
-            .x = width_float / 4,
-            .y = (3 * height_float) / 4,
-            .uv_x = 0.0f,
-            .uv_y = 0.0f,
-        },
-    };
-
-    u32 indices[] = {
-        0, 1, 2,
-        2, 1, 3
-    };
-
-    VulkanBuffer vertex_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, sizeof(vertices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    VulkanBuffer index_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    VkBufferDeviceAddressInfo device_address_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-        .buffer = vertex_buffer.handle,
-    };
-    VkDeviceAddress vertex_buffer_device_address = vkGetBufferDeviceAddress(device, &device_address_info);
-
-    {
-        VulkanBuffer staging_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, vertex_buffer.size + index_buffer.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-
-        memcpy(staging_buffer.cpu_data, vertices, sizeof(vertices));
-        memcpy((u8*)staging_buffer.cpu_data + sizeof(vertices), indices, sizeof(indices));
-
-        immediate_start(immediate);
-
-        VkBufferCopy vertex_copies[] =
-        {
-            {
-                .srcOffset = 0,
-                .dstOffset= 0,
-                .size = vertex_buffer.size,
-            }
-        };
-
-        vkCmdCopyBuffer(immediate.command_buffer, staging_buffer.handle, vertex_buffer.handle, array_length(vertex_copies), vertex_copies);
-
-        VkBufferCopy index_copies[] =
-        {
-            {
-                .srcOffset = vertex_buffer.size,
-                .dstOffset= 0,
-                .size = index_buffer.size,
-            }
-        };
-
-        vkCmdCopyBuffer(immediate.command_buffer, staging_buffer.handle, index_buffer.handle, array_length(index_copies), index_copies);
-
-        immediate_end(immediate);
-    }
-
-    auto texture_atlas = font_create_texture_atlas(arena, strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf"));
-
-    auto texture_path =
+    auto font_path = 
 #ifdef _WIN32
-        strlit("C:/Users/david/Pictures/buster.jpg");
+strlit("C:/Users/David/Downloads/Fira_Sans/FiraSans-Regular.ttf")
 #elif defined(__linux__)
-        strlit("/home/david/Pictures/buster.jpeg");
+strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
 #else
 #endif
-    auto texture = texture_load_from_file(arena, texture_path);
-    auto texture_image = vk_image_from_texture(device, allocation_callbacks, immediate, physical_device_memory_properties, texture, (ImageFromTextureOptions) {
-        .apply_gamma_correction = 0,
-    });
+;
+    auto texture_atlas = font_create_texture_atlas(arena, font_path);
+    auto texture_atlas_image = vk_image_from_texture(device, allocation_callbacks, immediate, physical_device_memory_properties, (TextureMemory) {
+        .pointer = texture_atlas.pointer,
+        .width = texture_atlas.width,
+        .height = texture_atlas.height,
+        .channel_count = 1,
+        .depth = 1,
+    }, VK_FORMAT_R8_UNORM);
+
+//     auto texture_path =
+// #ifdef _WIN32
+//         strlit("C:/Users/david/Pictures/buster.jpg");
+// #elif defined(__linux__)
+//         strlit("/home/david/Pictures/buster.jpeg");
+// #else
+// #endif
+//     auto texture = texture_load_from_file(arena, texture_path);
+//     auto texture_image = vk_image_from_texture(device, allocation_callbacks, immediate, physical_device_memory_properties, texture, VK_FORMAT_R8G8B8A8_SRGB);
 
     VkSampler sampler;
     {
@@ -1273,7 +1194,7 @@ void run_app(Arena* arena)
             {
                 .sampler = sampler,
                 .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                .imageView = texture_image.view,
+                .imageView = texture_atlas_image.view,
             },
         };
 
@@ -1295,6 +1216,155 @@ void run_app(Arena* arena)
         u32 descriptor_copy_count = 0;
         VkCopyDescriptorSet* descriptor_copies = 0;
         vkUpdateDescriptorSets(device, array_length(write_descriptor_sets), write_descriptor_sets, descriptor_copy_count, descriptor_copies);
+    }
+
+    STRUCT(Vec4)
+    {
+        f32 v[4];
+    };
+    Vec4 color = {1, 1, 1, 1};
+    static_assert(sizeof(color) == 4 * sizeof(float));
+
+    STRUCT(Vertex)
+    {
+        f32 x;
+        f32 y;
+        f32 uv_x;
+        f32 uv_y;
+        Vec4 color;
+    };
+
+    auto width_float = (f32)initial_width;
+    auto height_float = (f32)initial_height;
+    Vertex vertices[4*2];
+
+    u32 indices[] = {
+        0, 1, 2,
+        1, 3, 2,
+        0 + 4, 1 + 4, 2 + 4,
+        1 + 4, 3 + 4, 2 + 4
+    };
+
+    {
+        u8 c = 'a';
+        auto character_count_per_row = texture_atlas.width / texture_atlas.char_height;
+        auto row = c / character_count_per_row;
+        auto column = c % character_count_per_row;
+        auto pos_x = width_float / 2;
+        auto pos_y = height_float / 2;
+        auto uv_x = column * texture_atlas.char_height;
+        auto uv_y = row * texture_atlas.char_height;
+
+        vertices[0] = (Vertex) {
+            .x = pos_x,
+            .y = pos_y,
+            .uv_x = (f32)uv_x / texture_atlas.width,
+            .uv_y = (f32)uv_y / texture_atlas.width,
+            .color = color,
+        };
+        vertices[1] = (Vertex) {
+            .x = pos_x + texture_atlas.char_height,
+            .y = pos_y,
+            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
+            .uv_y = (f32)uv_y / texture_atlas.width,
+            .color = color,
+        };
+        vertices[2] = (Vertex) {
+            .x = pos_x,
+            .y = pos_y + texture_atlas.char_height,
+            .uv_x = (f32)uv_x / texture_atlas.width,
+            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
+            .color = color,
+        };
+        vertices[3] = (Vertex) {
+            .x = pos_x + texture_atlas.char_height,
+            .y = pos_y + texture_atlas.char_height,
+            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
+            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
+            .color = color,
+        };
+    }
+
+    {
+        u8 c = 'b';
+        auto character_count_per_row = texture_atlas.width / texture_atlas.char_height;
+        auto row = c / character_count_per_row;
+        auto column = c % character_count_per_row;
+        auto pos_x = width_float / 2 + texture_atlas.char_height;
+        auto pos_y = height_float / 2;
+        auto uv_x = column * texture_atlas.char_height;
+        auto uv_y = row * texture_atlas.char_height;
+
+        vertices[4] = (Vertex) {
+            .x = pos_x,
+            .y = pos_y,
+            .uv_x = (f32)uv_x / texture_atlas.width,
+            .uv_y = (f32)uv_y / texture_atlas.width,
+            .color = color,
+        };
+        vertices[5] = (Vertex) {
+            .x = pos_x + texture_atlas.char_height,
+            .y = pos_y,
+            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
+            .uv_y = (f32)uv_y / texture_atlas.width,
+            .color = color,
+        };
+        vertices[6] = (Vertex) {
+            .x = pos_x,
+            .y = pos_y + texture_atlas.char_height,
+            .uv_x = (f32)uv_x / texture_atlas.width,
+            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
+            .color = color,
+        };
+        vertices[7] = (Vertex) {
+            .x = pos_x + texture_atlas.char_height,
+            .y = pos_y + texture_atlas.char_height,
+            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
+            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
+            .color = color,
+        };
+    }
+
+    VulkanBuffer vertex_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, sizeof(vertices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VulkanBuffer index_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VkBufferDeviceAddressInfo device_address_info = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+        .buffer = vertex_buffer.handle,
+    };
+    VkDeviceAddress vertex_buffer_device_address = vkGetBufferDeviceAddress(device, &device_address_info);
+
+    VulkanBuffer staging_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, vertex_buffer.size + index_buffer.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+    {
+
+        memcpy(staging_buffer.cpu_data, vertices, sizeof(vertices));
+        memcpy((u8*)staging_buffer.cpu_data + sizeof(vertices), indices, sizeof(indices));
+
+        immediate_start(immediate);
+
+        VkBufferCopy vertex_copies[] =
+        {
+            {
+                .srcOffset = 0,
+                .dstOffset= 0,
+                .size = vertex_buffer.size,
+            }
+        };
+
+        vkCmdCopyBuffer(immediate.command_buffer, staging_buffer.handle, vertex_buffer.handle, array_length(vertex_copies), vertex_copies);
+
+        VkBufferCopy index_copies[] =
+        {
+            {
+                .srcOffset = vertex_buffer.size,
+                .dstOffset= 0,
+                .size = index_buffer.size,
+            }
+        };
+
+        vkCmdCopyBuffer(immediate.command_buffer, staging_buffer.handle, index_buffer.handle, array_length(index_copies), index_copies);
+
+        immediate_end(immediate);
     }
 
     u32 frame_completed = 0;
@@ -1422,7 +1492,7 @@ void run_app(Arena* arena)
             VkIndexType index_type = VK_INDEX_TYPE_UINT32;
             vkCmdBindIndexBuffer(command_buffer, index_buffer.handle, index_buffer_offset, index_type);
 
-            vkCmdDrawIndexed(command_buffer, 6, 1, 0, 0, 0);
+            vkCmdDrawIndexed(command_buffer, array_length(indices), 1, 0, 0, 0);
             
             vkCmdEndRendering(command_buffer);
 
