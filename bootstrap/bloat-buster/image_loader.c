@@ -10,6 +10,7 @@ EXPORT TextureMemory texture_load_from_file(Arena* arena, String path)
     int height;
     int channels;
     u8* buffer = stbi_load_from_memory(file.pointer, file.length, &width, &height, &channels, STBI_rgb_alpha);
+    channels += 1;
 
     return (TextureMemory) {
         .pointer = buffer,

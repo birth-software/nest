@@ -7,7 +7,7 @@ TextureAtlas font_create_texture_atlas(Arena* arena, String font_path)
 {
     auto font_file = file_read(arena, font_path);
     stbtt_fontinfo font_info;
-    if (!stbtt_InitFont(&font_info, font_file.pointer, 0))
+    if (!stbtt_InitFont(&font_info, font_file.pointer, stbtt_GetFontOffsetForIndex(font_file.pointer, 0)))
     {
         failed_execution();
     }
@@ -25,7 +25,7 @@ TextureAtlas font_create_texture_atlas(Arena* arena, String font_path)
     float scale_x = 0.0f;
     float scale_y = stbtt_ScaleForPixelHeight(&font_info, char_height);
 
-    for (u32 i = 0; i <= 256; ++i)
+    for (u32 i = 0; i < 256; ++i)
     {
         int width;
         int height;
@@ -40,11 +40,14 @@ TextureAtlas font_create_texture_atlas(Arena* arena, String font_path)
             {
                 for (int i = 0; i < width; ++i)
                 {
-                    atlas[(y + j) * atlas_width + (x + i)] = bitmap[j * width + i];
+                    auto atlas_index = (y + j) * atlas_width + (x + i);
+                    auto bitmap_index = (height - j - 1) * width + i;
+                    assert(atlas_index < atlas_size);
+                    atlas[atlas_index] = bitmap[bitmap_index];
                 }
             }
 
-            stbtt_FreeBitmap(bitmap, nullptr);
+            stbtt_FreeBitmap(bitmap, 0);
         }
 
         x += char_width;
