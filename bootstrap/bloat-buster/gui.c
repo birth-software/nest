@@ -6,9 +6,25 @@
 #include <GLFW/glfw3native.h>
 #include <volk.h>
 
+#include <std/virtual_buffer.h>
 #include <bloat-buster/shader_compilation.h>
 #include <bloat-buster/image_loader.h>
 #include <bloat-buster/font.h>
+
+STRUCT(Vec4)
+{
+    f32 v[4];
+};
+
+STRUCT(Vertex)
+{
+    f32 x;
+    f32 y;
+    f32 uv_x;
+    f32 uv_y;
+    Vec4 color;
+};
+decl_vb(Vertex);
 
 [[noreturn]] [[gnu::cold]] fn void wrong_vulkan_result(VkResult result, String call_string, String file, int line)
 {
@@ -521,18 +537,23 @@ void run_app(Arena* arena)
 #endif
         };
 
+
+        VkValidationFeatureEnableEXT enabled_validation_features[] =
+        {
+            VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT,
+        };
+
         VkDebugUtilsMessengerCreateInfoEXT msg_ci = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .pNext = 0,
+            .flags = 0,
             .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,
             .pfnUserCallback = debug_callback,
             .pUserData = 0,
         };
 
-        VkValidationFeatureEnableEXT enabled_validation_features[] =
-        {
-            // VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT,
-        };
+        u8 enable_shader_debug_printf = 0;
 
         VkValidationFeaturesEXT validation_features = { 
             .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
@@ -553,12 +574,12 @@ void run_app(Arena* arena)
             .enabledLayerCount = array_length(layers),
             .ppEnabledExtensionNames = extensions,
             .enabledExtensionCount = array_length(extensions),
-            .pNext = &validation_features,
+            .pNext = enable_shader_debug_printf ? (const void*)&validation_features : (const void*)&msg_ci,
         };
 
         vkok(vkCreateInstance(&ci, allocation_callbacks, &instance));
-
         volkLoadInstance(instance);
+
         VkDebugUtilsMessengerEXT messenger;
         vkok(vkCreateDebugUtilsMessengerEXT(instance, &msg_ci, allocation_callbacks, &messenger));
     }
@@ -1218,115 +1239,71 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
         vkUpdateDescriptorSets(device, array_length(write_descriptor_sets), write_descriptor_sets, descriptor_copy_count, descriptor_copies);
     }
 
-    STRUCT(Vec4)
-    {
-        f32 v[4];
-    };
     Vec4 color = {1, 1, 1, 1};
     static_assert(sizeof(color) == 4 * sizeof(float));
-
-    STRUCT(Vertex)
-    {
-        f32 x;
-        f32 y;
-        f32 uv_x;
-        f32 uv_y;
-        Vec4 color;
-    };
-
     auto width_float = (f32)initial_width;
     auto height_float = (f32)initial_height;
-    Vertex vertices[4*2];
 
-    u32 indices[] = {
-        0, 1, 2,
-        1, 3, 2,
-        0 + 4, 1 + 4, 2 + 4,
-        1 + 4, 3 + 4, 2 + 4
-    };
+    auto string = strlit("abc");
+    VirtualBuffer(Vertex) vertices = {};
+    VirtualBuffer(u32) indices = {};
+    u32 index_offset = 0;
+    u32 x_offset = width_float / 2;
+    u32 y_offset = height_float / 2;
 
+    for (u64 i = 0; i < string.length; i += 1, index_offset += 4, x_offset += texture_atlas.character_width)
     {
-        u8 c = 'a';
-        auto character_count_per_row = texture_atlas.width / texture_atlas.char_height;
-        auto row = c / character_count_per_row;
-        auto column = c % character_count_per_row;
-        auto pos_x = width_float / 2;
-        auto pos_y = height_float / 2;
-        auto uv_x = column * texture_atlas.char_height;
-        auto uv_y = row * texture_atlas.char_height;
+        auto ch = string.pointer[i];
+        auto character_count_per_row = texture_atlas.width / texture_atlas.character_width;
+        auto row = ch / character_count_per_row;
+        auto column = ch % character_count_per_row;
+        auto pos_x = x_offset;
+        auto pos_y = y_offset;
+        auto uv_x = column * texture_atlas.character_width;
+        auto uv_y = row * texture_atlas.character_height;
 
-        vertices[0] = (Vertex) {
+        *vb_add(&vertices, 1) = (Vertex) {
             .x = pos_x,
             .y = pos_y,
             .uv_x = (f32)uv_x / texture_atlas.width,
             .uv_y = (f32)uv_y / texture_atlas.width,
             .color = color,
         };
-        vertices[1] = (Vertex) {
-            .x = pos_x + texture_atlas.char_height,
+        *vb_add(&vertices, 1) = (Vertex) {
+            .x = pos_x + texture_atlas.character_height,
             .y = pos_y,
-            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
+            .uv_x = (f32)(uv_x + texture_atlas.character_height) / texture_atlas.width,
             .uv_y = (f32)uv_y / texture_atlas.width,
             .color = color,
         };
-        vertices[2] = (Vertex) {
+        *vb_add(&vertices, 1) = (Vertex) {
             .x = pos_x,
-            .y = pos_y + texture_atlas.char_height,
+            .y = pos_y + texture_atlas.character_height,
             .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
+            .uv_y = (f32)(uv_y + texture_atlas.character_height) / texture_atlas.width,
             .color = color,
         };
-        vertices[3] = (Vertex) {
-            .x = pos_x + texture_atlas.char_height,
-            .y = pos_y + texture_atlas.char_height,
-            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
-            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
+        *vb_add(&vertices, 1) = (Vertex) {
+            .x = pos_x + texture_atlas.character_height,
+            .y = pos_y + texture_atlas.character_height,
+            .uv_x = (f32)(uv_x + texture_atlas.character_height) / texture_atlas.width,
+            .uv_y = (f32)(uv_y + texture_atlas.character_height) / texture_atlas.width,
             .color = color,
         };
+
+        *vb_add(&indices, 1) = index_offset + 0;
+        *vb_add(&indices, 1) = index_offset + 1;
+        *vb_add(&indices, 1) = index_offset + 2;
+        *vb_add(&indices, 1) = index_offset + 1;
+        *vb_add(&indices, 1) = index_offset + 3;
+        *vb_add(&indices, 1) = index_offset + 2;
     }
 
-    {
-        u8 c = 'b';
-        auto character_count_per_row = texture_atlas.width / texture_atlas.char_height;
-        auto row = c / character_count_per_row;
-        auto column = c % character_count_per_row;
-        auto pos_x = width_float / 2 + texture_atlas.char_height;
-        auto pos_y = height_float / 2;
-        auto uv_x = column * texture_atlas.char_height;
-        auto uv_y = row * texture_atlas.char_height;
+    auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
+    auto index_buffer_size = sizeof(*indices.pointer) * indices.length;
 
-        vertices[4] = (Vertex) {
-            .x = pos_x,
-            .y = pos_y,
-            .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)uv_y / texture_atlas.width,
-            .color = color,
-        };
-        vertices[5] = (Vertex) {
-            .x = pos_x + texture_atlas.char_height,
-            .y = pos_y,
-            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
-            .uv_y = (f32)uv_y / texture_atlas.width,
-            .color = color,
-        };
-        vertices[6] = (Vertex) {
-            .x = pos_x,
-            .y = pos_y + texture_atlas.char_height,
-            .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
-            .color = color,
-        };
-        vertices[7] = (Vertex) {
-            .x = pos_x + texture_atlas.char_height,
-            .y = pos_y + texture_atlas.char_height,
-            .uv_x = (f32)(uv_x + texture_atlas.char_height) / texture_atlas.width,
-            .uv_y = (f32)(uv_y + texture_atlas.char_height) / texture_atlas.width,
-            .color = color,
-        };
-    }
-
-    VulkanBuffer vertex_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, sizeof(vertices), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    VulkanBuffer index_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, sizeof(indices), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VulkanBuffer vertex_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, vertex_buffer_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VulkanBuffer index_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, index_buffer_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     VkBufferDeviceAddressInfo device_address_info = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
         .buffer = vertex_buffer.handle,
@@ -1336,9 +1313,8 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
     VulkanBuffer staging_buffer = vk_buffer_create(device, allocation_callbacks, physical_device_memory_properties, vertex_buffer.size + index_buffer.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
 
     {
-
-        memcpy(staging_buffer.cpu_data, vertices, sizeof(vertices));
-        memcpy((u8*)staging_buffer.cpu_data + sizeof(vertices), indices, sizeof(indices));
+        memcpy(staging_buffer.cpu_data, vertices.pointer, vertex_buffer_size);
+        memcpy((u8*)staging_buffer.cpu_data + vertex_buffer_size, indices.pointer, index_buffer_size);
 
         immediate_start(immediate);
 
@@ -1492,7 +1468,7 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
             VkIndexType index_type = VK_INDEX_TYPE_UINT32;
             vkCmdBindIndexBuffer(command_buffer, index_buffer.handle, index_buffer_offset, index_type);
 
-            vkCmdDrawIndexed(command_buffer, array_length(indices), 1, 0, 0, 0);
+            vkCmdDrawIndexed(command_buffer, indices.length, 1, 0, 0, 0);
             
             vkCmdEndRendering(command_buffer);
 
