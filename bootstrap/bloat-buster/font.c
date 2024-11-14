@@ -5,6 +5,7 @@
 
 TextureAtlas font_create_texture_atlas(Arena* arena, String font_path)
 {
+
     auto font_file = file_read(arena, font_path);
     stbtt_fontinfo font_info;
     if (!stbtt_InitFont(&font_info, font_file.pointer, stbtt_GetFontOffsetForIndex(font_file.pointer, 0)))
@@ -12,57 +13,55 @@ TextureAtlas font_create_texture_atlas(Arena* arena, String font_path)
         failed_execution();
     }
 
-    int atlas_width = 1024;
-    int atlas_height = 1024;
-    int atlas_size = atlas_width * atlas_height;
+    TextureAtlas result = {};
+    result.character_height = 64;
+    result.character_width = result.character_height;
+    result.height = 1024;
+    result.width = result.height;
+    auto atlas_size = result.width * result.height;
+    result.pointer = arena_allocate(arena, u8, atlas_size);
 
-    auto* atlas = arena_allocate(arena, u8, atlas_size);
-
-    int char_width = 64; // Width of each character’s cell in the atlas
-    int char_height = 64; // Height of each character’s cell in the atlas
-    int x = 0;
-    int y = 0; // Starting position in the atlas
     float scale_x = 0.0f;
-    float scale_y = stbtt_ScaleForPixelHeight(&font_info, char_height);
+    float scale_y = stbtt_ScaleForPixelHeight(&font_info, result.character_height);
+    
+    // Starting position in the atlas
+    u32 x = 0;
+    u32 y = 0; 
+    u32 char_count = 256;
 
-    for (u32 i = 0; i < 256; ++i)
+    for (u32 i = 0; i < char_count; ++i)
     {
-        int width;
-        int height;
-        int x_offset;
-        int y_offset;
+        u32 width;
+        u32 height;
+        u32 x_offset;
+        u32 y_offset;
 
         auto ch = (u8)i;
-        u8* bitmap = stbtt_GetCodepointBitmap(&font_info, scale_x, scale_y, ch, &width, &height, &x_offset, &y_offset);
+        u8* bitmap = stbtt_GetCodepointBitmap(&font_info, scale_x, scale_y, ch, (int*)&width, (int*)&height, (int*)&x_offset, (int*)&y_offset);
         if (bitmap)
         {
-            for (int j = 0; j < height; ++j)
+            for (u32 j = 0; j < height; ++j)
             {
-                for (int i = 0; i < width; ++i)
+                for (u32 i = 0; i < width; ++i)
                 {
-                    auto atlas_index = (y + j) * atlas_width + (x + i);
+                    auto atlas_index = (y + j) * result.width + (x + i);
                     auto bitmap_index = (height - j - 1) * width + i;
                     assert(atlas_index < atlas_size);
-                    atlas[atlas_index] = bitmap[bitmap_index];
+                    result.pointer[atlas_index] = bitmap[bitmap_index];
                 }
             }
 
             stbtt_FreeBitmap(bitmap, 0);
         }
 
-        x += char_width;
+        x += result.character_width;
 
-        if (x + char_width > atlas_width)
+        if (x + result.character_width > result.width)
         {
             x = 0;
-            y += char_height;
+            y += result.character_height;
         }
     }
 
-    return (TextureAtlas) {
-        .pointer = atlas,
-        .width = atlas_width,
-        .height = atlas_height,
-        .char_height = char_height,
-    };
+    return result;
 }
