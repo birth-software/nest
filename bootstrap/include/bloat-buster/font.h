@@ -3,7 +3,8 @@
 
 STRUCT(FontCharacter)
 {
-    int advance;
+    u32 advance;
+    u32 left_bearing;
 };
 
 STRUCT(TextureAtlas)
@@ -14,6 +15,7 @@ STRUCT(TextureAtlas)
     u32 height;
     u32 character_width;
     u32 character_height;
+    f32 scale;
 };
 
 EXPORT TextureAtlas font_create_texture_atlas(Arena* arena, String font_path);
