@@ -1079,6 +1079,14 @@ void print(const char* format, ...)
                                         }
                                     }
                                 }
+                                else
+                                {
+                                    auto character = cast_to(u8, u32, va_arg(args, u32));
+                                    buffer.pointer[buffer_i] = character;
+                                    buffer_i += 1;
+                                    done = 1;
+                                }
+
                                 assert(done);
                             } break;
                         case 'f':
@@ -1117,7 +1125,96 @@ void print(const char* format, ...)
 
                                 if (is_decimal_digit(*it))
                                 {
-                                    trap();
+                                    u8* bit_count_start = it;
+                                    while (is_decimal_digit(*it))
+                                    {
+                                        it += 1;
+                                    }
+
+                                    u8* bit_count_end = it;
+                                    u64 bit_count = parse_decimal(slice_from_pointer_range(u8, (u8*)bit_count_start, (u8*)bit_count_end));
+
+                                    typedef enum IntegerFormat : u8
+                                    {
+                                        INTEGER_FORMAT_HEXADECIMAL,
+                                        INTEGER_FORMAT_DECIMAL,
+                                        INTEGER_FORMAT_OCTAL,
+                                        INTEGER_FORMAT_BINARY,
+                                    } IntegerFormat;
+
+                                    IntegerFormat format = INTEGER_FORMAT_DECIMAL;
+
+                                    if (*it == ':')
+                                    {
+                                        it += 1;
+                                        switch (*it)
+                                        {
+                                            case 'x':
+                                                format = INTEGER_FORMAT_HEXADECIMAL;
+                                                break;
+                                            case 'd':
+                                                format = INTEGER_FORMAT_DECIMAL;
+                                                break;
+                                            case 'o':
+                                                format = INTEGER_FORMAT_OCTAL;
+                                                break;
+                                            case 'b':
+                                                format = INTEGER_FORMAT_BINARY;
+                                                break;
+                                            default:
+                                                trap();
+                                        }
+
+                                        it += 1;
+                                    }
+
+                                    s64 original_value;
+                                    switch (bit_count)
+                                    {
+                                        case 8:
+                                        case 16:
+                                        case 32:
+                                            original_value = va_arg(args, s32);
+                                            break;
+                                        case 64:
+                                            original_value = va_arg(args, s64);
+                                            break;
+                                        default:
+                                            trap();
+                                    }
+
+                                    auto buffer_slice = s_get_slice(u8, buffer, buffer_i, buffer.length);
+
+                                    switch (format)
+                                    {
+                                        case INTEGER_FORMAT_HEXADECIMAL:
+                                            {
+                                                auto written_characters = format_hexadecimal(buffer_slice, original_value);
+                                                buffer_i += written_characters;
+                                            } break;
+                                        case INTEGER_FORMAT_DECIMAL:
+                                            {
+                                                u64 value;
+                                                if (original_value < 0)
+                                                {
+                                                    buffer_slice.pointer[0] = '-';
+                                                    buffer_slice.pointer += 1;
+                                                    buffer_slice.length -= 1;
+                                                    buffer_i += 1;
+                                                    value = (u64)(-(original_value - (original_value == INT64_MIN))) + (original_value == INT64_MIN);
+                                                }
+                                                else
+                                                {
+                                                    value = (u64)original_value;
+                                                }
+
+                                                auto written_characters = format_decimal(buffer_slice, value);
+                                                buffer_i += written_characters;
+                                            } break;
+                                        case INTEGER_FORMAT_OCTAL:
+                                        case INTEGER_FORMAT_BINARY:
+                                            trap();
+                                    }
                                 }
                                 else
                                 {
