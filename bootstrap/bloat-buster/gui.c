@@ -1241,17 +1241,16 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
 
     Vec4 color = {1, 1, 1, 1};
     static_assert(sizeof(color) == 4 * sizeof(float));
-    auto width_float = (f32)initial_width;
-    auto height_float = (f32)initial_height;
 
-    auto string = strlit("abc");
+    auto string = strlit("abcdefghi");
     VirtualBuffer(Vertex) vertices = {};
     VirtualBuffer(u32) indices = {};
     u32 index_offset = 0;
-    u32 x_offset = width_float / 2;
-    u32 y_offset = height_float / 2;
+    f32 x_offset = initial_width / 2.0f;
+    f32 y_offset = initial_height / 2.0f;
+    f32 font_scale = texture_atlas.scale;
 
-    for (u64 i = 0; i < string.length; i += 1, index_offset += 4, x_offset += texture_atlas.character_width)
+    for (u64 i = 0; i < string.length; i += 1, index_offset += 4)
     {
         auto ch = string.pointer[i];
         auto character_count_per_row = texture_atlas.width / texture_atlas.character_width;
@@ -1297,6 +1296,8 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
         *vb_add(&indices, 1) = index_offset + 1;
         *vb_add(&indices, 1) = index_offset + 3;
         *vb_add(&indices, 1) = index_offset + 2;
+
+        x_offset += texture_atlas.characters[i].advance * font_scale;
     }
 
     auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
