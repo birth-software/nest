@@ -1134,7 +1134,10 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
 #else
 #endif
 ;
-    auto texture_atlas = font_create_texture_atlas(arena, font_path);
+    auto texture_atlas = font_create_texture_atlas(arena, (TextureAtlasCreate) {
+        .font_path = font_path,
+        .text_height = 72,
+    });
     auto texture_atlas_image = vk_image_from_texture(device, allocation_callbacks, immediate, physical_device_memory_properties, (TextureMemory) {
         .pointer = texture_atlas.pointer,
         .width = texture_atlas.width,
@@ -1242,24 +1245,23 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
     Vec4 color = {1, 1, 1, 1};
     static_assert(sizeof(color) == 4 * sizeof(float));
 
-    auto string = strlit("abcdefghi");
+    auto string = strlit("Hello world!");
     VirtualBuffer(Vertex) vertices = {};
     VirtualBuffer(u32) indices = {};
     u32 index_offset = 0;
-    f32 x_offset = initial_width / 2.0f;
-    f32 y_offset = initial_height / 2.0f;
-    f32 font_scale = texture_atlas.scale;
+    auto x_offset = initial_width / 2;
+    auto y_offset = initial_height / 2;
 
     for (u64 i = 0; i < string.length; i += 1, index_offset += 4)
     {
         auto ch = string.pointer[i];
-        auto character_count_per_row = texture_atlas.width / texture_atlas.character_width;
-        auto row = ch / character_count_per_row;
-        auto column = ch % character_count_per_row;
+        auto* character = &texture_atlas.characters[ch];
         auto pos_x = x_offset;
-        auto pos_y = y_offset;
-        auto uv_x = column * texture_atlas.character_width;
-        auto uv_y = row * texture_atlas.character_height;
+        auto pos_y = y_offset - (character->height + character->y_offset);
+        auto uv_x = character->x;
+        auto uv_y = character->y;
+        auto uv_width = character->width;
+        auto uv_height = character->height;
 
         *vb_add(&vertices, 1) = (Vertex) {
             .x = pos_x,
@@ -1269,24 +1271,24 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
             .color = color,
         };
         *vb_add(&vertices, 1) = (Vertex) {
-            .x = pos_x + texture_atlas.character_height,
+            .x = pos_x + character->width,
             .y = pos_y,
-            .uv_x = (f32)(uv_x + texture_atlas.character_height) / texture_atlas.width,
+            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
             .uv_y = (f32)uv_y / texture_atlas.width,
             .color = color,
         };
         *vb_add(&vertices, 1) = (Vertex) {
             .x = pos_x,
-            .y = pos_y + texture_atlas.character_height,
+            .y = pos_y + character->height,
             .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)(uv_y + texture_atlas.character_height) / texture_atlas.width,
+            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
             .color = color,
         };
         *vb_add(&vertices, 1) = (Vertex) {
-            .x = pos_x + texture_atlas.character_height,
-            .y = pos_y + texture_atlas.character_height,
-            .uv_x = (f32)(uv_x + texture_atlas.character_height) / texture_atlas.width,
-            .uv_y = (f32)(uv_y + texture_atlas.character_height) / texture_atlas.width,
+            .x = pos_x + character->width,
+            .y = pos_y + character->height,
+            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
+            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
             .color = color,
         };
 
@@ -1297,7 +1299,9 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
         *vb_add(&indices, 1) = index_offset + 3;
         *vb_add(&indices, 1) = index_offset + 2;
 
-        x_offset += texture_atlas.characters[i].advance * font_scale;
+        auto kerning = (texture_atlas.kerning_tables + ch * 256)[string.pointer[i + 1]];
+        print("Advance: {u32}. Kerning: {s32}\n", character->advance, kerning);
+        x_offset += character->advance + kerning;
     }
 
     auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
