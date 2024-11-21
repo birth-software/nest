@@ -94,3 +94,8 @@ EXPORT void os_directory_make(String path);
 EXPORT void calibrate_cpu_timer();
 
 EXPORT void print_string(String string);
+
+#if _WIN32
+typedef void* HANDLE;
+EXPORT HANDLE os_windows_get_module_handle();
+#endif

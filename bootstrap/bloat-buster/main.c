@@ -10,7 +10,7 @@
 #include <bloat-buster/llvm.h>
 #include <bloat-buster/lld_driver.h>
 #include <bloat-buster/lld_api.h>
-#include <bloat-buster/gui.h>
+#include <bloat-buster/bb_core.h>
 
 #ifdef __APPLE__
 #define clang_path "/opt/homebrew/opt/llvm/bin/clang"
