@@ -61,7 +61,7 @@ target_link_libraries(${RUNNER_NAME} PRIVATE ${LIBRARY_NAME})
 add_executable("${COMPILER_NAME}"
     "bootstrap/bloat-buster/main.c"
     "bootstrap/bloat-buster/pdb_image.c"
-    "bootstrap/bloat-buster/gui.c"
+    "bootstrap/bloat-buster/bb_core.c"
 )
 target_link_libraries(${COMPILER_NAME} PRIVATE ${LIBRARY_NAME})
 
@@ -212,7 +212,10 @@ if (NOT BB_IS_CI)
     target_sources(${COMPILER_NAME} PRIVATE
         "bootstrap/bloat-buster/shader_compilation.c"
         "bootstrap/bloat-buster/image_loader.c"
-        "bootstrap/bloat-buster/font.c"
+        "bootstrap/std/font_cache.c"
+        "bootstrap/std/font_provider.c"
+        "bootstrap/std/graphics.c"
+        "bootstrap/std/render.c"
     )
 
     target_include_directories(${COMPILER_NAME} PRIVATE dependencies/stb)

@@ -1653,3 +1653,10 @@ void print_string(String message)
         unused(message);
 #endif
 }
+
+#if _WIN32
+HANDLE os_windows_get_module_handle()
+{
+    return GetModuleHandleW(0);
+}
+#endif

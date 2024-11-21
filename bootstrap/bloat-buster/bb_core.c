@@ -1,12 +1,11 @@
 #if BB_CI == 0
-#include <bloat-buster/gui.h>
+#include <bloat-buster/bb_core.h>
 
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
 #include <volk.h>
 
 #include <std/virtual_buffer.h>
+#include <std/graphics.h>
+
 #include <bloat-buster/shader_compilation.h>
 #include <bloat-buster/image_loader.h>
 #include <bloat-buster/font.h>
@@ -487,18 +486,8 @@ fn VulkanImage vk_image_from_texture(VkDevice device, const VkAllocationCallback
 
 void run_app(Arena* arena)
 {
-#if defined(VK_USE_PLATFORM_XLIB_KHR)
-    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
-    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_WAYLAND);
-#endif
-
-    if (glfwInit() != GLFW_TRUE)
-    {
-        failed_execution();
-    }
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    u8 use_x11 = 1;
+    graphics_init(use_x11);
     vkok(volkInitialize());
 
     const VkAllocationCallbacks* allocation_callbacks = 0;
@@ -586,7 +575,13 @@ void run_app(Arena* arena)
 
     int initial_width = 1024;
     int initial_height = 768;
-    GLFWwindow* window = glfwCreateWindow(initial_width, initial_height, "Bloat Buster", 0, 0);
+    GraphicsWindow* window = graphics_window_create((GraphicsWindowCreate) {
+        .name = strlit("Bloat Buster"),
+        .size = {
+            .width = initial_width,
+            .height= initial_height,
+        },
+    });
 
     if (!window)
     {
@@ -600,8 +595,8 @@ void run_app(Arena* arena)
             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
             .pNext = 0,
             .flags = 0,
-            .hinstance = GetModuleHandleW(0),
-            .hwnd = glfwGetWin32Window(window),
+            .hinstance = os_windows_get_module_handle(),
+            .hwnd = graphics_win32_window_get(window),
         };
         vkok(vkCreateWin32SurfaceKHR(instance, &create_info, allocation_callbacks, &surface));
 #endif
@@ -610,8 +605,8 @@ void run_app(Arena* arena)
             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
             .pNext = 0,
             .flags = 0,
-            .dpy = glfwGetX11Display(),
-            .window = glfwGetX11Window(window),
+            .dpy = graphics_x11_display_get(),
+            .window = graphics_x11_window_get(window),
         };
         vkok(vkCreateXlibSurfaceKHR(instance, &create_info, allocation_callbacks, &surface));
 #endif
@@ -1349,14 +1344,14 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
     }
 
     u32 frame_completed = 0;
-    for (u32 frame_number = 0; !glfwWindowShouldClose(window); frame_number += frame_completed)
+    for (u32 frame_number = 0; !graphics_window_should_close(window); frame_number += frame_completed)
     {
         frame_completed = 0;
-        glfwPollEvents();
+        graphics_poll_events();
 
-        int width;
-        int height;
-        glfwGetWindowSize(window, &width, &height);
+        auto window_size = graphics_window_size_get(window);
+        auto width = window_size.width;
+        auto height = window_size.height;
 
         if (width == 0 || height == 0)
         {
