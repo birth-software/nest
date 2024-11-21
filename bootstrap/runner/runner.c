@@ -104,6 +104,7 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
 
             run_command(arena, (CStringSlice) array_to_slice(arguments), envp);
 
+#if BB_CI
             // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
             {
                 auto executable = binary_path_from_options(arena, (BinaryPathOptions) {
@@ -119,6 +120,7 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
                 };
                 run_command(arena, (CStringSlice) array_to_slice(run_arguments), envp);
             }
+#endif
         }
     }
 }

@@ -77,6 +77,7 @@ declare_slice(s32);
 declare_slice(s64);
 
 declare_slice_p(char);
+declare_slice_p(void);
 
 typedef Slice(u8) String;
 declare_slice(String);

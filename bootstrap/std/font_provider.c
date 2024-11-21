@@ -1,8 +1,11 @@
-#include <bloat-buster/font.h>
+#include <std/font_provider.h>
 
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
 #include <stb_truetype.h>
+#pragma clang diagnostic pop
 
 TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create)
 {
@@ -75,7 +78,7 @@ TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create)
         character->width = width;
         character->height = height;
 
-        print("Drawing codepoint '{c}' ({u32}x{u32}) at ({u32}, {u32}). Offsets: ({s32}, {s32})\n", ch, width, height, x, y, character->x_offset, character->y_offset);
+        // print("Drawing codepoint '{c}' ({u32}x{u32}) at ({u32}, {u32}). Offsets: ({s32}, {s32})\n", ch, width, height, x, y, character->x_offset, character->y_offset);
 
         auto* source = bitmap;
         auto* destination = result.pointer;
@@ -89,23 +92,23 @@ TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create)
             }
         }
 
-        for (u32 bitmap_y = y; bitmap_y < y + height; bitmap_y += 1)
-        {
-            for (u32 bitmap_x = x; bitmap_x < x + width; bitmap_x += 1)
-            {
-                auto x = result.pointer[bitmap_y * result.width + bitmap_x];
-                if (x)
-                {
-                    print("[x]");
-                }
-                else
-                {
-                    print("[ ]");
-                }
-            }
-
-            print("\n");
-        }
+        // for (u32 bitmap_y = y; bitmap_y < y + height; bitmap_y += 1)
+        // {
+        //     for (u32 bitmap_x = x; bitmap_x < x + width; bitmap_x += 1)
+        //     {
+        //         auto x = result.pointer[bitmap_y * result.width + bitmap_x];
+        //         if (x)
+        //         {
+        //             print("[x]");
+        //         }
+        //         else
+        //         {
+        //             print("[ ]");
+        //         }
+        //     }
+        //
+        //     print("\n");
+        // }
 
         x += width;
 
