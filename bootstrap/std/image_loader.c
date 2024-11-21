@@ -1,7 +1,12 @@
-#include <bloat-buster/image_loader.h>
+#include <std/image_loader.h>
 
+#define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
 #include <stb_image.h>
+#pragma clang diagnostic pop
+
 
 EXPORT TextureMemory texture_load_from_file(Arena* arena, String path)
 {
@@ -16,7 +21,7 @@ EXPORT TextureMemory texture_load_from_file(Arena* arena, String path)
         .pointer = buffer,
         .width = width,
         .height = height,
-        .channel_count = channels,
+        .format = R8G8B8A8_SRGB,
         .depth = 1,
     };
 }

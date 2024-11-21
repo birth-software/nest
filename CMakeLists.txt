@@ -40,7 +40,9 @@ add_compile_options(
     -Wall -Wextra -Wpedantic
     -Wno-nested-anon-types -Wno-keyword-macro -Wno-gnu-auto-type -Wno-auto-decl-extensions -Wno-gnu-empty-initializer -Wno-fixed-enum-extension -Wno-gnu-binary-literal
     -fno-exceptions -fno-stack-protector
-    -fdiagnostics-color=always -ferror-limit=1
+    -fdiagnostics-color=always
+    -fansi-escape-codes
+    -ferror-limit=1
     -march=native
     ${BB_IS_CI_C_FLAG} -DCOMPILER_NAME=\"${COMPILER_NAME}\" -DBUILD_DIR=\"${CMAKE_BINARY_DIR}\" -DBB_DIR=\"${BB_DIR}\"
 )
@@ -210,8 +212,8 @@ if (NOT BB_IS_CI)
     add_subdirectory(dependencies/volk-1.3.301 volk)
     target_link_libraries(${COMPILER_NAME} PRIVATE volk)
     target_sources(${COMPILER_NAME} PRIVATE
-        "bootstrap/bloat-buster/shader_compilation.c"
-        "bootstrap/bloat-buster/image_loader.c"
+        "bootstrap/std/image_loader.c"
+        "bootstrap/std/shader_compilation.c"
         "bootstrap/std/font_cache.c"
         "bootstrap/std/font_provider.c"
         "bootstrap/std/graphics.c"
