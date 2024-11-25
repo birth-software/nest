@@ -458,11 +458,11 @@ Renderer* renderer_initialize()
         };
 
 #endif
-        void* pNext =
+        auto* pNext =
 #if BB_DEBUG
-        enable_shader_debug_printf ? (const void*)&validation_features : (const void*)&msg_ci,
+        enable_shader_debug_printf ? (void*)&validation_features : (void*)&msg_ci;
 #else
-        0;
+        (void*)0;
 #endif
         VkApplicationInfo app_info = {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
