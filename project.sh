@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -eux
 ORIGINAL_DIR=$PWD
-BUILD_DIR=$ORIGINAL_DIR/build
 C_COMPILER_PATH=clang
 CXX_COMPILER_PATH=clang++
 ASM_COMPILER_PATH=clang
@@ -78,6 +77,7 @@ case $BIRTH_OS in
         ;;
 esac
 
+BUILD_DIR=$ORIGINAL_DIR/build/$CMAKE_BUILD_TYPE
 mkdir -p $BUILD_DIR
 cmake . \
     -B$BUILD_DIR \
