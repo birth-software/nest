@@ -73,6 +73,8 @@ fn u8 vk_layer_is_supported(String layer_name)
     return supported;
 }
 
+#if BB_DEBUG
+
 fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 {
     unused(message_severity);
@@ -85,6 +87,8 @@ fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT mes
     }
     return VK_FALSE;
 }
+
+#endif
 
 fn VkDeviceMemory vk_allocate_memory(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties memory_properties, VkMemoryRequirements memory_requirements, VkMemoryPropertyFlags flags, u8 use_device_address_bit)
 {
@@ -385,7 +389,14 @@ Renderer* renderer_initialize()
     Renderer* result = &renderer_memory;
     vkok(volkInitialize());
 
+    auto api_version = volkGetInstanceVersion();
+    if (api_version < VK_API_VERSION_1_3)
     {
+        failed_execution();
+    }
+
+    {
+#if BB_DEBUG
         auto debug_layer = strlit("VK_LAYER_KHRONOS_validation");
         if (!vk_layer_is_supported(debug_layer))
         {
@@ -395,15 +406,16 @@ Renderer* renderer_initialize()
         {
             string_to_c(debug_layer),
         };
-
-        auto api_version = volkGetInstanceVersion();
-        if (api_version < VK_API_VERSION_1_3)
-        {
-            failed_execution();
-        }
+        auto layer_count = array_length(layers);
+#else
+        const char** layers = 0;
+        u32 layer_count = 0;
+#endif
 
         const char* extensions[] = {
+#if BB_DEBUG
             VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+#endif
             VK_KHR_SURFACE_EXTENSION_NAME,
 #ifdef VK_USE_PLATFORM_WIN32_KHR
             VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
@@ -420,6 +432,7 @@ Renderer* renderer_initialize()
         };
 
 
+#if BB_DEBUG
         VkValidationFeatureEnableEXT enabled_validation_features[] =
         {
             VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT,
@@ -444,26 +457,34 @@ Renderer* renderer_initialize()
             .pNext = &msg_ci,
         };
 
+#endif
+        void* pNext =
+#if BB_DEBUG
+        enable_shader_debug_printf ? (const void*)&validation_features : (const void*)&msg_ci,
+#else
+        0;
+#endif
         VkApplicationInfo app_info = {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .apiVersion = api_version,
         };
-
         VkInstanceCreateInfo ci = {
             .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pApplicationInfo = &app_info,
             .ppEnabledLayerNames = layers,
-            .enabledLayerCount = array_length(layers),
+            .enabledLayerCount = layer_count,
             .ppEnabledExtensionNames = extensions,
             .enabledExtensionCount = array_length(extensions),
-            .pNext = enable_shader_debug_printf ? (const void*)&validation_features : (const void*)&msg_ci,
+            .pNext = pNext,
         };
 
         vkok(vkCreateInstance(&ci, result->allocator, &result->instance));
         volkLoadInstance(result->instance);
 
+#if BB_DEBUG
         VkDebugUtilsMessengerEXT messenger;
         vkok(vkCreateDebugUtilsMessengerEXT(result->instance, &msg_ci, result->allocator, &messenger));
+#endif
     }
 
 
