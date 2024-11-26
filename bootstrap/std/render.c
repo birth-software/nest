@@ -75,12 +75,46 @@ fn u8 vk_layer_is_supported(String layer_name)
 
 #if BB_DEBUG
 
-fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
+fn String message_severity_to_string(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity)
+{
+    switch (message_severity)
+    {
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+        return strlit("VERBOSE");
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
+        return strlit("INFO");
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+        return strlit("WARNING");
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+        return strlit("ERROR");
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT:
+        unreachable();
+    }
+}
+
+fn String message_type_to_string(VkDebugUtilsMessageTypeFlagBitsEXT message_type)
+{
+    switch (message_type)
+    {
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT:
+        return strlit("GENERAL");
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT:
+        return strlit("VALIDATION");
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT:
+        return strlit("PERFORMANCE");
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT:
+        return strlit("DEVICE_ADDRESS_BINDING");
+    case VK_DEBUG_UTILS_MESSAGE_TYPE_FLAG_BITS_MAX_ENUM_EXT:
+        unreachable();
+    }
+}
+
+fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagBitsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 {
     unused(message_severity);
     unused(message_type);
     unused(user_data);
-    print("Validation message ({cstr}): {cstr}\n", callback_data->pMessageIdName ? callback_data->pMessageIdName : "ID_NONE", callback_data->pMessage);
+    print("Validation message ({s}) ({s}) ({cstr}): {cstr}\n", message_severity_to_string(message_severity), message_type_to_string(message_type), callback_data->pMessageIdName ? callback_data->pMessageIdName : "ID_NONE", callback_data->pMessage ? callback_data->pMessage : "MESSAGE_NONE");
     if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         failed_execution();
