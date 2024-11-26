@@ -22,6 +22,7 @@ EXPORT GraphicsWindow* graphics_window_create(GraphicsWindowCreate create);
 EXPORT u8 graphics_window_should_close(GraphicsWindow* window);
 EXPORT void graphics_poll_events();
 EXPORT GraphicsWindowSize graphics_window_size_get(GraphicsWindow* window);
+EXPORT void graphics_window_consume_resize(GraphicsWindow* window);
 
 #ifdef __linux__
 typedef unsigned long XID;

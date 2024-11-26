@@ -32,7 +32,7 @@ fn void run(Arena* arena, char** envp, String compiler_path, CompilerBackend com
     {
 #if _WIN32
         args = (CStringSlice) array_to_slice(((char*[]){ 
-            "C:\\Users\\David\\Downloads\\remedybg_0_4_0_7\\remedybg.exe",
+            "C:\\Users\\David\\Downloads\\remedybg_0_4_0_8\\remedybg.exe",
             "-g",
             common_compile_and_run_args 
         }));

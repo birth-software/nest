@@ -6,15 +6,16 @@
 
 global_variable u8 use_x11 = 0;
 
-fn GraphicsWindow* graphics_window_from_glfw(GLFWwindow* window)
+STRUCT(GraphicsWindow)
 {
-    return (GraphicsWindow*)window;
-}
-
-fn GLFWwindow* glfw_window_from_graphics(GraphicsWindow* window)
-{
-    return (GLFWwindow*)window;
-}
+    GLFWwindow* handle;
+    u8 resized:1;
+    u32 width;
+    u32 height;
+};
+#define MAX_WINDOW_COUNT (32)
+global_variable GraphicsWindow windows[MAX_WINDOW_COUNT];
+global_variable u32 window_count = 0;
 
 void graphics_init(u8 should_use_x11)
 {
@@ -30,17 +31,41 @@ void graphics_init(u8 should_use_x11)
     }
 }
 
+fn void framebuffer_size_callback(GLFWwindow* w, int width, int height)
+{
+    GraphicsWindow* window = glfwGetWindowUserPointer(w);
+    assert(window->handle == w);
+    window->width = width;
+    window->height = height;
+    window->resized = 1;
+}
+
+typedef void (* GLFWframebuffersizefun)(GLFWwindow* window, int width, int height);
+
 GraphicsWindow* graphics_window_create(GraphicsWindowCreate create)
 {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* window = glfwCreateWindow(create.size.width, create.size.height, string_to_c(create.name), 0, 0);
+    GraphicsWindow* window = &windows[window_count];
+    *window = (GraphicsWindow) {
+        .handle = glfwCreateWindow(create.size.width, create.size.height, string_to_c(create.name), 0, 0),
+    };
+    glfwSetWindowUserPointer(window->handle, window);
+    glfwSetFramebufferSizeCallback(window->handle, &framebuffer_size_callback);
+    window->width = create.size.width;
+    window->height = create.size.height;
 
-    return graphics_window_from_glfw(window);
+    return window;
+}
+
+void graphics_window_consume_resize(GraphicsWindow* window)
+{
+    assert(window->resized);
+    window->resized = 0;
 }
 
 u8 graphics_window_should_close(GraphicsWindow* window)
 {
-    return glfwWindowShouldClose(glfw_window_from_graphics(window));
+    return glfwWindowShouldClose(window->handle);
 }
 
 void graphics_poll_events()
@@ -50,9 +75,8 @@ void graphics_poll_events()
 
 GraphicsWindowSize graphics_window_size_get(GraphicsWindow* window)
 {
-    GLFWwindow* w = glfw_window_from_graphics(window);
     GraphicsWindowSize result;
-    glfwGetWindowSize(w, (int*)&result.width, (int*)&result.height);
+    glfwGetWindowSize(window->handle, (int*)&result.width, (int*)&result.height);
 
     return result;
 }
@@ -60,7 +84,7 @@ GraphicsWindowSize graphics_window_size_get(GraphicsWindow* window)
 #ifdef _WIN32
 HANDLE graphics_win32_window_get(GraphicsWindow* window)
 {
-    return glfwGetWin32Window(glfw_window_from_graphics(window));
+    return glfwGetWin32Window(window->handle);
 }
 #endif
 
@@ -72,6 +96,6 @@ Display* graphics_x11_display_get()
 
 Window graphics_x11_window_get(GraphicsWindow* window)
 {
-    return glfwGetX11Window(glfw_window_from_graphics(window));
+    return glfwGetX11Window(window->handle);
 }
 #endif
