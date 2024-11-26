@@ -22,12 +22,72 @@ STRUCT(VulkanImage)
     VkFormat format;
 };
 
+fn String vulkan_result_to_string(VkResult result)
+{
+    switch (result)
+    {
+        case_to_name(VK_, SUCCESS);
+        case_to_name(VK_, NOT_READY);
+        case_to_name(VK_, TIMEOUT);
+        case_to_name(VK_, EVENT_SET);
+        case_to_name(VK_, EVENT_RESET);
+        case_to_name(VK_, INCOMPLETE);
+        case_to_name(VK_, ERROR_OUT_OF_HOST_MEMORY);
+        case_to_name(VK_, ERROR_OUT_OF_DEVICE_MEMORY);
+        case_to_name(VK_, ERROR_INITIALIZATION_FAILED);
+        case_to_name(VK_, ERROR_DEVICE_LOST);
+        case_to_name(VK_, ERROR_MEMORY_MAP_FAILED);
+        case_to_name(VK_, ERROR_LAYER_NOT_PRESENT);
+        case_to_name(VK_, ERROR_EXTENSION_NOT_PRESENT);
+        case_to_name(VK_, ERROR_FEATURE_NOT_PRESENT);
+        case_to_name(VK_, ERROR_INCOMPATIBLE_DRIVER);
+        case_to_name(VK_, ERROR_TOO_MANY_OBJECTS);
+        case_to_name(VK_, ERROR_FORMAT_NOT_SUPPORTED);
+        case_to_name(VK_, ERROR_FRAGMENTED_POOL);
+        case_to_name(VK_, ERROR_UNKNOWN);
+        case_to_name(VK_, ERROR_OUT_OF_POOL_MEMORY);
+        case_to_name(VK_, ERROR_INVALID_EXTERNAL_HANDLE);
+        case_to_name(VK_, ERROR_FRAGMENTATION);
+        case_to_name(VK_, ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS);
+        case_to_name(VK_, PIPELINE_COMPILE_REQUIRED);
+        case_to_name(VK_, ERROR_SURFACE_LOST_KHR);
+        case_to_name(VK_, ERROR_NATIVE_WINDOW_IN_USE_KHR);
+        case_to_name(VK_, SUBOPTIMAL_KHR);
+        case_to_name(VK_, ERROR_OUT_OF_DATE_KHR);
+        case_to_name(VK_, ERROR_INCOMPATIBLE_DISPLAY_KHR);
+        case_to_name(VK_, ERROR_VALIDATION_FAILED_EXT);
+        case_to_name(VK_, ERROR_INVALID_SHADER_NV);
+        case_to_name(VK_, ERROR_IMAGE_USAGE_NOT_SUPPORTED_KHR);
+        case_to_name(VK_, ERROR_VIDEO_PICTURE_LAYOUT_NOT_SUPPORTED_KHR);
+        case_to_name(VK_, ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR);
+        case_to_name(VK_, ERROR_VIDEO_PROFILE_FORMAT_NOT_SUPPORTED_KHR);
+        case_to_name(VK_, ERROR_VIDEO_PROFILE_CODEC_NOT_SUPPORTED_KHR);
+        case_to_name(VK_, ERROR_VIDEO_STD_VERSION_NOT_SUPPORTED_KHR);
+        case_to_name(VK_, ERROR_INVALID_DRM_FORMAT_MODIFIER_PLANE_LAYOUT_EXT);
+        case_to_name(VK_, ERROR_NOT_PERMITTED_KHR);
+        case_to_name(VK_, ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT);
+        case_to_name(VK_, THREAD_IDLE_KHR);
+        case_to_name(VK_, THREAD_DONE_KHR);
+        case_to_name(VK_, OPERATION_DEFERRED_KHR);
+        case_to_name(VK_, OPERATION_NOT_DEFERRED_KHR);
+        case_to_name(VK_, ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR);
+        case_to_name(VK_, ERROR_COMPRESSION_EXHAUSTED_EXT);
+        case_to_name(VK_, INCOMPATIBLE_SHADER_BINARY_EXT);
+        case_to_name(VK_, PIPELINE_BINARY_MISSING_KHR);
+        case_to_name(VK_, ERROR_NOT_ENOUGH_SPACE_KHR);
+        case_to_name(VK_, RESULT_MAX_ENUM);
+    }
+}
+
 [[noreturn]] [[gnu::cold]] fn void wrong_vulkan_result(VkResult result, String call_string, String file, int line)
 {
     unused(result);
     unused(call_string);
     unused(file);
     unused(line);
+
+    String result_name = vulkan_result_to_string(result);
+    print("Wrong Vulkan result {s} at \"{s}\" {s}:{u32}\n", result_name, call_string, file, line);
     trap();
 }
 
@@ -38,7 +98,7 @@ STRUCT(VulkanImage)
 
 #define vkok_swapchain(call) do {\
     VkResult result = call; \
-    if (unlikely(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)) wrong_vulkan_result(result, strlit(#call), strlit(__FILE__), __LINE__); \
+    if (unlikely(result != VK_SUCCESS)) wrong_vulkan_result(result, strlit(#call), strlit(__FILE__), __LINE__); \
 } while(0)
 
 fn u8 vk_layer_is_supported(String layer_name)
@@ -109,7 +169,7 @@ fn String message_type_to_string(VkDebugUtilsMessageTypeFlagBitsEXT message_type
     }
 }
 
-fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagBitsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
+fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 {
     unused(message_severity);
     unused(message_type);
@@ -401,7 +461,8 @@ STRUCT(RenderWindow)
 {
     GraphicsWindow* graphics_window;
     VkSwapchainKHR swapchain;
-    VulkanImage render_image;
+    VkSurfaceKHR surface;
+    VkFormat swapchain_image_format;
     u32 width;
     u32 height;
     u32 last_width;
@@ -409,9 +470,9 @@ STRUCT(RenderWindow)
     u32 frame_index;
     u32 swapchain_image_index;
     u32 swapchain_image_count;
+    VulkanImage render_image;
     VkImage swapchain_images[MAX_SWAPCHAIN_IMAGE_COUNT];
     VkImageView swapchain_image_views[MAX_SWAPCHAIN_IMAGE_COUNT];
-    VkFormat swapchain_image_format;
     WindowFrame frames[MAX_FRAMES];
 };
 
@@ -523,6 +584,7 @@ Renderer* renderer_initialize()
 
 
     {
+
         u32 physical_device_count;
         VkPhysicalDevice physical_devices[256];
         vkok(vkEnumeratePhysicalDevices(result->instance, &physical_device_count, 0));
@@ -541,6 +603,8 @@ Renderer* renderer_initialize()
 
         result->physical_device = physical_devices[0];
     }
+
+    vkGetPhysicalDeviceMemoryProperties(result->physical_device, &result->memory_properties);
 
     u32 graphics_queue_family_index;
     {
@@ -696,91 +760,86 @@ Renderer* renderer_initialize()
     return result;
 }
 
-RenderWindow* renderer_window_initialize(Renderer* renderer, GraphicsWindow* window)
+fn void destroy_image(Renderer* renderer, VulkanImage image)
 {
-    RenderWindow* result = &renderer_window_memory;
-    result->graphics_window = window;
-    VkSurfaceKHR surface;
-    {
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-        VkWin32SurfaceCreateInfoKHR create_info = {
-            .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-            .pNext = 0,
-            .flags = 0,
-            .hinstance = os_windows_get_module_handle(),
-            .hwnd = graphics_win32_window_get(window),
-        };
-        vkok(vkCreateWin32SurfaceKHR(renderer->instance, &create_info, renderer->allocator, &surface));
-#endif
-#ifdef VK_USE_PLATFORM_XLIB_KHR
-        VkXlibSurfaceCreateInfoKHR create_info = {
-            .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
-            .pNext = 0,
-            .flags = 0,
-            .dpy = graphics_x11_display_get(),
-            .window = graphics_x11_window_get(window),
-        };
-        vkok(vkCreateXlibSurfaceKHR(renderer->instance, &create_info, renderer->allocator, &surface));
-#endif
-#ifdef VK_USE_PLATFORM_WAYLAND_KHR
-            VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-#endif
-#ifdef VK_USE_PLATFORM_MACOS_MVK
-            VK_KHR_COCOA_SURFACE_EXTENSION_NAME,
-#endif
-    }
+    vkDestroyImageView(renderer->device, image.view, renderer->allocator);
+    vkDestroyImage(renderer->device, image.handle, renderer->allocator);
+    vkFreeMemory(renderer->device, image.memory, renderer->allocator);
+}
 
-    VkSurfaceCapabilitiesKHR original_capabilities;
-    vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, surface, &original_capabilities));
+fn void swapchain_recreate(Renderer* renderer, RenderWindow* window, VkSurfaceCapabilitiesKHR surface_capabilities)
+{
+    VkSwapchainKHR old_swapchain = window->swapchain;
+    VkImageView old_swapchain_image_views[MAX_SWAPCHAIN_IMAGE_COUNT];
+
+    if (old_swapchain)
+    {
+        vkok(vkDeviceWaitIdle(renderer->device));
+        for (u32 i = 0; i < window->swapchain_image_count; i += 1)
+        {
+            old_swapchain_image_views[i] = window->swapchain_image_views[i];
+        }
+    }
 
     u32 queue_family_indices[] = { renderer->graphics_queue_family_index };
     VkImageUsageFlags swapchain_image_usage_flags = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    result->swapchain_image_format = VK_FORMAT_B8G8R8A8_UNORM;
-    result->width = original_capabilities.currentExtent.width;
-    result->height = original_capabilities.currentExtent.height;
-    result->last_width = result->width;
-    result->last_height = result->height;
+    window->swapchain_image_format = VK_FORMAT_B8G8R8A8_UNORM;
+    window->last_width = window->width;
+    window->last_height = window->height;
+    window->width = surface_capabilities.currentExtent.width;
+    window->height = surface_capabilities.currentExtent.height;
+
     VkSwapchainCreateInfoKHR swapchain_create_info = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .pNext = 0,
         .flags = 0,
-        .surface = surface,
-        .minImageCount = original_capabilities.minImageCount,
-        .imageFormat = result->swapchain_image_format,
+        .surface = window->surface,
+        .minImageCount = surface_capabilities.minImageCount,
+        .imageFormat = window->swapchain_image_format,
         .imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR,
-        .imageExtent = original_capabilities.currentExtent,
+        .imageExtent = surface_capabilities.currentExtent,
         .imageArrayLayers = 1,
         .imageUsage = swapchain_image_usage_flags,
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount = array_length(queue_family_indices),
         .pQueueFamilyIndices = queue_family_indices,
-        .preTransform = original_capabilities.currentTransform,
+        .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = VK_PRESENT_MODE_FIFO_KHR,
         .clipped = 0,
-        .oldSwapchain = result->swapchain,
+        .oldSwapchain = window->swapchain,
     };
 
+    vkok(vkCreateSwapchainKHR(renderer->device, &swapchain_create_info, renderer->allocator, &window->swapchain));
+
+    assert(window->swapchain != old_swapchain);
+
+    if (old_swapchain)
     {
-        VkSwapchainKHR new_swapchain;
-        vkok(vkCreateSwapchainKHR(renderer->device, &swapchain_create_info, renderer->allocator, &new_swapchain));
-        result->swapchain = new_swapchain;
+        for (u32 i = 0; i < window->swapchain_image_count; i += 1)
+        {
+            vkDestroyImageView(renderer->device, old_swapchain_image_views[i], renderer->allocator);
+        }
+
+        vkDestroySwapchainKHR(renderer->device, old_swapchain, renderer->allocator);
+
+        destroy_image(renderer, window->render_image);
     }
 
     {
-        vkok(vkGetSwapchainImagesKHR(renderer->device, result->swapchain, &result->swapchain_image_count, 0));
+        vkok(vkGetSwapchainImagesKHR(renderer->device, window->swapchain, &window->swapchain_image_count, 0));
 
-        if (result->swapchain_image_count == 0)
+        if (window->swapchain_image_count == 0)
         {
             failed_execution();
         }
 
-        if (result->swapchain_image_count > array_length(result->swapchain_images))
+        if (window->swapchain_image_count > array_length(window->swapchain_images))
         {
             failed_execution();
         }
 
-        vkok(vkGetSwapchainImagesKHR(renderer->device, result->swapchain, &result->swapchain_image_count, result->swapchain_images));
+        vkok(vkGetSwapchainImagesKHR(renderer->device, window->swapchain, &window->swapchain_image_count, window->swapchain_images));
         
         // VkImageViewUsageCreateInfo image_view_usage_create_info = {
         //     .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
@@ -788,13 +847,13 @@ RenderWindow* renderer_window_initialize(Renderer* renderer, GraphicsWindow* win
         //     .usage = swapchain_create_info.imageUsage,
         // };
 
-        for (u32 i = 0; i < result->swapchain_image_count; i += 1)
+        for (u32 i = 0; i < window->swapchain_image_count; i += 1)
         {
             VkImageViewCreateInfo create_info = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                 // .pNext = &image_view_usage_create_info,
                 .flags = 0,
-                .image = result->swapchain_images[i],
+                .image = window->swapchain_images[i],
                 .viewType = VK_IMAGE_VIEW_TYPE_2D,
                 .format = swapchain_create_info.imageFormat,
                 .components = {
@@ -812,21 +871,55 @@ RenderWindow* renderer_window_initialize(Renderer* renderer, GraphicsWindow* win
                 },
             };
 
-            vkok(vkCreateImageView(renderer->device, &create_info, renderer->allocator, &result->swapchain_image_views[i]));
+            vkok(vkCreateImageView(renderer->device, &create_info, renderer->allocator, &window->swapchain_image_views[i]));
         }
     }
 
-    vkGetPhysicalDeviceMemoryProperties(renderer->physical_device, &renderer->memory_properties);
-
-    auto initial_window_size = graphics_window_size_get(window);
-
-    result->render_image = vk_image_create(renderer->device, renderer->allocator, renderer->memory_properties, (VulkanImageCreate) {
-        .width = initial_window_size.width,
-        .height = initial_window_size.height,
+    window->render_image = vk_image_create(renderer->device, renderer->allocator, renderer->memory_properties, (VulkanImageCreate) {
+        .width = surface_capabilities.currentExtent.width,
+        .height = surface_capabilities.currentExtent.height,
         .mip_levels = 1,
-        .format = result->swapchain_image_format,
+        .format = window->swapchain_image_format,
         .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
     });
+}
+
+RenderWindow* renderer_window_initialize(Renderer* renderer, GraphicsWindow* window)
+{
+    RenderWindow* result = &renderer_window_memory;
+    result->graphics_window = window;
+    {
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+        VkWin32SurfaceCreateInfoKHR create_info = {
+            .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+            .pNext = 0,
+            .flags = 0,
+            .hinstance = os_windows_get_module_handle(),
+            .hwnd = graphics_win32_window_get(window),
+        };
+        vkok(vkCreateWin32SurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
+#endif
+#ifdef VK_USE_PLATFORM_XLIB_KHR
+        VkXlibSurfaceCreateInfoKHR create_info = {
+            .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+            .pNext = 0,
+            .flags = 0,
+            .dpy = graphics_x11_display_get(),
+            .window = graphics_x11_window_get(window),
+        };
+        vkok(vkCreateXlibSurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
+#endif
+#ifdef VK_USE_PLATFORM_WAYLAND_KHR
+            VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+#endif
+#ifdef VK_USE_PLATFORM_MACOS_MVK
+            VK_KHR_COCOA_SURFACE_EXTENSION_NAME,
+#endif
+    }
+
+    VkSurfaceCapabilitiesKHR surface_capabilities;
+    vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, result->surface, &surface_capabilities));
+    swapchain_recreate(renderer, result, surface_capabilities);
     
     VkCommandPoolCreateInfo command_pool_create_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -1384,11 +1477,23 @@ fn void queue_present(Renderer* renderer, RenderWindow* window)
         .pResults = results,
     };
 
-    vkok_swapchain(vkQueuePresentKHR(renderer->graphics_queue, &present_info));
-
-    for (u32 i = 0; i < array_length(results); i += 1)
+    VkResult present_result = vkQueuePresentKHR(renderer->graphics_queue, &present_info);
+    if (present_result == VK_SUCCESS)
     {
-        vkok_swapchain(results[i]);
+        for (u32 i = 0; i < array_length(results); i += 1)
+        {
+            vkok_swapchain(results[i]);
+        }
+    }
+    else if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
+    {
+        VkSurfaceCapabilitiesKHR surface_capabilities;
+        vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, window->surface, &surface_capabilities));
+        swapchain_recreate(renderer, window, surface_capabilities);
+    }
+    else
+    {
+        vkok(present_result);
     }
 }
 
@@ -1401,17 +1506,24 @@ GraphicsWindowSize renderer_window_frame_begin(Renderer* renderer, RenderWindow*
     VkBool32 wait_all = 1;
     vkok(vkWaitForFences(renderer->device, fence_count, &frame->render_fence, wait_all, timeout));
     VkFence image_fence = 0;
-    vkok_swapchain(vkAcquireNextImageKHR(renderer->device, window->swapchain, timeout, frame->swapchain_semaphore, image_fence, &window->swapchain_image_index));
+    VkResult next_image_result = vkAcquireNextImageKHR(renderer->device, window->swapchain, timeout, frame->swapchain_semaphore, image_fence, &window->swapchain_image_index);
+    if (next_image_result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        VkSurfaceCapabilitiesKHR surface_capabilities;
+        vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, window->surface, &surface_capabilities));
+        swapchain_recreate(renderer, window, surface_capabilities);
+    }
+    else if (next_image_result != VK_SUCCESS && next_image_result != VK_SUBOPTIMAL_KHR)
+    {
+        vkok(next_image_result);
+    }
+
     vkok(vkResetFences(renderer->device, fence_count, &frame->render_fence));
 
     VkCommandBufferResetFlags reset_flags = 0;
     vkok(vkResetCommandBuffer(frame->command_buffer, reset_flags));
 
-    window->last_width = window->width;
-    window->last_height = window->height;
     auto window_size = graphics_window_size_get(window->graphics_window);
-    window->width = window_size.width;
-    window->height = window_size.height;
 
     return window_size;
 }
@@ -1896,3 +2008,5 @@ void window_draw_indexed(RenderWindow* window, u32 index_count, u32 instance_cou
     auto* frame = window_frame(window);
     vkCmdDrawIndexed(frame->command_buffer, index_count, instance_count, first_index, vertex_offset, first_instance);
 }
+
+
