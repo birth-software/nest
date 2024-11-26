@@ -22,6 +22,13 @@ if [[ -z "${BIRTH_OS-}" ]]; then
     esac
 fi
 
+if [[ "$BIRTH_OS" == "macos" ]]; then
+    MY_HOMEBREW_PREFIX=$(brew --prefix llvm)
+    C_COMPILER_PATH=$MY_HOMEBREW_PREFIX/bin/clang
+    CXX_COMPILER_PATH=$MY_HOMEBREW_PREFIX/bin/clang++
+    ASM_COMPILER_PATH=$MY_HOMEBREW_PREFIX/bin/clang
+fi
+
 if [[ -z "${BIRTH_ARCH-}" ]]; then
     case "$(uname -m)" in
         x86_64)
