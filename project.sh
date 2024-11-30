@@ -84,6 +84,7 @@ case $BIRTH_OS in
         ;;
 esac
 
+SHADER_DIR=$
 BUILD_DIR=$ORIGINAL_DIR/build/$CMAKE_BUILD_TYPE
 mkdir -p $BUILD_DIR
 cmake . \
