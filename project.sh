@@ -94,6 +94,7 @@ cmake . \
     -DCMAKE_C_COMPILER=$C_COMPILER_PATH \
     -DCMAKE_CXX_COMPILER=$CXX_COMPILER_PATH \
     -DCMAKE_ASM_COMPILER=$ASM_COMPILER_PATH \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DCOMPILER_NAME=$COMPILER_NAME \
     -DBB_DIR=$BB_DIR \
     -DBB_IS_CI=$BB_IS_CI \
@@ -104,6 +105,8 @@ cmake . \
     
 cd $BUILD_DIR
 ninja -v
+cd $ORIGINAL_DIR/build
+ln -s $BUILD_DIR/compile_commands.json . || true
 cd $ORIGINAL_DIR
 
 if [ "$#" -ne 0 ]; then
