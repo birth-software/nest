@@ -171,14 +171,18 @@ fn String message_type_to_string(VkDebugUtilsMessageTypeFlagBitsEXT message_type
 
 fn VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity, VkDebugUtilsMessageTypeFlagsEXT message_type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 {
-    unused(message_severity);
-    unused(message_type);
     unused(user_data);
-    print("Validation message ({s}) ({s}) ({cstr}): {cstr}\n", message_severity_to_string(message_severity), message_type_to_string(message_type), callback_data->pMessageIdName ? callback_data->pMessageIdName : "ID_NONE", callback_data->pMessage ? callback_data->pMessage : "MESSAGE_NONE");
+
+    if (callback_data->pMessage)
+    {
+        print("Validation message ({s}) ({s}) ({cstr}): {cstr}\n", message_severity_to_string(message_severity), message_type_to_string(message_type), callback_data->pMessageIdName ? callback_data->pMessageIdName : "ID_NONE", callback_data->pMessage);
+    }
+
     if (message_severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
     {
         failed_execution();
     }
+
     return VK_FALSE;
 }
 
@@ -2008,5 +2012,3 @@ void window_draw_indexed(RenderWindow* window, u32 index_count, u32 instance_cou
     auto* frame = window_frame(window);
     vkCmdDrawIndexed(frame->command_buffer, index_count, instance_count, first_index, vertex_offset, first_instance);
 }
-
-
