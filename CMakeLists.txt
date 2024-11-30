@@ -16,6 +16,7 @@ cmake_print_variables("CXX flags Release: ${CMAKE_CXX_FLAGS_RELEASE}")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
+set(SHADER_COMPILATION_USE_SOURCE OFF CACHE BOOL "Variable to control if to invoke command line for shader compilation or not")
 
 set(LIBRARY_NAME "std")
 set(RUNNER_NAME "runner")
@@ -34,6 +35,11 @@ else()
 endif()
 
 set (USE_LLVM ${BB_IS_CI} CACHE BOOL "Variable that determines if LLVM should be linked to the target")
+if (SHADER_COMPILATION_USE_SOURCE)
+    set(SHADER_COMPILATION_USE_SOURCE_C_FLAG "-DSHADER_COMPILATION_USE_SOURCE=1")
+else()
+    set(SHADER_COMPILATION_USE_SOURCE_C_FLAG "-DSHADER_COMPILATION_USE_SOURCE=0")
+endif()
 
 add_compile_options(
     -pedantic
@@ -44,7 +50,7 @@ add_compile_options(
     -fansi-escape-codes
     -ferror-limit=1
     -march=native
-    ${BB_IS_CI_C_FLAG} -DCOMPILER_NAME=\"${COMPILER_NAME}\" -DBUILD_DIR=\"${CMAKE_BINARY_DIR}\" -DBB_DIR=\"${BB_DIR}\"
+    ${BB_IS_CI_C_FLAG} -DCOMPILER_NAME=\"${COMPILER_NAME}\" -DBUILD_DIR=\"${CMAKE_BINARY_DIR}\" -DBB_DIR=\"${BB_DIR}\" ${SHADER_COMPILATION_USE_SOURCE_C_FLAG}
 )
 include_directories("bootstrap/include")
 
@@ -185,10 +191,12 @@ if (USE_LLVM)
 endif()
 
 if (NOT BB_IS_CI)
-    add_subdirectory(dependencies/SPIRV-Headers-vulkan-sdk-1.3.296.0)
-    add_subdirectory(dependencies/SPIRV-Tools-vulkan-sdk-1.3.296.0)
-    add_subdirectory(dependencies/glslang-15.0.0)
-    target_link_libraries(${COMPILER_NAME} PRIVATE glslang::glslang glslang::SPIRV glslang::glslang-default-resource-limits)
+    if (SHADER_COMPILATION_USE_SOURCE)
+        add_subdirectory(dependencies/SPIRV-Headers-vulkan-sdk-1.3.296.0)
+        add_subdirectory(dependencies/SPIRV-Tools-vulkan-sdk-1.3.296.0)
+        add_subdirectory(dependencies/glslang-15.0.0)
+        target_link_libraries(${COMPILER_NAME} PRIVATE glslang::glslang glslang::SPIRV glslang::glslang-default-resource-limits)
+    endif()
 
     set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
     set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)

@@ -1,6 +1,6 @@
 #include <std/shader_compilation.h>
+#if SHADER_COMPILATION_USE_SOURCE
 #include <glslang/Include/glslang_c_interface.h>
-
 
 // Required for use of glslang_default_resource
 #include <glslang/Public/resource_limits_c.h>
@@ -85,9 +85,11 @@ fn SpirVBinary compileShaderToSPIRV_Vulkan(Arena* arena, glslang_stage_t stage, 
 
     return bin;
 }
+#endif
 
 String compile_shader(Arena* arena, String path, ShaderStage shader_stage)
 {
+#if SHADER_COMPILATION_USE_SOURCE
     auto file = file_read(arena, path);
 
     glslang_stage_t stage;
@@ -107,4 +109,22 @@ String compile_shader(Arena* arena, String path, ShaderStage shader_stage)
         .pointer = (u8*)result.words,
         .length = result.size * sizeof(*result.words),
     };
+#else
+    unused(shader_stage);
+    auto output_path = arena_join_string(arena, (Slice(String))array_to_slice(((String[]) {
+        path,
+        strlit(".spv"),
+    })));
+    char* arguments[] = {
+        "/usr/bin/glslangValidator",
+        "-V",
+        string_to_c(path),
+        "-o",
+        string_to_c(output_path),
+        0,
+    };
+    run_command(arena, (CStringSlice)array_to_slice(arguments), 0);
+    auto file = file_read(arena, output_path);
+    return file;
+#endif
 }
