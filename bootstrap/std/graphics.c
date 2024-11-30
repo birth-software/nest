@@ -81,6 +81,13 @@ GraphicsWindowSize graphics_window_size_get(GraphicsWindow* window)
     return result;
 }
 
+GraphicsCursorPosition graphics_window_cursor_position_get(GraphicsWindow* window)
+{
+    GraphicsCursorPosition result;
+    glfwGetCursorPos(window->handle, &result.x, &result.y);
+    return result;
+}
+
 #ifdef _WIN32
 HANDLE graphics_win32_window_get(GraphicsWindow* window)
 {

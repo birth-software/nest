@@ -15,6 +15,12 @@ STRUCT(GraphicsWindowCreate)
     GraphicsWindowSize size;
 };
 
+STRUCT(GraphicsCursorPosition)
+{
+    f64 x;
+    f64 y;
+};
+
 typedef struct GraphicsWindow GraphicsWindow;
 
 EXPORT void graphics_init(u8 should_use_x11);
@@ -23,6 +29,7 @@ EXPORT u8 graphics_window_should_close(GraphicsWindow* window);
 EXPORT void graphics_poll_events();
 EXPORT GraphicsWindowSize graphics_window_size_get(GraphicsWindow* window);
 EXPORT void graphics_window_consume_resize(GraphicsWindow* window);
+EXPORT GraphicsCursorPosition graphics_window_cursor_position_get(GraphicsWindow* window);
 
 #ifdef __linux__
 typedef unsigned long XID;
