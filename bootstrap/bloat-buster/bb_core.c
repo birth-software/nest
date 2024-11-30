@@ -240,7 +240,7 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
         graphics_poll_events();
 
         auto mouse_position = graphics_window_cursor_position_get(window);
-        print("Mouse position: ({f64}, {f64})\n", mouse_position.x, mouse_position.y);
+        // print("Mouse position: ({f64}, {f64})\n", mouse_position.x, mouse_position.y);
 
         auto frame_window_size = renderer_window_frame_begin(renderer, render_window);
 
