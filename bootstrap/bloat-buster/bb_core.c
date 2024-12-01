@@ -49,35 +49,37 @@ fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, Virtual
         auto uv_width = character->width;
         auto uv_height = character->height;
 
+        print("UV x: {u32}. UV y: {u32}\n", uv_x, uv_y);
+
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x,
             .y = pos_y,
-            .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)uv_y / texture_atlas.width,
+            .uv_x = (f32)uv_x,
+            .uv_y = (f32)uv_y,
             .color = color,
             .texture_index = texture_index,
         };
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x + character->width,
             .y = pos_y,
-            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
-            .uv_y = (f32)uv_y / texture_atlas.width,
+            .uv_x = (f32)(uv_x + uv_width),
+            .uv_y = (f32)uv_y,
             .color = color,
             .texture_index = texture_index,
         };
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x,
             .y = pos_y + character->height,
-            .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
+            .uv_x = (f32)uv_x,
+            .uv_y = (f32)(uv_y + uv_height),
             .color = color,
             .texture_index = texture_index,
         };
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x + character->width,
             .y = pos_y + character->height,
-            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
-            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
+            .uv_x = (f32)(uv_x + uv_width),
+            .uv_y = (f32)(uv_y + uv_height),
             .color = color,
             .texture_index = texture_index,
         };
