@@ -226,6 +226,7 @@ if (NOT BB_IS_CI)
         "bootstrap/std/font_provider.c"
         "bootstrap/std/graphics.c"
         "bootstrap/std/render.c"
+        "bootstrap/std/ui_core.c"
     )
 
     target_include_directories(${COMPILER_NAME} PRIVATE dependencies/stb)

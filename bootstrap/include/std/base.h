@@ -252,3 +252,8 @@ Hash64 hash_bytes(String bytes);
 Hash32 hash64_to_hash32(Hash64 hash64);
 
 u64 round_up_to_next_power_of_2(u64 n);
+
+STRUCT(TextureIndex)
+{
+    u32 value;
+};

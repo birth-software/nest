@@ -2,6 +2,6 @@
 #include <std/base.h>
 #include <std/os.h>
 
-EXPORT void run_app(Arena* arena);
+EXPORT void run_app();
 
 #endif

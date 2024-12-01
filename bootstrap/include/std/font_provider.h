@@ -1,3 +1,5 @@
+#pragma once
+
 #include <std/base.h>
 #include <std/os.h>
 
@@ -23,6 +25,7 @@ STRUCT(TextureAtlas)
     s32 ascent;
     s32 descent;
     s32 line_gap;
+    TextureIndex texture;
 };
 
 STRUCT(TextureAtlasCreate)
@@ -31,4 +34,6 @@ STRUCT(TextureAtlasCreate)
     u32 text_height;
 };
 
-EXPORT TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create);
+#include <std/render.h>
+
+EXPORT TextureAtlas font_texture_atlas_create(Arena* arena, Renderer* renderer, TextureAtlasCreate create);

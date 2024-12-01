@@ -24781,8 +24781,8 @@ void entry_point(int argc, char* argv[], char* envp[])
     unit_tests();
 #endif
 
-    Arena* global_arena = arena_init(MB(16), KB(64), KB(64));
 #if BB_CI
+    Arena* global_arena = arena_init(MB(512), KB(64), KB(64));
 
     {
         arguments.length = cast_to(u64, s32, argc);
@@ -24850,6 +24850,6 @@ void entry_point(int argc, char* argv[], char* envp[])
 
     thread_clear(thread);
 #else
-    run_app(global_arena);
+    run_app();
 #endif
 }
