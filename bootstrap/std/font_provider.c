@@ -22,8 +22,7 @@ TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create)
     result.kerning_tables = arena_allocate(arena, s32, character_count * character_count);
     result.height = (u32)sqrtf((f32)(create.text_height * create.text_height * character_count));
     result.width = result.height;
-    auto atlas_size = result.width * result.height;
-    result.pointer = arena_allocate(arena, u8, atlas_size);
+    result.pointer = arena_allocate(arena, u32, result.width * result.height);
     auto scale_factor = stbtt_ScaleForPixelHeight(&font_info, create.text_height);
 
     int ascent;
@@ -88,7 +87,7 @@ TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create)
             {
                 auto source_index = bitmap_y * width + bitmap_x;
                 auto destination_index = ((height - bitmap_y - 1) + y) * result.width + bitmap_x + x;
-                destination[destination_index] = source[source_index];
+                destination[destination_index] = ((u32)(source[source_index]) << 24) | 0xffffff;
             }
         }
 

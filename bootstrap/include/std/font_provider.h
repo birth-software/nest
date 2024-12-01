@@ -15,7 +15,7 @@ STRUCT(FontCharacter)
 
 STRUCT(TextureAtlas)
 {
-    u8* pointer;
+    u32* pointer;
     FontCharacter* characters;
     s32* kerning_tables;
     u32 width;

@@ -11,7 +11,6 @@ layout(set = 0, binding = 0) uniform sampler2D atlas_texture;
 
 void main() 
 {
-    vec4 alpha_v = texture(atlas_texture, in_uv);
-    vec4 sampled = vec4(1.0, 1.0, 1.0, alpha_v.r);
+    vec4 sampled = texture(atlas_texture, in_uv);
     out_frag_color = in_color * sampled;
 }

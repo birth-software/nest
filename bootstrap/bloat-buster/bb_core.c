@@ -166,7 +166,7 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
         .width = texture_atlas.width,
         .height = texture_atlas.height,
         .depth = 1,
-        .format = R8_UNORM,
+        .format = R8G8B8A8_SRGB,
     });
     DescriptorSetUpdate descriptor_set_updates[] = {
         {
