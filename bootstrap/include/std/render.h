@@ -24,7 +24,7 @@ typedef enum TextureFormat : u8
 
 STRUCT(TextureMemory)
 {
-    u8* pointer;
+    void* pointer;
     u32 width;
     u32 height;
     u32 depth;

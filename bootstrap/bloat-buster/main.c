@@ -24781,7 +24781,7 @@ void entry_point(int argc, char* argv[], char* envp[])
     unit_tests();
 #endif
 
-    Arena* global_arena = arena_init(MB(2), KB(64), KB(64));
+    Arena* global_arena = arena_init(MB(16), KB(64), KB(64));
 #if BB_CI
 
     {
