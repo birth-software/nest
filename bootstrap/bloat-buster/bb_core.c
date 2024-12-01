@@ -20,6 +20,8 @@ STRUCT(Vertex)
     f32 uv_x;
     f32 uv_y;
     Vec4 color;
+    u32 texture_index;
+    u32 reserved[3];
 };
 decl_vb(Vertex);
 
@@ -30,7 +32,7 @@ STRUCT(GPUDrawPushConstants)
     f32 height;
 };
 
-fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, VirtualBuffer(u32)* indices, u32 width, u32 height, Vec4 color, String string, TextureAtlas texture_atlas)
+fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, VirtualBuffer(u32)* indices, u32 width, u32 height, Vec4 color, String string, TextureAtlas texture_atlas, u32 texture_index)
 {
     u32 index_offset = 0;
     auto x_offset = width / 2;
@@ -53,6 +55,7 @@ fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, Virtual
             .uv_x = (f32)uv_x / texture_atlas.width,
             .uv_y = (f32)uv_y / texture_atlas.width,
             .color = color,
+            .texture_index = texture_index,
         };
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x + character->width,
@@ -60,6 +63,7 @@ fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, Virtual
             .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
             .uv_y = (f32)uv_y / texture_atlas.width,
             .color = color,
+            .texture_index = texture_index,
         };
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x,
@@ -67,6 +71,7 @@ fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, Virtual
             .uv_x = (f32)uv_x / texture_atlas.width,
             .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
             .color = color,
+            .texture_index = texture_index,
         };
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x + character->width,
@@ -74,6 +79,7 @@ fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, Virtual
             .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
             .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
             .color = color,
+            .texture_index = texture_index,
         };
 
         *vb_add(indices, 1) = index_offset + 0;
@@ -131,7 +137,7 @@ void run_app(Arena* arena)
                             .binding = 0,
                             .type = DESCRIPTOR_TYPE_IMAGE_PLUS_SAMPLER,
                             .stage = SHADER_STAGE_FRAGMENT,
-                            .count = 1,
+                            .count = 2,
                         },
                     })),
                 },
@@ -149,6 +155,20 @@ void run_app(Arena* arena)
         .pipelines = array_to_slice(pipeline_create),
         .shader_sources = array_to_slice(shader_source_paths),
     });
+
+    u32 white_texture_width = 1024;
+    u32 white_texture_height = white_texture_width;
+    auto* white_texture_buffer = arena_allocate(arena, u32, white_texture_width * white_texture_height / sizeof(u32));
+    memset(white_texture_buffer, 0xff, white_texture_width * white_texture_height);
+
+    auto white_texture = renderer_texture_create(renderer, (TextureMemory) {
+        .pointer = white_texture_buffer,
+        .width = white_texture_width,
+        .height = white_texture_height,
+        .depth = 1,
+        .format = R8G8B8A8_SRGB,
+    });
+
     auto font_path = 
 #ifdef _WIN32
 strlit("C:/Users/David/Downloads/Fira_Sans/FiraSans-Regular.ttf")
@@ -173,9 +193,10 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
             .set = { .value = 0 },
             .type = DESCRIPTOR_TYPE_IMAGE_PLUS_SAMPLER,
             .binding = 0,
-            .descriptor_count = 1,
+            .descriptor_count = 2,
             .textures = {
-                [0] = texture_atlas_image,
+                [0] = white_texture,
+                [1] = texture_atlas_image,
             },
         },
     };
@@ -188,7 +209,8 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
     Vec4 color = {1, 1, 1, 1};
     static_assert(sizeof(color) == 4 * sizeof(float));
 
-    draw_string(renderer, &vertices, &indices, initial_window_size.width, initial_window_size.height, color, strlit("Hello world!"), texture_atlas);
+    u32 texture_index = 1;
+    draw_string(renderer, &vertices, &indices, initial_window_size.width, initial_window_size.height, color, strlit("He"), texture_atlas, texture_index);
 
     auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
     auto index_buffer_size = sizeof(*indices.pointer) * indices.length;

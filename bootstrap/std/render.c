@@ -687,6 +687,7 @@ Renderer* renderer_initialize()
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
             .bufferDeviceAddress = 1,
             .descriptorIndexing = 1,
+            .runtimeDescriptorArray = 1,
             .pNext = &features13,
         };
 
