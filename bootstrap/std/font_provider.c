@@ -7,7 +7,7 @@
 #include <stb_truetype.h>
 #pragma clang diagnostic pop
 
-TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create)
+TextureAtlas font_texture_atlas_create(Arena* arena, Renderer* renderer, TextureAtlasCreate create)
 {
     auto font_file = file_read(arena, create.font_path);
     stbtt_fontinfo font_info;
@@ -113,6 +113,14 @@ TextureAtlas font_create_texture_atlas(Arena* arena, TextureAtlasCreate create)
 
         stbtt_FreeBitmap(bitmap, 0);
     }
+
+    result.texture = renderer_texture_create(renderer, (TextureMemory) {
+        .pointer = result.pointer,
+        .width = result.width,
+        .height = result.height,
+        .depth = 1,
+        .format = TEXTURE_FORMAT_R8G8B8A8_SRGB,
+    });
 
     return result;
 }

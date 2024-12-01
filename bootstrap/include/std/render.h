@@ -1,25 +1,46 @@
 #pragma once
 
+
 #include <std/base.h>
 
-#include <std/graphics.h>
-
-#define frame_overlap (2)
-
 typedef struct Renderer Renderer;
+
+#include <std/graphics.h>
+#include <std/font_provider.h>
+
 typedef struct RenderWindow RenderWindow;
 typedef struct Pipeline Pipeline;
 
+typedef enum BBPipeline
+{
+    BB_PIPELINE_RECT,
+    BB_PIPELINE_COUNT,
+} BBPipeline;
+
+typedef enum RenderFontType
+{
+    RENDER_FONT_TYPE_MONOSPACE,
+    RENDER_FONT_TYPE_PROPORTIONAL,
+    RENDER_FONT_TYPE_COUNT,
+} RenderFontType;
+
+typedef enum RectTextureSlot
+{
+    RECT_TEXTURE_SLOT_WHITE,
+    RECT_TEXTURE_SLOT_MONOSPACE_FONT,
+    RECT_TEXTURE_SLOT_PROPORTIONAL_FONT,
+    RECT_TEXTURE_SLOT_COUNT
+} RectTextureSlot;
+
 typedef enum IndexType : u8
 {
-    INDEX_TYPE_U16,
     INDEX_TYPE_U32,
 } IndexType;
 
 typedef enum TextureFormat : u8
 {
-    R8_UNORM,
-    R8G8B8A8_SRGB,
+    TEXTURE_FORMAT_R8_UNORM,
+    TEXTURE_FORMAT_R8G8B8A8_SRGB,
 } TextureFormat;
 
 STRUCT(TextureMemory)
@@ -67,16 +88,16 @@ STRUCT(DescriptorSetLayoutBinding)
 };
 declare_slice(DescriptorSetLayoutBinding);
 
-STRUCT(DescriptorSetLayout)
+STRUCT(DescriptorSetLayoutCreate)
 {
     Slice(DescriptorSetLayoutBinding) bindings;
 };
-declare_slice(DescriptorSetLayout);
+declare_slice(DescriptorSetLayoutCreate);
 
 STRUCT(PipelineLayoutCreate)
 {
     Slice(PushConstantRange) push_constant_ranges;
-    Slice(DescriptorSetLayout) descriptor_set_layouts;
+    Slice(DescriptorSetLayoutCreate) descriptor_set_layouts;
 };
 declare_slice(PipelineLayoutCreate);
 
@@ -85,11 +106,6 @@ STRUCT(GraphicsPipelinesCreate)
     Slice(String) shader_sources;
     Slice(PipelineLayoutCreate) layouts;
     Slice(PipelineCreate) pipelines;
-};
-
-STRUCT(TextureIndex)
-{
-    u32 value;
 };
 
 STRUCT(PipelineIndex)
@@ -107,32 +123,12 @@ STRUCT(DescriptorSetIndex)
     u32 value;
 };
 
-#define MAX_TEXTURE_UPDATE_COUNT (32)
-#define MAX_DESCRIPTOR_SET_UPDATE_COUNT (16)
-STRUCT(DescriptorSetUpdate)
-{
-    DescriptorSetIndex set;
-    DescriptorType type;
-    u32 binding;
-    u32 descriptor_count;
-    union
-    {
-        TextureIndex textures[MAX_TEXTURE_UPDATE_COUNT];
-    };
-};
-declare_slice(DescriptorSetUpdate);
-
 typedef enum BufferType : u8
 {
     BUFFER_TYPE_VERTEX,
     BUFFER_TYPE_INDEX,
     BUFFER_TYPE_STAGING,
 } BufferType;
-
-STRUCT(BufferIndex)
-{
-    u32 value;
-};
 
 STRUCT(HostBufferCopy)
 {
@@ -149,35 +145,24 @@ STRUCT(LocalBufferCopyRegion)
 };
 declare_slice(LocalBufferCopyRegion);
 
-STRUCT(LocalBufferCopy)
-{
-    BufferIndex destination;
-    BufferIndex source;
-    Slice(LocalBufferCopyRegion) regions;
-};
-declare_slice(LocalBufferCopy);
-
-#define MAX_LOCAL_BUFFER_COPY_COUNT (16)
-
-EXPORT Renderer* renderer_initialize();
-EXPORT RenderWindow* renderer_window_initialize(Renderer* renderer, GraphicsWindow* window);
+EXPORT Renderer* renderer_initialize(Arena* arena);
+EXPORT RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window);
 EXPORT PipelineIndex renderer_graphics_pipelines_create(Renderer* renderer, Arena* arena, GraphicsPipelinesCreate create_data);
 EXPORT PipelineLayoutIndex renderer_pipeline_get_layout(PipelineIndex pipeline);
-EXPORT GraphicsWindowSize renderer_window_frame_begin(Renderer* renderer, RenderWindow* window);
+EXPORT void renderer_window_frame_begin(Renderer* renderer, RenderWindow* window);
 EXPORT void renderer_window_frame_end(Renderer* renderer, RenderWindow* window);
 EXPORT TextureIndex renderer_texture_create(Renderer* renderer, TextureMemory texture_memory);
-EXPORT BufferIndex renderer_buffer_create(Renderer* renderer, u64 size, BufferType type);
-EXPORT void renderer_update_pipeline_resources(Renderer* renderer, PipelineIndex pipeline_index, Slice(DescriptorSetUpdate) descriptor_updates);
-EXPORT void renderer_copy_to_host(BufferIndex buffer_index, Slice(HostBufferCopy) regions);
-EXPORT void renderer_copy_to_local(Renderer* renderer, Slice(LocalBufferCopy) copies);
 EXPORT void window_command_begin(RenderWindow* window);
 EXPORT void window_command_end(RenderWindow* window);
 EXPORT void window_render_begin(RenderWindow* window);
 EXPORT void window_render_end(RenderWindow* window);
 
-EXPORT void window_bind_pipeline(RenderWindow* window, PipelineIndex pipeline_index);
-EXPORT void window_bind_pipeline_descriptor_sets(RenderWindow* window, PipelineIndex pipeline_index);
-EXPORT void window_bind_index_buffer(RenderWindow* window, BufferIndex index_buffer, u64 offset, IndexType index_type);
-EXPORT void window_push_constants(RenderWindow* window, PipelineIndex pipeline_index, SliceP(void) memories);
-EXPORT u64 buffer_address(BufferIndex buffer_index);
 EXPORT void window_draw_indexed(RenderWindow* window, u32 index_count, u32 instance_count, u32 first_index, s32 vertex_offset, u32 first_instance);
+
+EXPORT void window_rect_texture_update_begin(RenderWindow* window);
+EXPORT void renderer_queue_font_update(Renderer* renderer, RenderWindow* window, RenderFontType type, TextureAtlas atlas);
+EXPORT void window_queue_rect_texture_update(RenderWindow* window, RectTextureSlot slot, TextureIndex texture_index);
+EXPORT void window_rect_texture_update_end(Renderer* renderer, RenderWindow* window);
+
+EXPORT void window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index, String vertex_memory);
+EXPORT void window_pipeline_add_indices(RenderWindow* window, BBPipeline pipeline_index, Slice(u32) indices);

@@ -116,7 +116,11 @@ String compile_shader(Arena* arena, String path, ShaderStage shader_stage)
         strlit(".spv"),
     })));
     char* arguments[] = {
+#if _WIN32
+        "C:/VulkanSDK/1.3.296.0/Bin/glslangValidator.exe",
+#else
         "/usr/bin/glslangValidator",
+#endif
         "-V",
         string_to_c(path),
         "-o",

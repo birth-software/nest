@@ -21,7 +21,7 @@ EXPORT TextureMemory texture_load_from_file(Arena* arena, String path)
         .pointer = buffer,
         .width = width,
         .height = height,
-        .format = R8G8B8A8_SRGB,
+        .format = TEXTURE_FORMAT_R8G8B8A8_SRGB,
         .depth = 1,
     };
 }

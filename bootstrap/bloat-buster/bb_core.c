@@ -11,7 +11,7 @@
 STRUCT(Vec4)
 {
     f32 v[4];
-};
+}__attribute__((aligned(16)));
 
 STRUCT(Vertex)
 {
@@ -25,12 +25,23 @@ STRUCT(Vertex)
 };
 decl_vb(Vertex);
 
-STRUCT(GPUDrawPushConstants)
+fn TextureIndex white_texture_create(Arena* arena, Renderer* renderer)
 {
-    u64 vertex_buffer;
-    f32 width;
-    f32 height;
-};
+    u32 white_texture_width = 1024;
+    u32 white_texture_height = white_texture_width;
+    auto* white_texture_buffer = arena_allocate(arena, u32, white_texture_width * white_texture_height);
+    memset(white_texture_buffer, 0xff, white_texture_width * white_texture_height * sizeof(u32));
+
+    auto white_texture = renderer_texture_create(renderer, (TextureMemory) {
+        .pointer = white_texture_buffer,
+        .width = white_texture_width,
+        .height = white_texture_height,
+        .depth = 1,
+        .format = TEXTURE_FORMAT_R8G8B8A8_SRGB,
+    });
+
+    return white_texture;
+}
 
 fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, VirtualBuffer(u32)* indices, u32 width, u32 height, Vec4 color, String string, TextureAtlas texture_atlas, u32 texture_index)
 {
@@ -48,8 +59,6 @@ fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, Virtual
         auto uv_y = character->y;
         auto uv_width = character->width;
         auto uv_height = character->height;
-
-        print("UV x: {u32}. UV y: {u32}\n", uv_x, uv_y);
 
         *vb_add(vertices, 1) = (Vertex) {
             .x = pos_x,
@@ -97,11 +106,27 @@ fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, Virtual
     }
 }
 
-void run_app(Arena* arena)
+STRUCT(BBWindow)
 {
+    OSWindow os;
+    RenderWindow* render;
+};
+
+STRUCT(BBGUIState)
+{
+    Arena* arena;
+    BBWindow* first;
+    BBWindow* last;
+};
+global_variable BBGUIState state;
+
+void run_app()
+{
+    state.arena = arena_init(MB(512), MB(2), MB(2));
+
     u8 use_x11 = 1;
-    graphics_init(use_x11);
-    GraphicsWindow* window = graphics_window_create((GraphicsWindowCreate) {
+    os_graphics_init(use_x11);
+    OSWindow os_window = os_window_create((OSWindowCreate) {
         .name = strlit("Bloat Buster"),
         .size = {
             .width = 1024,
@@ -109,67 +134,13 @@ void run_app(Arena* arena)
         },
     });
 
-    if (!window)
+    if (!os_window)
     {
         failed_execution();
     }
 
-    auto initial_window_size = graphics_window_size_get(window);
-
-    Renderer* renderer = renderer_initialize();
-    RenderWindow* render_window = renderer_window_initialize(renderer, window);
-
-    String shader_source_paths[] = {
-        strlit("bootstrap/shaders/font.vert"),
-        strlit("bootstrap/shaders/font.frag"),
-    };
-    PipelineLayoutCreate pipeline_layouts[] = {
-        (PipelineLayoutCreate) {
-            .push_constant_ranges = array_to_slice(((PushConstantRange[]){
-                (PushConstantRange) {
-                    .offset = 0,
-                    .size = sizeof(GPUDrawPushConstants),
-                    .stage = SHADER_STAGE_VERTEX,
-                },
-            })),
-            .descriptor_set_layouts = array_to_slice(((DescriptorSetLayout[]){
-                (DescriptorSetLayout) {
-                    .bindings = array_to_slice(((DescriptorSetLayoutBinding[]) {
-                        {
-                            .binding = 0,
-                            .type = DESCRIPTOR_TYPE_IMAGE_PLUS_SAMPLER,
-                            .stage = SHADER_STAGE_FRAGMENT,
-                            .count = 2,
-                        },
-                    })),
-                },
-            })),
-        },
-    };
-    PipelineCreate pipeline_create[] = {
-        (PipelineCreate) {
-            .shader_source_indices = array_to_slice(((u16[]){0, 1})),
-            .layout_index = 0,
-        },
-    };
-    auto pipeline_index = renderer_graphics_pipelines_create(renderer, arena, (GraphicsPipelinesCreate){
-        .layouts = array_to_slice(pipeline_layouts),
-        .pipelines = array_to_slice(pipeline_create),
-        .shader_sources = array_to_slice(shader_source_paths),
-    });
-
-    u32 white_texture_width = 1024;
-    u32 white_texture_height = white_texture_width;
-    auto* white_texture_buffer = arena_allocate(arena, u32, white_texture_width * white_texture_height / sizeof(u32));
-    memset(white_texture_buffer, 0xff, white_texture_width * white_texture_height);
-
-    auto white_texture = renderer_texture_create(renderer, (TextureMemory) {
-        .pointer = white_texture_buffer,
-        .width = white_texture_width,
-        .height = white_texture_height,
-        .depth = 1,
-        .format = R8G8B8A8_SRGB,
-    });
+    Renderer* renderer = renderer_initialize(state.arena);
+    RenderWindow* render_window = renderer_window_initialize(renderer, os_window);
 
     auto font_path = 
 #ifdef _WIN32
@@ -179,122 +150,154 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
 #else
 #endif
 ;
-    auto texture_atlas = font_create_texture_atlas(arena, (TextureAtlasCreate) {
-        .font_path = font_path,
-        .text_height = 72,
-    });
-    auto texture_atlas_image = renderer_texture_create(renderer, (TextureMemory) {
-        .pointer = texture_atlas.pointer,
-        .width = texture_atlas.width,
-        .height = texture_atlas.height,
-        .depth = 1,
-        .format = R8G8B8A8_SRGB,
-    });
-    DescriptorSetUpdate descriptor_set_updates[] = {
-        {
-            .set = { .value = 0 },
-            .type = DESCRIPTOR_TYPE_IMAGE_PLUS_SAMPLER,
-            .binding = 0,
-            .descriptor_count = 2,
-            .textures = {
-                [0] = white_texture,
-                [1] = texture_atlas_image,
-            },
-        },
-    };
 
-    renderer_update_pipeline_resources(renderer, pipeline_index, (Slice(DescriptorSetUpdate)) array_to_slice(descriptor_set_updates));
-
-    VirtualBuffer(Vertex) vertices = {};
-    VirtualBuffer(u32) indices = {};
-
-    Vec4 color = {1, 1, 1, 1};
-    static_assert(sizeof(color) == 4 * sizeof(float));
-
-    u32 texture_index = 1;
-    draw_string(renderer, &vertices, &indices, initial_window_size.width, initial_window_size.height, color, strlit("He"), texture_atlas, texture_index);
-
-    auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
-    auto index_buffer_size = sizeof(*indices.pointer) * indices.length;
-
-    auto vertex_buffer = renderer_buffer_create(renderer, vertex_buffer_size, BUFFER_TYPE_VERTEX);
-    auto vertex_buffer_device_address = buffer_address(vertex_buffer);
-    auto index_buffer = renderer_buffer_create(renderer, index_buffer_size, BUFFER_TYPE_INDEX);
-    auto staging_buffer = renderer_buffer_create(renderer, vertex_buffer_size + index_buffer_size, BUFFER_TYPE_STAGING);
-
-    renderer_copy_to_host(staging_buffer, (Slice(HostBufferCopy)) array_to_slice(((HostBufferCopy[]) {
-        {
-            .destination_offset = 0,
-            .source = {
-                .pointer = (u8*)vertices.pointer,
-                .length = vertex_buffer_size,
-            },
-        },
-        {
-            .destination_offset = vertex_buffer_size,
-            .source = {
-                .pointer = (u8*)indices.pointer,
-                .length = index_buffer_size,
-            },
-        },
-    })));
-
-    renderer_copy_to_local(renderer, (Slice(LocalBufferCopy)) array_to_slice(((LocalBufferCopy[]) {
-        {
-            .destination = vertex_buffer,
-            .source = staging_buffer,
-            .regions = array_to_slice(((LocalBufferCopyRegion[]) {
-                {
-                    .source_offset = 0,
-                    .destination_offset = 0,
-                    .size = vertex_buffer_size,
-                },
-            })),
-        },
-        {
-            .destination = index_buffer,
-            .source = staging_buffer,
-            .regions = array_to_slice(((LocalBufferCopyRegion[]) {
-                {
-                    .source_offset = vertex_buffer_size,
-                    .destination_offset = 0,
-                    .size = index_buffer_size,
-                },
-            })),
-        },
-    })));
-
-    while (!graphics_window_should_close(window))
+    window_rect_texture_update_begin(render_window);
     {
-        graphics_poll_events();
+        auto white_texture = white_texture_create(state.arena, renderer);
+        auto monospace_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
+                .font_path = font_path,
+                .text_height = 180,
+                });
+        auto proportional_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
+                .font_path = font_path,
+                .text_height = 180,
+                });
+        window_queue_rect_texture_update(render_window, RECT_TEXTURE_SLOT_WHITE, white_texture);
+        renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_MONOSPACE, monospace_font);
+        renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_PROPORTIONAL, proportional_font);
+    }
+    window_rect_texture_update_end(renderer, render_window);
 
-        auto mouse_position = graphics_window_cursor_position_get(window);
+    // Vec4 color = {1, 1, 1, 1};
+    // static_assert(sizeof(color) == 4 * sizeof(float));
+    //
+    // u32 texture_index = 1;
+    // // draw_string(renderer, &vertices, &indices, window_size.width, window_size.height, color, strlit("He"), texture_atlas, texture_index);
+    //
+    //
+    // vb_copy_array(&vertices, box_vertices);
+    // vb_copy_array(&indices, box_indices);
+    //
+    // auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
+    // auto index_buffer_size = sizeof(*indices.pointer) * indices.length;
+    //
+    // auto vertex_buffer = renderer_buffer_create(renderer, vertex_buffer_size, BUFFER_TYPE_VERTEX);
+    // auto vertex_buffer_device_address = buffer_address(vertex_buffer);
+    // auto index_buffer = renderer_buffer_create(renderer, index_buffer_size, BUFFER_TYPE_INDEX);
+    // auto staging_buffer = renderer_buffer_create(renderer, vertex_buffer_size + index_buffer_size, BUFFER_TYPE_STAGING);
+    //
+    // renderer_copy_to_host(staging_buffer, (Slice(HostBufferCopy)) array_to_slice(((HostBufferCopy[]) {
+    //     {
+    //         .destination_offset = 0,
+    //         .source = {
+    //             .pointer = (u8*)vertices.pointer,
+    //             .length = vertex_buffer_size,
+    //         },
+    //     },
+    //     {
+    //         .destination_offset = vertex_buffer_size,
+    //         .source = {
+    //             .pointer = (u8*)indices.pointer,
+    //             .length = index_buffer_size,
+    //         },
+    //     },
+    // })));
+    //
+    // renderer_copy_to_local(renderer, (Slice(LocalBufferCopy)) array_to_slice(((LocalBufferCopy[]) {
+    //     {
+    //         .destination = vertex_buffer,
+    //         .source = staging_buffer,
+    //         .regions = array_to_slice(((LocalBufferCopyRegion[]) {
+    //             {
+    //                 .source_offset = 0,
+    //                 .destination_offset = 0,
+    //                 .size = vertex_buffer_size,
+    //             },
+    //         })),
+    //     },
+    //     {
+    //         .destination = index_buffer,
+    //         .source = staging_buffer,
+    //         .regions = array_to_slice(((LocalBufferCopyRegion[]) {
+    //             {
+    //                 .source_offset = vertex_buffer_size,
+    //                 .destination_offset = 0,
+    //                 .size = index_buffer_size,
+    //             },
+    //         })),
+    //     },
+    // })));
+
+    while (!os_window_should_close(os_window))
+    {
+        os_poll_events();
+
+        auto mouse_position = os_window_cursor_position_get(os_window);
         // print("Mouse position: ({f64}, {f64})\n", mouse_position.x, mouse_position.y);
 
-        auto frame_window_size = renderer_window_frame_begin(renderer, render_window);
+        renderer_window_frame_begin(renderer, render_window);
+        u32 box_x = 200;
+        u32 box_y = 200;
+        u32 box_width = 100;
+        u32 box_height = 100;
 
+        Vec4 box_color = { 1, 0, 0, 1 };
 
-        window_command_begin(render_window);
-
-        window_bind_pipeline(render_window, pipeline_index);
-        window_bind_pipeline_descriptor_sets(render_window, pipeline_index);
-        window_bind_index_buffer(render_window, index_buffer, 0, INDEX_TYPE_U32);
-        GPUDrawPushConstants push_constants = {
-            .vertex_buffer = vertex_buffer_device_address,
-            .width = (f32)frame_window_size.width,
-            .height = (f32)frame_window_size.height,
+        Vertex box_vertices[] = {
+            {
+                .x = box_x,
+                .y = box_y,
+                .color = box_color,
+            },
+            {
+                .x = box_x + box_width,
+                .y = box_y,
+                .color = box_color,
+            },
+            {
+                .x = box_x,
+                .y = box_y + box_height,
+                .color = box_color,
+            },
+            {
+                .x = box_x + box_width,
+                .y = box_y + box_height,
+                .color = box_color,
+            },
         };
-        window_push_constants(render_window, pipeline_index, (SliceP(void)) array_to_slice(((void*[]) {&push_constants})));
 
-        window_render_begin(render_window);
-        {
-            window_draw_indexed(render_window, indices.length, 1, 0, 0, 0);
-        }
-        window_render_end(render_window);
+        u32 box_indices[] = {
+            0, 1, 2,
+            1, 3, 2,
+        };
 
-        window_command_end(render_window);
+        window_pipeline_add_vertices(render_window, BB_PIPELINE_RECT, (String)array_to_bytes(box_vertices));
+        window_pipeline_add_indices(render_window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(box_indices));
 
         renderer_window_frame_end(renderer, render_window);
+        // window_size = os_window_size_get(os_window);
+        //
+        // window_command_begin(render_window);
+        //
+        // // window_bind_pipeline(render_window, pipeline_index);
+        // // window_bind_pipeline_descriptor_sets(render_window, pipeline_index);
+        // // window_bind_index_buffer(render_window, index_buffer, 0, INDEX_TYPE_U32);
+        // // GPUDrawPushConstants push_constants = {
+        // //     .vertex_buffer = vertex_buffer_device_address,
+        // //     .width = (f32)window_size.width,
+        // //     .height = (f32)window_size.height,
+        // // };
+        // // window_push_constants(render_window, pipeline_index, (SliceP(void)) array_to_slice(((void*[]) {&push_constants})));
+        //
+        // window_render_begin(render_window);
+        // {
+        //     // window_draw_indexed(render_window, indices.length, 1, 0, 0, 0);
+        // }
+        // window_render_end(render_window);
+        //
+        // window_command_end(render_window);
+        //
+        // renderer_window_frame_end(renderer, render_window);
     }
 
     // TODO: deinitialization
