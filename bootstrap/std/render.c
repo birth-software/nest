@@ -547,7 +547,7 @@ Renderer* renderer_initialize()
             .pUserData = 0,
         };
 
-        u8 enable_shader_debug_printf = 0;
+        u8 enable_shader_debug_printf = BB_DEBUG;
 
         VkValidationFeaturesEXT validation_features = { 
             .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
