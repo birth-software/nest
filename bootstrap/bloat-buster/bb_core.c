@@ -30,6 +30,65 @@ STRUCT(GPUDrawPushConstants)
     f32 height;
 };
 
+fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, VirtualBuffer(u32)* indices, u32 width, u32 height, Vec4 color, String string, TextureAtlas texture_atlas)
+{
+    u32 index_offset = 0;
+    auto x_offset = width / 2;
+    auto y_offset = height / 2;
+
+    for (u64 i = 0; i < string.length; i += 1, index_offset += 4)
+    {
+        auto ch = string.pointer[i];
+        auto* character = &texture_atlas.characters[ch];
+        auto pos_x = x_offset;
+        auto pos_y = y_offset - (character->height + character->y_offset);
+        auto uv_x = character->x;
+        auto uv_y = character->y;
+        auto uv_width = character->width;
+        auto uv_height = character->height;
+
+        *vb_add(vertices, 1) = (Vertex) {
+            .x = pos_x,
+            .y = pos_y,
+            .uv_x = (f32)uv_x / texture_atlas.width,
+            .uv_y = (f32)uv_y / texture_atlas.width,
+            .color = color,
+        };
+        *vb_add(vertices, 1) = (Vertex) {
+            .x = pos_x + character->width,
+            .y = pos_y,
+            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
+            .uv_y = (f32)uv_y / texture_atlas.width,
+            .color = color,
+        };
+        *vb_add(vertices, 1) = (Vertex) {
+            .x = pos_x,
+            .y = pos_y + character->height,
+            .uv_x = (f32)uv_x / texture_atlas.width,
+            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
+            .color = color,
+        };
+        *vb_add(vertices, 1) = (Vertex) {
+            .x = pos_x + character->width,
+            .y = pos_y + character->height,
+            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
+            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
+            .color = color,
+        };
+
+        *vb_add(indices, 1) = index_offset + 0;
+        *vb_add(indices, 1) = index_offset + 1;
+        *vb_add(indices, 1) = index_offset + 2;
+        *vb_add(indices, 1) = index_offset + 1;
+        *vb_add(indices, 1) = index_offset + 3;
+        *vb_add(indices, 1) = index_offset + 2;
+
+        auto kerning = (texture_atlas.kerning_tables + ch * 256)[string.pointer[i + 1]];
+        // print("Advance: {u32}. Kerning: {s32}\n", character->advance, kerning);
+        x_offset += character->advance + kerning;
+    }
+}
+
 void run_app(Arena* arena)
 {
     u8 use_x11 = 1;
@@ -123,67 +182,13 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
 
     renderer_update_pipeline_resources(renderer, pipeline_index, (Slice(DescriptorSetUpdate)) array_to_slice(descriptor_set_updates));
 
+    VirtualBuffer(Vertex) vertices = {};
+    VirtualBuffer(u32) indices = {};
+
     Vec4 color = {1, 1, 1, 1};
     static_assert(sizeof(color) == 4 * sizeof(float));
 
-    auto string = strlit("Hello world!");
-    VirtualBuffer(Vertex) vertices = {};
-    VirtualBuffer(u32) indices = {};
-    u32 index_offset = 0;
-    auto x_offset = initial_window_size.width / 2;
-    auto y_offset = initial_window_size.height / 2;
-
-    for (u64 i = 0; i < string.length; i += 1, index_offset += 4)
-    {
-        auto ch = string.pointer[i];
-        auto* character = &texture_atlas.characters[ch];
-        auto pos_x = x_offset;
-        auto pos_y = y_offset - (character->height + character->y_offset);
-        auto uv_x = character->x;
-        auto uv_y = character->y;
-        auto uv_width = character->width;
-        auto uv_height = character->height;
-
-        *vb_add(&vertices, 1) = (Vertex) {
-            .x = pos_x,
-            .y = pos_y,
-            .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)uv_y / texture_atlas.width,
-            .color = color,
-        };
-        *vb_add(&vertices, 1) = (Vertex) {
-            .x = pos_x + character->width,
-            .y = pos_y,
-            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
-            .uv_y = (f32)uv_y / texture_atlas.width,
-            .color = color,
-        };
-        *vb_add(&vertices, 1) = (Vertex) {
-            .x = pos_x,
-            .y = pos_y + character->height,
-            .uv_x = (f32)uv_x / texture_atlas.width,
-            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
-            .color = color,
-        };
-        *vb_add(&vertices, 1) = (Vertex) {
-            .x = pos_x + character->width,
-            .y = pos_y + character->height,
-            .uv_x = (f32)(uv_x + uv_width) / texture_atlas.width,
-            .uv_y = (f32)(uv_y + uv_height) / texture_atlas.width,
-            .color = color,
-        };
-
-        *vb_add(&indices, 1) = index_offset + 0;
-        *vb_add(&indices, 1) = index_offset + 1;
-        *vb_add(&indices, 1) = index_offset + 2;
-        *vb_add(&indices, 1) = index_offset + 1;
-        *vb_add(&indices, 1) = index_offset + 3;
-        *vb_add(&indices, 1) = index_offset + 2;
-
-        auto kerning = (texture_atlas.kerning_tables + ch * 256)[string.pointer[i + 1]];
-        // print("Advance: {u32}. Kerning: {s32}\n", character->advance, kerning);
-        x_offset += character->advance + kerning;
-    }
+    draw_string(renderer, &vertices, &indices, initial_window_size.width, initial_window_size.height, color, strlit("Hello world!"), texture_atlas);
 
     auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
     auto index_buffer_size = sizeof(*indices.pointer) * indices.length;
