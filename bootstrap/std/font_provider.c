@@ -39,6 +39,7 @@ TextureAtlas font_texture_atlas_create(Arena* arena, Renderer* renderer, Texture
     u32 max_row_height = 0;
     u32 first_character = ' ';
     u32 last_character = '~';
+
     for (auto i = first_character; i <= last_character; ++i)
     {
         u32 width;
@@ -77,37 +78,19 @@ TextureAtlas font_texture_atlas_create(Arena* arena, Renderer* renderer, Texture
         character->width = width;
         character->height = height;
 
-        // print("Drawing codepoint '{c}' ({u32}x{u32}) at ({u32}, {u32}). Offsets: ({s32}, {s32})\n", ch, width, height, x, y, character->x_offset, character->y_offset);
-
         auto* source = bitmap;
         auto* destination = result.pointer;
+
         for (u32 bitmap_y = 0; bitmap_y < height; bitmap_y += 1)
         {
             for (u32 bitmap_x = 0; bitmap_x < width; bitmap_x += 1)
             {
                 auto source_index = bitmap_y * width + bitmap_x;
-                auto destination_index = ((height - bitmap_y - 1) + y) * result.width + bitmap_x + x;
-                destination[destination_index] = ((u32)(source[source_index]) << 24) | 0xffffff;
+                auto destination_index = (bitmap_y + y) * result.width + (bitmap_x + x);
+                auto value = source[source_index];
+                destination[destination_index] = ((u32)value << 24) | 0xffffff;
             }
         }
-
-        // for (u32 bitmap_y = y; bitmap_y < y + height; bitmap_y += 1)
-        // {
-        //     for (u32 bitmap_x = x; bitmap_x < x + width; bitmap_x += 1)
-        //     {
-        //         auto x = result.pointer[bitmap_y * result.width + bitmap_x];
-        //         if (x)
-        //         {
-        //             print("[x]");
-        //         }
-        //         else
-        //         {
-        //             print("[ ]");
-        //         }
-        //     }
-        //
-        //     print("\n");
-        // }
 
         x += width;
 

@@ -30,16 +30,15 @@ layout(push_constant) uniform constants
 
 void main() 
 {
-    //load vertex data from device address
     Vertex v = PushConstants.vertex_buffer.vertices[gl_VertexIndex];
     float width = PushConstants.width;
     float height = PushConstants.height;
 
     //output data
-    gl_Position = vec4(2 * v.x / width - 1, 1 - (2 * v.y) / height, 0, 1);
+    gl_Position = vec4(2 * v.x / width - 1, 2 * v.y / height - 1, 0, 1);
     out_uv = vec2(v.uv_x, v.uv_y);
     out_color = v.color;
     out_texture_index = v.texture_index;
-    //debugPrintfEXT("Position: (%f, %f, %f)\n", v.position.x, v.position.y, v.position.z);
-    //debugPrintfEXT("Color: (%f, %f, %f)\n", v.color.x, v.color.y, v.color.z);
+    //debugPrintfEXT("Position: (%f, %f)\n", v.x, v.y);
+    //debugPrintfEXT("UV: (%f, %f)\n", v.uv_x, v.uv_y);
 }

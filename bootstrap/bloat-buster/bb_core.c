@@ -8,11 +8,6 @@
 #include <std/image_loader.h>
 #include <std/font_provider.h>
 
-STRUCT(Vec4)
-{
-    f32 v[4];
-}__attribute__((aligned(16)));
-
 STRUCT(Vertex)
 {
     f32 x;
@@ -43,65 +38,69 @@ fn TextureIndex white_texture_create(Arena* arena, Renderer* renderer)
     return white_texture;
 }
 
-fn void draw_string(Renderer* renderer, VirtualBuffer(Vertex)* vertices, VirtualBuffer(u32)* indices, u32 width, u32 height, Vec4 color, String string, TextureAtlas texture_atlas, u32 texture_index)
+fn void draw_string(RenderWindow* window, Vec4 color, String string, TextureAtlas texture_atlas, u32 texture_index, u32 x_offset, u32 y_offset)
 {
-    u32 index_offset = 0;
-    auto x_offset = width / 2;
-    auto y_offset = height / 2;
-
-    for (u64 i = 0; i < string.length; i += 1, index_offset += 4)
+    auto height = texture_atlas.ascent - texture_atlas.descent;
+    for (u64 i = 0; i < string.length; i += 1)
     {
         auto ch = string.pointer[i];
         auto* character = &texture_atlas.characters[ch];
         auto pos_x = x_offset;
-        auto pos_y = y_offset - (character->height + character->y_offset);
+        auto pos_y = y_offset + character->y_offset + height; // Offset of the height to render the character from the bottom (y + height) up (y)
         auto uv_x = character->x;
         auto uv_y = character->y;
         auto uv_width = character->width;
         auto uv_height = character->height;
 
-        *vb_add(vertices, 1) = (Vertex) {
-            .x = pos_x,
-            .y = pos_y,
-            .uv_x = (f32)uv_x,
-            .uv_y = (f32)uv_y,
-            .color = color,
-            .texture_index = texture_index,
-        };
-        *vb_add(vertices, 1) = (Vertex) {
-            .x = pos_x + character->width,
-            .y = pos_y,
-            .uv_x = (f32)(uv_x + uv_width),
-            .uv_y = (f32)uv_y,
-            .color = color,
-            .texture_index = texture_index,
-        };
-        *vb_add(vertices, 1) = (Vertex) {
-            .x = pos_x,
-            .y = pos_y + character->height,
-            .uv_x = (f32)uv_x,
-            .uv_y = (f32)(uv_y + uv_height),
-            .color = color,
-            .texture_index = texture_index,
-        };
-        *vb_add(vertices, 1) = (Vertex) {
-            .x = pos_x + character->width,
-            .y = pos_y + character->height,
-            .uv_x = (f32)(uv_x + uv_width),
-            .uv_y = (f32)(uv_y + uv_height),
-            .color = color,
-            .texture_index = texture_index,
+        Vertex vertices[] = {
+            (Vertex) {
+                .x = pos_x,
+                .y = pos_y,
+                .uv_x = (f32)uv_x,
+                .uv_y = (f32)uv_y,
+                .color = color,
+                .texture_index = texture_index,
+            },
+            (Vertex) {
+                .x = pos_x + character->width,
+                .y = pos_y,
+                .uv_x = (f32)(uv_x + uv_width),
+                .uv_y = (f32)uv_y,
+                .color = color,
+                .texture_index = texture_index,
+            },
+            (Vertex) {
+                .x = pos_x,
+                .y = pos_y + character->height,
+                .uv_x = (f32)uv_x,
+                .uv_y = (f32)(uv_y + uv_height),
+                .color = color,
+                .texture_index = texture_index,
+            },
+            (Vertex) {
+                .x = pos_x + character->width,
+                .y = pos_y + character->height,
+                .uv_x = (f32)(uv_x + uv_width),
+                .uv_y = (f32)(uv_y + uv_height),
+                .color = color,
+                .texture_index = texture_index,
+            },
         };
 
-        *vb_add(indices, 1) = index_offset + 0;
-        *vb_add(indices, 1) = index_offset + 1;
-        *vb_add(indices, 1) = index_offset + 2;
-        *vb_add(indices, 1) = index_offset + 1;
-        *vb_add(indices, 1) = index_offset + 3;
-        *vb_add(indices, 1) = index_offset + 2;
+        auto vertex_offset = window_pipeline_add_vertices(window, BB_PIPELINE_RECT, (String)array_to_bytes(vertices), array_length(vertices));
+
+        u32 indices[] = {
+            vertex_offset + 0,
+            vertex_offset + 1,
+            vertex_offset + 2,
+            vertex_offset + 1,
+            vertex_offset + 3,
+            vertex_offset + 2,
+        };
+
+        window_pipeline_add_indices(window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(indices));
 
         auto kerning = (texture_atlas.kerning_tables + ch * 256)[string.pointer[i + 1]];
-        // print("Advance: {u32}. Kerning: {s32}\n", character->advance, kerning);
         x_offset += character->advance + kerning;
     }
 }
@@ -144,89 +143,30 @@ void run_app()
 
     auto font_path = 
 #ifdef _WIN32
-strlit("C:/Users/David/Downloads/Fira_Sans/FiraSans-Regular.ttf")
+        strlit("C:/Users/David/Downloads/Fira_Sans/FiraSans-Regular.ttf");
 #elif defined(__linux__)
-strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
+        strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf");
 #else
+        strlit("WRONG_PATH");
 #endif
-;
 
     window_rect_texture_update_begin(render_window);
-    {
-        auto white_texture = white_texture_create(state.arena, renderer);
-        auto monospace_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
-                .font_path = font_path,
-                .text_height = 180,
-                });
-        auto proportional_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
-                .font_path = font_path,
-                .text_height = 180,
-                });
-        window_queue_rect_texture_update(render_window, RECT_TEXTURE_SLOT_WHITE, white_texture);
-        renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_MONOSPACE, monospace_font);
-        renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_PROPORTIONAL, proportional_font);
-    }
-    window_rect_texture_update_end(renderer, render_window);
 
-    // Vec4 color = {1, 1, 1, 1};
-    // static_assert(sizeof(color) == 4 * sizeof(float));
-    //
-    // u32 texture_index = 1;
-    // // draw_string(renderer, &vertices, &indices, window_size.width, window_size.height, color, strlit("He"), texture_atlas, texture_index);
-    //
-    //
-    // vb_copy_array(&vertices, box_vertices);
-    // vb_copy_array(&indices, box_indices);
-    //
-    // auto vertex_buffer_size = sizeof(*vertices.pointer) * vertices.length;
-    // auto index_buffer_size = sizeof(*indices.pointer) * indices.length;
-    //
-    // auto vertex_buffer = renderer_buffer_create(renderer, vertex_buffer_size, BUFFER_TYPE_VERTEX);
-    // auto vertex_buffer_device_address = buffer_address(vertex_buffer);
-    // auto index_buffer = renderer_buffer_create(renderer, index_buffer_size, BUFFER_TYPE_INDEX);
-    // auto staging_buffer = renderer_buffer_create(renderer, vertex_buffer_size + index_buffer_size, BUFFER_TYPE_STAGING);
-    //
-    // renderer_copy_to_host(staging_buffer, (Slice(HostBufferCopy)) array_to_slice(((HostBufferCopy[]) {
-    //     {
-    //         .destination_offset = 0,
-    //         .source = {
-    //             .pointer = (u8*)vertices.pointer,
-    //             .length = vertex_buffer_size,
-    //         },
-    //     },
-    //     {
-    //         .destination_offset = vertex_buffer_size,
-    //         .source = {
-    //             .pointer = (u8*)indices.pointer,
-    //             .length = index_buffer_size,
-    //         },
-    //     },
-    // })));
-    //
-    // renderer_copy_to_local(renderer, (Slice(LocalBufferCopy)) array_to_slice(((LocalBufferCopy[]) {
-    //     {
-    //         .destination = vertex_buffer,
-    //         .source = staging_buffer,
-    //         .regions = array_to_slice(((LocalBufferCopyRegion[]) {
-    //             {
-    //                 .source_offset = 0,
-    //                 .destination_offset = 0,
-    //                 .size = vertex_buffer_size,
-    //             },
-    //         })),
-    //     },
-    //     {
-    //         .destination = index_buffer,
-    //         .source = staging_buffer,
-    //         .regions = array_to_slice(((LocalBufferCopyRegion[]) {
-    //             {
-    //                 .source_offset = vertex_buffer_size,
-    //                 .destination_offset = 0,
-    //                 .size = index_buffer_size,
-    //             },
-    //         })),
-    //     },
-    // })));
+    auto white_texture = white_texture_create(state.arena, renderer);
+    auto monospace_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
+        .font_path = font_path,
+        .text_height = 50,
+    });
+    auto proportional_font = monospace_font;
+    // auto proportional_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
+    //     .font_path = font_path,
+    //     .text_height = 36,
+    // });
+    window_queue_rect_texture_update(render_window, RECT_TEXTURE_SLOT_WHITE, white_texture);
+    renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_MONOSPACE, monospace_font);
+    renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_PROPORTIONAL, proportional_font);
+
+    window_rect_texture_update_end(renderer, render_window);
 
     while (!os_window_should_close(os_window))
     {
@@ -236,68 +176,45 @@ strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf")
         // print("Mouse position: ({f64}, {f64})\n", mouse_position.x, mouse_position.y);
 
         renderer_window_frame_begin(renderer, render_window);
-        u32 box_x = 200;
-        u32 box_y = 200;
-        u32 box_width = 100;
-        u32 box_height = 100;
 
-        Vec4 box_color = { 1, 0, 0, 1 };
-
-        Vertex box_vertices[] = {
-            {
-                .x = box_x,
-                .y = box_y,
-                .color = box_color,
-            },
-            {
-                .x = box_x + box_width,
-                .y = box_y,
-                .color = box_color,
-            },
-            {
-                .x = box_x,
-                .y = box_y + box_height,
-                .color = box_color,
-            },
-            {
-                .x = box_x + box_width,
-                .y = box_y + box_height,
-                .color = box_color,
-            },
-        };
-
-        u32 box_indices[] = {
-            0, 1, 2,
-            1, 3, 2,
-        };
-
-        window_pipeline_add_vertices(render_window, BB_PIPELINE_RECT, (String)array_to_bytes(box_vertices));
-        window_pipeline_add_indices(render_window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(box_indices));
+        // u32 box_width = 10;
+        // u32 box_height = 10;
+        // auto box_color = Color4(1, 0, 0, 1);
+        // 
+        // Vertex box_vertices[] = {
+        //     {
+        //         .x = mouse_position.x,
+        //         .y = mouse_position.y,
+        //         .color = box_color,
+        //     },
+        //     {
+        //         .x = mouse_position.x + box_width,
+        //         .y = mouse_position.y,
+        //         .color = box_color,
+        //     },
+        //     {
+        //         .x = mouse_position.x,
+        //         .y = mouse_position.y + box_height,
+        //         .color = box_color,
+        //     },
+        //     {
+        //         .x = mouse_position.x + box_width,
+        //         .y = mouse_position.y + box_height,
+        //         .color = box_color,
+        //     },
+        // };
+        //
+        // auto vertex_offset = window_pipeline_add_vertices(render_window, BB_PIPELINE_RECT, (String)array_to_bytes(box_vertices), array_length(box_vertices));
+        //
+        // u32 box_indices[] = {
+        //     vertex_offset + 0, vertex_offset + 1, vertex_offset + 2,
+        //     vertex_offset + 1, vertex_offset + 3, vertex_offset + 2,
+        // };
+        //
+        // window_pipeline_add_indices(render_window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(box_indices));
+        draw_string(render_window, Color4(0, 0, 0, 1), strlit("abcdefghijklmnopqrstuvwxyz!"), monospace_font, RECT_TEXTURE_SLOT_MONOSPACE_FONT, 100, 100);
 
         renderer_window_frame_end(renderer, render_window);
-        // window_size = os_window_size_get(os_window);
-        //
-        // window_command_begin(render_window);
-        //
-        // // window_bind_pipeline(render_window, pipeline_index);
-        // // window_bind_pipeline_descriptor_sets(render_window, pipeline_index);
-        // // window_bind_index_buffer(render_window, index_buffer, 0, INDEX_TYPE_U32);
-        // // GPUDrawPushConstants push_constants = {
-        // //     .vertex_buffer = vertex_buffer_device_address,
-        // //     .width = (f32)window_size.width,
-        // //     .height = (f32)window_size.height,
-        // // };
-        // // window_push_constants(render_window, pipeline_index, (SliceP(void)) array_to_slice(((void*[]) {&push_constants})));
-        //
-        // window_render_begin(render_window);
-        // {
-        //     // window_draw_indexed(render_window, indices.length, 1, 0, 0, 0);
-        // }
-        // window_render_end(render_window);
-        //
-        // window_command_end(render_window);
-        //
-        // renderer_window_frame_end(renderer, render_window);
     }
 
     // TODO: deinitialization
