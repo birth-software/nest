@@ -104,23 +104,23 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
 
             run_command(arena, (CStringSlice) array_to_slice(arguments), envp);
 
-#if BB_CI
-            // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
-            {
-                auto executable = binary_path_from_options(arena, (BinaryPathOptions) {
-                    .build_directory = strlit(BB_DIR),
-                    .name = test_name,
-                    .target = target,
-                    .backend = compiler_backend,
-                    .binary_file_type = BINARY_FILE_EXECUTABLE,
-                });
-                char* run_arguments[] = {
-                    string_to_c(executable),
-                    0,
-                };
-                run_command(arena, (CStringSlice) array_to_slice(run_arguments), envp);
-            }
-#endif
+// #if BB_CI
+//             // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
+//             {
+//                 auto executable = binary_path_from_options(arena, (BinaryPathOptions) {
+//                     .build_directory = strlit(BB_DIR),
+//                     .name = test_name,
+//                     .target = target,
+//                     .backend = compiler_backend,
+//                     .binary_file_type = BINARY_FILE_EXECUTABLE,
+//                 });
+//                 char* run_arguments[] = {
+//                     string_to_c(executable),
+//                     0,
+//                 };
+//                 run_command(arena, (CStringSlice) array_to_slice(run_arguments), envp);
+//             }
+// #endif
         }
     }
 }

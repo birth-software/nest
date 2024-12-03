@@ -41,7 +41,6 @@ STRUCT(GetOrPut(T)) \
 
 auto compiler_name = strlit("bb");
 
-
 STRUCT(ElfRelocation)
 {
     u64 offset;
@@ -10366,7 +10365,11 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         .abi_version = 0,
         .padding = {},
         .type = shared,
+#if defined(__x86_64__)
         .machine = x86_64,
+#else
+        .machine = aarch64,
+#endif
         .version = 1,
         .entry_point = _start_offset,
         .program_header_offset = sizeof(ELFHeader),
@@ -24266,10 +24269,23 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                             {
                                 if (value == 0)
                                 {
+                                    // TODO: proper arch selection
                                     if (gpr == RAX)
                                     {
+#if defined(__x86_64__)
                                         *vb_add(&code, 1) = 0x31;
                                         *vb_add(&code, 1) = 0xc0;
+#else
+                                        *vb_add(&code, 1) = 0x2a;
+                                        *vb_add(&code, 1) = 0x1f;
+                                        *vb_add(&code, 1) = 0x03;
+                                        *vb_add(&code, 1) = 0xe0;
+
+                                        *vb_add(&code, 1) = 0xd6;
+                                        *vb_add(&code, 1) = 0x5f;
+                                        *vb_add(&code, 1) = 0x03;
+                                        *vb_add(&code, 1) = 0xc0;
+#endif
                                     }
                                     else
                                     {

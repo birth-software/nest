@@ -12,12 +12,13 @@ on:
 
 jobs:
   generate-config:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: write-all
     outputs:
       BIRTH_GITHUB_TARGETS: ${{ steps.generate-config.outputs.BIRTH_GITHUB_TARGETS }}
       BIRTH_CMAKE_BUILD_TYPES: ${{ steps.generate-config.outputs.BIRTH_CMAKE_BUILD_TYPES }}
       BIRTH_MACOS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
+      BIRTH_ORACLE_LINUX_IMAGE: ${{ steps.generate-config.outputs.BIRTH_ORACLE_LINUX_IMAGE }}
       BIRTH_LINUX_IMAGE: ${{ steps.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_WINDOWS_IMAGE: ${{ steps.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
       RELEASE_TAG_NAME: ${{ steps.generate-tag.outputs.RELEASE_TAG_NAME }}  # Define job output here
@@ -26,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Generate config
         id: generate-config
-        uses: birth-software/github-config@v2
+        uses: birth-software/github-config@v3
       - name: Create tag
         if: github.ref == 'refs/heads/main'
         shell: bash
@@ -58,6 +59,7 @@ jobs:
     env:
       BIRTH_LINUX_IMAGE: ${{ needs.generate-config.outputs.BIRTH_LINUX_IMAGE }}
       BIRTH_MACOS_IMAGE: ${{ needs.generate-config.outputs.BIRTH_MACOS_IMAGE }}
+      BIRTH_ORACLE_LINUX_IMAGE: ${{ needs.generate-config.outputs.BIRTH_ORACLE_LINUX_IMAGE }}
       BIRTH_WINDOWS_IMAGE: ${{ needs.generate-config.outputs.BIRTH_WINDOWS_IMAGE }}
       RELEASE_TAG_NAME: ${{ needs.generate-config.outputs.RELEASE_TAG_NAME }}
     steps:
@@ -74,7 +76,7 @@ jobs:
           remove-cached-tools: 'true'
           remove-swapfile: 'true'
       - uses: actions/checkout@v4
-      - uses: birth-software/github-setup@v2
+      - uses: birth-software/github-setup@v3
       - name: Fetch LLVM
         id: fetch_llvm
         run: ./fetch-llvm.sh

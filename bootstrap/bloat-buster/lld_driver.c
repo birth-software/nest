@@ -21,6 +21,11 @@ fn String linux_crt_find_path()
         return strlit("/usr/lib/x86_64-linux-gnu");
     }
 
+    if (os_file_descriptor_is_valid(os_file_open(strlit("/usr/lib/aarch64-linux-gnu/crti.o"), flags, permissions)))
+    {
+        return strlit("/usr/lib/aarch64-linux-gnu");
+    }
+
     todo();
 }
 
