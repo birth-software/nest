@@ -11,6 +11,13 @@ typedef struct Renderer Renderer;
 typedef struct RenderWindow RenderWindow;
 typedef struct Pipeline Pipeline;
 
+STRUCT(Vec4)
+{
+    f32 v[4];
+}__attribute__((aligned(16)));
+
+#define Color4(r, g, b, a) ((Vec4){ .v = { r, g, b, a } })
+
 typedef enum BBPipeline
 {
     BB_PIPELINE_RECT,
@@ -164,5 +171,5 @@ EXPORT void renderer_queue_font_update(Renderer* renderer, RenderWindow* window,
 EXPORT void window_queue_rect_texture_update(RenderWindow* window, RectTextureSlot slot, TextureIndex texture_index);
 EXPORT void window_rect_texture_update_end(Renderer* renderer, RenderWindow* window);
 
-EXPORT void window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index, String vertex_memory);
+EXPORT u32 window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index, String vertex_memory, u32 vertex_count);
 EXPORT void window_pipeline_add_indices(RenderWindow* window, BBPipeline pipeline_index, Slice(u32) indices);

@@ -40,11 +40,17 @@ STRUCT(VulkanImageCreate)
     VkImageUsageFlags usage;
 };
 
+STRUCT(GPUMemory)
+{
+    VkDeviceMemory handle;
+    u64 size;
+};
+
 STRUCT(VulkanImage)
 {
     VkImage handle;
     VkImageView view;
-    VkDeviceMemory memory;
+    GPUMemory memory;
     VkFormat format;
 };
 
@@ -89,7 +95,7 @@ STRUCT(ImmediateContext)
 STRUCT(VulkanBuffer)
 {
     VkBuffer handle;
-    VkDeviceMemory gpu_data;
+    GPUMemory memory;
     u64 address;
     VkDeviceSize size;
     BufferType type;
@@ -107,6 +113,7 @@ STRUCT(VertexBuffer)
 {
     VulkanBuffer gpu;
     VirtualBuffer(u8) cpu;
+    u32 count;
 };
 
 STRUCT(IndexBuffer)
@@ -308,7 +315,13 @@ void buffer_copy_to_host(VulkanBuffer buffer, Slice(HostBufferCopy) regions)
     for (u64 i = 0; i < regions.length; i += 1)
     {
         auto region = regions.pointer[i];
-        memcpy(buffer_pointer + region.destination_offset, region.source.pointer, region.source.length);
+        auto* destination = buffer_pointer + region.destination_offset;
+        assert(destination + region.source.length <= (u8*)buffer.address + buffer.size);
+        for (u64 i = 0; i < region.source.length; i += 1)
+        {
+            destination[i] = region.source.pointer[i];
+        }
+        // memcpy(destination, region.source.pointer, region.source.length);
     }
 }
 
@@ -398,7 +411,7 @@ fn ShaderStage shader_stage_from_path(String shader_source_path)
     return shader_stage;
 }
 
-fn VkDeviceMemory vk_allocate_memory(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties memory_properties, VkMemoryRequirements memory_requirements, VkMemoryPropertyFlags flags, u8 use_device_address_bit)
+fn GPUMemory vk_allocate_memory(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties memory_properties, VkMemoryRequirements memory_requirements, VkMemoryPropertyFlags flags, u8 use_device_address_bit)
 {
     u32 memory_type_index;
     for (memory_type_index = 0; memory_type_index < memory_properties.memoryTypeCount; memory_type_index += 1)
@@ -418,6 +431,7 @@ fn VkDeviceMemory vk_allocate_memory(VkDevice device, const VkAllocationCallback
 
     VkMemoryAllocateInfo allocate_info = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = 0,
         .allocationSize = memory_requirements.size,
         .memoryTypeIndex = memory_type_index,
     };
@@ -437,7 +451,7 @@ fn VkDeviceMemory vk_allocate_memory(VkDevice device, const VkAllocationCallback
     VkDeviceMemory memory = 0;
     vkok(vkAllocateMemory(device, &allocate_info, allocation_callbacks, &memory));
 
-    return memory;
+    return (GPUMemory) { .handle = memory, .size = allocate_info.allocationSize };
 }
 
 fn VulkanBuffer vk_buffer_create(VkDevice device, const VkAllocationCallbacks* allocation_callbacks, VkPhysicalDeviceMemoryProperties physical_device_memory_properties, VkDeviceSize buffer_size, VkBufferUsageFlags usage_flags, VkMemoryPropertyFlags memory_flags)
@@ -462,10 +476,10 @@ fn VulkanBuffer vk_buffer_create(VkDevice device, const VkAllocationCallbacks* a
     vkGetBufferMemoryRequirements(device, result.handle, &memory_requirements);
 
     u8 use_device_address_bit = !!(create_info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
-    result.gpu_data = vk_allocate_memory(device, allocation_callbacks, physical_device_memory_properties, memory_requirements, memory_flags, use_device_address_bit);
+    result.memory = vk_allocate_memory(device, allocation_callbacks, physical_device_memory_properties, memory_requirements, memory_flags, use_device_address_bit);
 
     VkDeviceSize memory_offset = 0;
-    vkok(vkBindBufferMemory(device, result.handle, result.gpu_data, memory_offset));
+    vkok(vkBindBufferMemory(device, result.handle, result.memory.handle, memory_offset));
 
     u8 map_memory = !!(memory_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     assert(((map_memory | use_device_address_bit) == 0) | (map_memory == !use_device_address_bit));
@@ -474,7 +488,7 @@ fn VulkanBuffer vk_buffer_create(VkDevice device, const VkAllocationCallbacks* a
         void* data = 0;
         VkDeviceSize offset = 0;
         VkMemoryMapFlags map_flags = 0;
-        vkok(vkMapMemory(device, result.gpu_data, offset, memory_requirements.size, map_flags, &data));
+        vkok(vkMapMemory(device, result.memory.handle, offset, memory_requirements.size, map_flags, &data));
         result.address = (u64)data;
     }
 
@@ -686,7 +700,7 @@ fn VulkanImage vk_image_create(VkDevice device, const VkAllocationCallbacks* all
     result.memory = vk_allocate_memory(device, allocation_callbacks, memory_properties, memory_requirements, flags, use_device_address_bit);
 
     VkDeviceSize memory_offset = 0;
-    vkok(vkBindImageMemory(device, result.handle, result.memory, memory_offset));
+    vkok(vkBindImageMemory(device, result.handle, result.memory.handle, memory_offset));
 
     VkImageViewCreateInfo view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -1388,7 +1402,7 @@ fn void destroy_image(Renderer* renderer, VulkanImage image)
 {
     vkDestroyImageView(renderer->device, image.view, renderer->allocator);
     vkDestroyImage(renderer->device, image.handle, renderer->allocator);
-    vkFreeMemory(renderer->device, image.memory, renderer->allocator);
+    vkFreeMemory(renderer->device, image.memory.handle, renderer->allocator);
 }
 
 fn void swapchain_recreate(Renderer* renderer, RenderWindow* window, VkSurfaceCapabilitiesKHR surface_capabilities)
@@ -1548,6 +1562,9 @@ RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window)
     {
         auto* pipeline_descriptor = &renderer->pipelines[pipeline_index];
         auto* pipeline_instantiation = &result->pipeline_instantiations[pipeline_index];
+        pipeline_instantiation->vertex_buffer.gpu.type = BUFFER_TYPE_VERTEX;
+        pipeline_instantiation->index_buffer.gpu.type = BUFFER_TYPE_INDEX;
+        pipeline_instantiation->transient_buffer.type = BUFFER_TYPE_STAGING;
 
         u16 descriptor_type_counter[DESCRIPTOR_TYPE_COUNT] = {};
 
@@ -1680,6 +1697,7 @@ void renderer_window_frame_begin(Renderer* renderer, RenderWindow* window)
     {
         auto* pipeline_instantiation = &window->pipeline_instantiations[i];
         pipeline_instantiation->vertex_buffer.cpu.length = 0;
+        pipeline_instantiation->vertex_buffer.count = 0;
         pipeline_instantiation->index_buffer.cpu.length = 0;
     }
 }
@@ -1691,14 +1709,23 @@ void buffer_destroy(Renderer* renderer, VulkanBuffer buffer)
         vkDestroyBuffer(renderer->device, buffer.handle, renderer->allocator);
     }
 
-    if (buffer.gpu_data)
+    if (buffer.memory.handle)
     {
         if (buffer.type == BUFFER_TYPE_STAGING)
         {
-            vkUnmapMemory(renderer->device, buffer.gpu_data);
+            vkUnmapMemory(renderer->device, buffer.memory.handle);
         }
 
-        vkFreeMemory(renderer->device, buffer.gpu_data, renderer->allocator);
+        vkFreeMemory(renderer->device, buffer.memory.handle, renderer->allocator);
+    }
+}
+
+fn void buffer_ensure_capacity(Renderer* renderer, VulkanBuffer* buffer, u64 needed_size)
+{
+    if (unlikely(needed_size > buffer->memory.size))
+    {
+        buffer_destroy(renderer, *buffer);
+        *buffer = buffer_create(renderer, needed_size, buffer->type);
     }
 }
 
@@ -1719,30 +1746,13 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
 
         if (likely(pipeline_instantiation->vertex_buffer.cpu.length))
         {
-            auto old_vertex_buffer = pipeline_instantiation->vertex_buffer.gpu;
-            auto old_index_buffer = pipeline_instantiation->index_buffer.gpu;
-
-            auto new_vertex_buffer_size = pipeline_instantiation->vertex_buffer.cpu.length * sizeof(pipeline_instantiation->vertex_buffer.cpu.pointer);
-            auto new_index_buffer_size = pipeline_instantiation->index_buffer.cpu.length * sizeof(pipeline_instantiation->index_buffer.cpu.pointer);
+            auto new_vertex_buffer_size = pipeline_instantiation->vertex_buffer.cpu.length * sizeof(*pipeline_instantiation->vertex_buffer.cpu.pointer);
+            auto new_index_buffer_size = pipeline_instantiation->index_buffer.cpu.length * sizeof(*pipeline_instantiation->index_buffer.cpu.pointer);
             auto new_transient_buffer_size = new_vertex_buffer_size + new_index_buffer_size;
 
-            if (unlikely(new_transient_buffer_size))
-            {
-                buffer_destroy(renderer, pipeline_instantiation->transient_buffer);
-                pipeline_instantiation->transient_buffer = buffer_create(renderer, new_transient_buffer_size, BUFFER_TYPE_STAGING);
-            }
-
-            if (unlikely(new_vertex_buffer_size > old_vertex_buffer.size))
-            {
-                buffer_destroy(renderer, pipeline_instantiation->vertex_buffer.gpu);
-                pipeline_instantiation->vertex_buffer.gpu = buffer_create(renderer, new_vertex_buffer_size, BUFFER_TYPE_VERTEX);
-            }
-
-            if (unlikely(new_index_buffer_size > old_index_buffer.size))
-            {
-                buffer_destroy(renderer, pipeline_instantiation->index_buffer.gpu);
-                pipeline_instantiation->index_buffer.gpu = buffer_create(renderer, new_index_buffer_size, BUFFER_TYPE_INDEX);
-            }
+            buffer_ensure_capacity(renderer, &pipeline_instantiation->transient_buffer, new_transient_buffer_size);
+            buffer_ensure_capacity(renderer, &pipeline_instantiation->vertex_buffer.gpu, new_vertex_buffer_size);
+            buffer_ensure_capacity(renderer, &pipeline_instantiation->index_buffer.gpu, new_index_buffer_size);
 
             buffer_copy_to_host(pipeline_instantiation->transient_buffer, (Slice(HostBufferCopy)) array_to_slice(((HostBufferCopy[]) {
                 (HostBufferCopy) {
@@ -1853,8 +1863,7 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
 
         if (likely(pipeline_instantiation->vertex_buffer.cpu.length))
         {
-            auto bind_pipeline = frame->bound_pipeline != i;
-            // if (unlikely(bind_pipeline))
+            // Bind pipeline and descriptor sets
             {
                 vkCmdBindPipeline(frame->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->handle);
                 // print("Binding pipeline: 0x{u64}\n", pipeline->handle);
@@ -1866,14 +1875,14 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
                 frame->bound_pipeline = i;
             }
 
-            auto bind_index_buffer = frame->index_buffer != pipeline_instantiation->index_buffer.gpu.handle;
-            // if (unlikely(bind_index_buffer))
+            // Bind index buffer
             {
                 vkCmdBindIndexBuffer(frame->command_buffer, pipeline_instantiation->index_buffer.gpu.handle, 0, VK_INDEX_TYPE_UINT32);
                 frame->index_buffer = pipeline_instantiation->index_buffer.gpu.handle;
                 // print("Binding descriptor sets: 0x{u64}\n", frame->index_buffer);
             }
 
+            // Send vertex buffer and screen dimensions to the shader
             auto push_constants = (GPUDrawPushConstants)
             {
                 .vertex_buffer = pipeline_instantiation->vertex_buffer.gpu.address,
@@ -1881,9 +1890,6 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
                 .height = window->height,
             };
 
-            static_assert(sizeof(push_constants) == sizeof(frame->push_constants));
-
-            // if (unlikely(memcmp(&push_constants, &frame->push_constants, sizeof(push_constants)) != 0))
             {
                 auto push_constant_range = pipeline->push_constant_ranges[0];
                 vkCmdPushConstants(frame->command_buffer, pipeline->layout, push_constant_range.stageFlags, push_constant_range.offset, push_constant_range.size, &push_constants);
@@ -2200,9 +2206,13 @@ void window_rect_texture_update_end(Renderer* renderer, RenderWindow* window)
     window_texture_update_end(renderer, window, BB_PIPELINE_RECT);
 }
 
-void window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index, String vertex_memory)
+u32 window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index, String vertex_memory, u32 vertex_count)
 {
-    vb_copy_string(&window->pipeline_instantiations[pipeline_index].vertex_buffer.cpu, vertex_memory);
+    auto* vertex_buffer = &window->pipeline_instantiations[pipeline_index].vertex_buffer;
+    vb_copy_string(&vertex_buffer->cpu, vertex_memory);
+    auto vertex_offset = vertex_buffer->count;
+    vertex_buffer->count = vertex_offset + vertex_count;
+    return vertex_offset;
 }
 
 void window_pipeline_add_indices(RenderWindow* window, BBPipeline pipeline_index, Slice(u32) indices)
