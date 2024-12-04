@@ -177,9 +177,9 @@ void run_app()
 
         renderer_window_frame_begin(renderer, render_window);
 
-        u32 box_width = 10;
-        u32 box_height = 10;
-        auto box_color = Color4(1, 0, 0, 1);
+        u32 box_width = 100;
+        u32 box_height = 100;
+        auto box_color = Color4(1, 1, 1, 1);
 
         Vertex box_vertices[] = {
             {

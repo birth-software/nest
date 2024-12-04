@@ -1444,7 +1444,7 @@ fn void swapchain_recreate(Renderer* renderer, RenderWindow* window, VkSurfaceCa
         .pQueueFamilyIndices = queue_family_indices,
         .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = VK_PRESENT_MODE_FIFO_KHR,
+        .presentMode = VK_PRESENT_MODE_MAILBOX_KHR,
         .clipped = 0,
         .oldSwapchain = window->swapchain,
     };
