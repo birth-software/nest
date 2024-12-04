@@ -177,41 +177,41 @@ void run_app()
 
         renderer_window_frame_begin(renderer, render_window);
 
-        // u32 box_width = 10;
-        // u32 box_height = 10;
-        // auto box_color = Color4(1, 0, 0, 1);
-        // 
-        // Vertex box_vertices[] = {
-        //     {
-        //         .x = mouse_position.x,
-        //         .y = mouse_position.y,
-        //         .color = box_color,
-        //     },
-        //     {
-        //         .x = mouse_position.x + box_width,
-        //         .y = mouse_position.y,
-        //         .color = box_color,
-        //     },
-        //     {
-        //         .x = mouse_position.x,
-        //         .y = mouse_position.y + box_height,
-        //         .color = box_color,
-        //     },
-        //     {
-        //         .x = mouse_position.x + box_width,
-        //         .y = mouse_position.y + box_height,
-        //         .color = box_color,
-        //     },
-        // };
-        //
-        // auto vertex_offset = window_pipeline_add_vertices(render_window, BB_PIPELINE_RECT, (String)array_to_bytes(box_vertices), array_length(box_vertices));
-        //
-        // u32 box_indices[] = {
-        //     vertex_offset + 0, vertex_offset + 1, vertex_offset + 2,
-        //     vertex_offset + 1, vertex_offset + 3, vertex_offset + 2,
-        // };
-        //
-        // window_pipeline_add_indices(render_window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(box_indices));
+        u32 box_width = 10;
+        u32 box_height = 10;
+        auto box_color = Color4(1, 0, 0, 1);
+
+        Vertex box_vertices[] = {
+            {
+                .x = mouse_position.x,
+                .y = mouse_position.y,
+                .color = box_color,
+            },
+            {
+                .x = mouse_position.x + box_width,
+                .y = mouse_position.y,
+                .color = box_color,
+            },
+            {
+                .x = mouse_position.x,
+                .y = mouse_position.y + box_height,
+                .color = box_color,
+            },
+            {
+                .x = mouse_position.x + box_width,
+                .y = mouse_position.y + box_height,
+                .color = box_color,
+            },
+        };
+
+        auto vertex_offset = window_pipeline_add_vertices(render_window, BB_PIPELINE_RECT, (String)array_to_bytes(box_vertices), array_length(box_vertices));
+
+        u32 box_indices[] = {
+            vertex_offset + 0, vertex_offset + 1, vertex_offset + 2,
+            vertex_offset + 1, vertex_offset + 3, vertex_offset + 2,
+        };
+
+        window_pipeline_add_indices(render_window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(box_indices));
         draw_string(render_window, Color4(0, 0, 0, 1), strlit("abcdefghijklmnopqrstuvwxyz!"), monospace_font, RECT_TEXTURE_SLOT_MONOSPACE_FONT, 100, 100);
 
         renderer_window_frame_end(renderer, render_window);

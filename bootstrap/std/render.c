@@ -999,6 +999,7 @@ Renderer* renderer_initialize(Arena* arena)
             .bufferDeviceAddress = 1,
             .descriptorIndexing = 1,
             .runtimeDescriptorArray = 1,
+            .shaderSampledImageArrayNonUniformIndexing = 1,
             .pNext = &features13,
         };
 
@@ -1732,7 +1733,6 @@ fn void buffer_ensure_capacity(Renderer* renderer, VulkanBuffer* buffer, u64 nee
 void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
 {
     auto* frame = window_frame(window);
-    // print("Frame index: {u32}\n", window->frame_index);
 
     VkCommandBufferBeginInfo command_buffer_begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1797,7 +1797,7 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
             })));
         }
     }
-
+    
     vk_image_transition(frame->command_buffer, window->render_image.handle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
     VkViewport viewports[] = {

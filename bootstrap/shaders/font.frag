@@ -14,9 +14,9 @@ layout(set = 0, binding = 0) uniform sampler2D textures[];
 
 void main() 
 {
-    vec2 texture_size = textureSize(textures[texture_index], 0);
+    vec2 texture_size = textureSize(textures[nonuniformEXT(texture_index)], 0);
     vec2 uv = vec2(in_screen_uv.x / texture_size.x, in_screen_uv.y / texture_size.y);
-    vec4 sampled = texture(textures[texture_index], uv);
+    vec4 sampled = texture(textures[nonuniformEXT(texture_index)], uv);
     // debugPrintfEXT("In color: (%f, %f, %f, %f). Sampled: (%f, %f, %f, %f)\n", in_color.x, in_color.y, in_color.z, in_color.w, sampled.x, sampled.y, sampled.z, sampled.w);
     out_frag_color = in_color * sampled;
 }
