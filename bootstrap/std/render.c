@@ -16,7 +16,6 @@
     if (unlikely(result != VK_SUCCESS)) wrong_vulkan_result(result, strlit(#call), strlit(__FILE__), __LINE__); \
 } while(0)
 
-
 #define MAX_SWAPCHAIN_IMAGE_COUNT (16)
 #define MAX_FRAME_COUNT (2)
 #define MAX_DESCRIPTOR_SET_COUNT (16)
@@ -28,8 +27,6 @@
 #define MAX_TEXTURE_UPDATE_COUNT (32)
 #define MAX_DESCRIPTOR_SET_UPDATE_COUNT (16)
 #define MAX_LOCAL_BUFFER_COPY_COUNT (16)
-
-#define DEFAULT_PIPELINE BB_PIPELINE_RECT
 
 STRUCT(VulkanImageCreate)
 {
@@ -137,6 +134,20 @@ STRUCT(Renderer)
     TextureAtlas fonts[RENDER_FONT_TYPE_COUNT];
 };
 
+STRUCT(PipelineInstantiation)
+{
+    VkWriteDescriptorSet descriptor_set_update;
+    VkDescriptorSet descriptor_sets[MAX_DESCRIPTOR_SET_COUNT];
+    VkDescriptorImageInfo texture_descriptors[MAX_TEXTURE_UPDATE_COUNT];
+};
+
+STRUCT(FramePipelineInstantiation)
+{
+    VertexBuffer vertex_buffer;
+    IndexBuffer index_buffer;
+    VulkanBuffer transient_buffer;
+};
+
 STRUCT(WindowFrame)
 {
     VkCommandPool command_pool;
@@ -147,16 +158,7 @@ STRUCT(WindowFrame)
     BBPipeline bound_pipeline;
     VkBuffer index_buffer;
     GPUDrawPushConstants push_constants;
-};
-
-STRUCT(PipelineInstantiation)
-{
-    VertexBuffer vertex_buffer;
-    IndexBuffer index_buffer;
-    VulkanBuffer transient_buffer;
-    VkWriteDescriptorSet descriptor_set_update;
-    VkDescriptorSet descriptor_sets[MAX_DESCRIPTOR_SET_COUNT];
-    VkDescriptorImageInfo texture_descriptors[MAX_TEXTURE_UPDATE_COUNT];
+    FramePipelineInstantiation pipeline_instantiations[BB_PIPELINE_COUNT];
 };
 
 STRUCT(RenderWindow)
@@ -1558,14 +1560,21 @@ RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window)
     VkSurfaceCapabilitiesKHR surface_capabilities;
     vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, result->surface, &surface_capabilities));
     swapchain_recreate(renderer, result, surface_capabilities);
-    
+
+    for (u64 frame_index = 0; frame_index < MAX_FRAME_COUNT; frame_index += 1)
+    {
+        for (u64 pipeline_index = 0; pipeline_index < BB_PIPELINE_COUNT; pipeline_index += 1)
+        {
+            result->frames[frame_index].pipeline_instantiations[pipeline_index].vertex_buffer.gpu.type = BUFFER_TYPE_VERTEX;
+            result->frames[frame_index].pipeline_instantiations[pipeline_index].index_buffer.gpu.type = BUFFER_TYPE_INDEX;
+            result->frames[frame_index].pipeline_instantiations[pipeline_index].transient_buffer.type = BUFFER_TYPE_STAGING;
+        }
+    }
+
     for (u64 pipeline_index = 0; pipeline_index < BB_PIPELINE_COUNT; pipeline_index += 1)
     {
         auto* pipeline_descriptor = &renderer->pipelines[pipeline_index];
         auto* pipeline_instantiation = &result->pipeline_instantiations[pipeline_index];
-        pipeline_instantiation->vertex_buffer.gpu.type = BUFFER_TYPE_VERTEX;
-        pipeline_instantiation->index_buffer.gpu.type = BUFFER_TYPE_INDEX;
-        pipeline_instantiation->transient_buffer.type = BUFFER_TYPE_STAGING;
 
         u16 descriptor_type_counter[DESCRIPTOR_TYPE_COUNT] = {};
 
@@ -1696,7 +1705,7 @@ void renderer_window_frame_begin(Renderer* renderer, RenderWindow* window)
     // Reset frame data
     for (u32 i = 0; i < array_length(window->pipeline_instantiations); i += 1)
     {
-        auto* pipeline_instantiation = &window->pipeline_instantiations[i];
+        auto* pipeline_instantiation = &frame->pipeline_instantiations[i];
         pipeline_instantiation->vertex_buffer.cpu.length = 0;
         pipeline_instantiation->vertex_buffer.count = 0;
         pipeline_instantiation->index_buffer.cpu.length = 0;
@@ -1742,29 +1751,29 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
 
     for (u32 i = 0; i < BB_PIPELINE_COUNT; i += 1)
     {
-        auto* pipeline_instantiation = &window->pipeline_instantiations[i];
+        auto* frame_pipeline_instantiation = &frame->pipeline_instantiations[i];
 
-        if (likely(pipeline_instantiation->vertex_buffer.cpu.length))
+        if (likely(frame_pipeline_instantiation->vertex_buffer.cpu.length))
         {
-            auto new_vertex_buffer_size = pipeline_instantiation->vertex_buffer.cpu.length * sizeof(*pipeline_instantiation->vertex_buffer.cpu.pointer);
-            auto new_index_buffer_size = pipeline_instantiation->index_buffer.cpu.length * sizeof(*pipeline_instantiation->index_buffer.cpu.pointer);
+            auto new_vertex_buffer_size = frame_pipeline_instantiation->vertex_buffer.cpu.length * sizeof(*frame_pipeline_instantiation->vertex_buffer.cpu.pointer);
+            auto new_index_buffer_size = frame_pipeline_instantiation->index_buffer.cpu.length * sizeof(*frame_pipeline_instantiation->index_buffer.cpu.pointer);
             auto new_transient_buffer_size = new_vertex_buffer_size + new_index_buffer_size;
 
-            buffer_ensure_capacity(renderer, &pipeline_instantiation->transient_buffer, new_transient_buffer_size);
-            buffer_ensure_capacity(renderer, &pipeline_instantiation->vertex_buffer.gpu, new_vertex_buffer_size);
-            buffer_ensure_capacity(renderer, &pipeline_instantiation->index_buffer.gpu, new_index_buffer_size);
+            buffer_ensure_capacity(renderer, &frame_pipeline_instantiation->transient_buffer, new_transient_buffer_size);
+            buffer_ensure_capacity(renderer, &frame_pipeline_instantiation->vertex_buffer.gpu, new_vertex_buffer_size);
+            buffer_ensure_capacity(renderer, &frame_pipeline_instantiation->index_buffer.gpu, new_index_buffer_size);
 
-            buffer_copy_to_host(pipeline_instantiation->transient_buffer, (Slice(HostBufferCopy)) array_to_slice(((HostBufferCopy[]) {
+            buffer_copy_to_host(frame_pipeline_instantiation->transient_buffer, (Slice(HostBufferCopy)) array_to_slice(((HostBufferCopy[]) {
                 (HostBufferCopy) {
                     .source = (String) {
-                        .pointer = (u8*)pipeline_instantiation->vertex_buffer.cpu.pointer,
+                        .pointer = (u8*)frame_pipeline_instantiation->vertex_buffer.cpu.pointer,
                         .length = new_vertex_buffer_size,
                     },
                     .destination_offset = 0,
                 },
                 (HostBufferCopy) {
                     .source = (String) {
-                        .pointer = (u8*)pipeline_instantiation->index_buffer.cpu.pointer,
+                        .pointer = (u8*)frame_pipeline_instantiation->index_buffer.cpu.pointer,
                         .length = new_index_buffer_size,
                     },
                     .destination_offset = new_vertex_buffer_size,
@@ -1773,8 +1782,8 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
 
             buffer_copy_to_local_command(frame->command_buffer, (Slice(LocalBufferCopy)) array_to_slice(((LocalBufferCopy[]) {
                 {
-                    .destination = pipeline_instantiation->vertex_buffer.gpu,
-                    .source = pipeline_instantiation->transient_buffer,
+                    .destination = frame_pipeline_instantiation->vertex_buffer.gpu,
+                    .source = frame_pipeline_instantiation->transient_buffer,
                     .regions = array_to_slice(((LocalBufferCopyRegion[]) {
                         {
                             .source_offset = 0,
@@ -1784,8 +1793,8 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
                     })),
                 },
                 {
-                    .destination = pipeline_instantiation->index_buffer.gpu,
-                    .source = pipeline_instantiation->transient_buffer,
+                    .destination = frame_pipeline_instantiation->index_buffer.gpu,
+                    .source = frame_pipeline_instantiation->transient_buffer,
                     .regions = array_to_slice(((LocalBufferCopyRegion[]) {
                         {
                             .source_offset = new_vertex_buffer_size,
@@ -1860,8 +1869,9 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
     {
         auto* pipeline = &renderer->pipelines[i];
         auto* pipeline_instantiation = &window->pipeline_instantiations[i];
+        auto* frame_pipeline_instantiation = &frame->pipeline_instantiations[i];
 
-        if (likely(pipeline_instantiation->vertex_buffer.cpu.length))
+        if (likely(frame_pipeline_instantiation->vertex_buffer.cpu.length))
         {
             // Bind pipeline and descriptor sets
             {
@@ -1877,15 +1887,15 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
 
             // Bind index buffer
             {
-                vkCmdBindIndexBuffer(frame->command_buffer, pipeline_instantiation->index_buffer.gpu.handle, 0, VK_INDEX_TYPE_UINT32);
-                frame->index_buffer = pipeline_instantiation->index_buffer.gpu.handle;
+                vkCmdBindIndexBuffer(frame->command_buffer, frame_pipeline_instantiation->index_buffer.gpu.handle, 0, VK_INDEX_TYPE_UINT32);
+                frame->index_buffer = frame_pipeline_instantiation->index_buffer.gpu.handle;
                 // print("Binding descriptor sets: 0x{u64}\n", frame->index_buffer);
             }
 
             // Send vertex buffer and screen dimensions to the shader
             auto push_constants = (GPUDrawPushConstants)
             {
-                .vertex_buffer = pipeline_instantiation->vertex_buffer.gpu.address,
+                .vertex_buffer = frame_pipeline_instantiation->vertex_buffer.gpu.address,
                 .width = window->width,
                 .height = window->height,
             };
@@ -1896,7 +1906,7 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
                 frame->push_constants = push_constants;
             }
 
-            vkCmdDrawIndexed(frame->command_buffer, pipeline_instantiation->index_buffer.cpu.length, 1, 0, 0, 0);
+            vkCmdDrawIndexed(frame->command_buffer, frame_pipeline_instantiation->index_buffer.cpu.length, 1, 0, 0, 0);
         }
     }
 
@@ -2095,49 +2105,6 @@ TextureIndex renderer_texture_create(Renderer* renderer, TextureMemory texture_m
     return (TextureIndex) { .value = texture_index };
 }
 
-
-// void window_bind_index_buffer(RenderWindow* window, BufferIndex index_buffer, u64 offset, IndexType index_type)
-// {
-//     auto* frame = window_frame(window); 
-//     auto* buffer = &buffers[index_buffer.value];
-//     VkIndexType vk_index_type;
-//     switch (index_type)
-//     {
-//     case INDEX_TYPE_U16:
-//         vk_index_type = VK_INDEX_TYPE_UINT16;
-//         break;
-//     case INDEX_TYPE_U32:
-//         vk_index_type = VK_INDEX_TYPE_UINT32;
-//         break;
-//     }
-//     vkCmdBindIndexBuffer(frame->command_buffer, buffer->handle, offset, vk_index_type);
-// }
-
-// void window_push_constants(RenderWindow* window, PipelineIndex pipeline_index, SliceP(void) memories)
-// {
-//     auto* pipeline = &pipelines[pipeline_index.value];
-//     auto* pipeline_layout = &pipeline_layouts[pipeline->layout.value];
-//     auto* frame = window_frame(window);
-//
-//     if (memories.length != pipeline_layout->push_constant_range_count)
-//     {
-//         failed_execution();
-//     }
-//
-//     for (u64 i = 0; i < memories.length; i += 1)
-//     {
-//         auto* memory = memories.pointer[i];
-//         auto push_constant_range = pipeline_layout->push_constant_ranges[i];
-//         vkCmdPushConstants(frame->command_buffer, pipeline_layout->handle, push_constant_range.stageFlags, push_constant_range.offset, push_constant_range.size, memory);
-//     }
-// }
-
-// u64 buffer_address(BufferIndex buffer_index)
-// {
-//     auto* buffer = &buffers[buffer_index.value];
-//     return buffer->address;
-// }
-
 void window_draw_indexed(RenderWindow* window, u32 index_count, u32 instance_count, u32 first_index, s32 vertex_offset, u32 first_instance)
 {
     auto* frame = window_frame(window);
@@ -2208,7 +2175,8 @@ void window_rect_texture_update_end(Renderer* renderer, RenderWindow* window)
 
 u32 window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index, String vertex_memory, u32 vertex_count)
 {
-    auto* vertex_buffer = &window->pipeline_instantiations[pipeline_index].vertex_buffer;
+    auto* frame = window_frame(window);
+    auto* vertex_buffer = &frame->pipeline_instantiations[pipeline_index].vertex_buffer;
     vb_copy_string(&vertex_buffer->cpu, vertex_memory);
     auto vertex_offset = vertex_buffer->count;
     vertex_buffer->count = vertex_offset + vertex_count;
@@ -2217,6 +2185,7 @@ u32 window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index
 
 void window_pipeline_add_indices(RenderWindow* window, BBPipeline pipeline_index, Slice(u32) indices)
 {
-    auto* index_pointer = vb_add(&window->pipeline_instantiations[pipeline_index].index_buffer.cpu, indices.length);
+    auto* frame = window_frame(window);
+    auto* index_pointer = vb_add(&frame->pipeline_instantiations[pipeline_index].index_buffer.cpu, indices.length);
     memcpy(index_pointer, indices.pointer, indices.length * sizeof(*indices.pointer));
 }

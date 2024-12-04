@@ -20,38 +20,6 @@
 #include <time.h>
 #endif
 
-fn 
-#if _WIN32
-u64
-#else
-#if LINK_LIBC
-struct timespec
-#else
-u64 
-#endif
-#endif
-timestamp()
-{
-#ifdef _WIN32
-    LARGE_INTEGER li;
-    QueryPerformanceCounter(&li);
-    return (u64)li.QuadPart;
-#else
-#if LINK_LIBC
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts;
-#else
-#if defined(__x86_64__)
-    return __rdtsc();
-#else
-    return 0;
-#endif
-#endif
-#endif
-}
-
-
 #if _WIN32
 global_variable u64 cpu_frequency;
 #else
@@ -62,6 +30,78 @@ global_variable u64 cpu_frequency;
 #endif
 #endif
 
+Timestamp os_timestamp()
+{
+    Timestamp result;
+
+#if _WIN32
+    LARGE_INTEGER li;
+    QueryPerformanceCounter(&li);
+    result.value = li.QuadPart;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    result.value = ((u128)ts.tv_sec << 64) | ts.tv_nsec;
+#endif
+
+    return result;
+}
+
+f64 os_resolve_timestamps(Timestamp start, Timestamp end, TimeUnit time_unit)
+{
+    f64 result;
+#if _WIN32
+    auto start_tick = (s64)start.value;
+    auto end_tick = (s64)end.value;
+
+    auto seconds = (f64)(end_tick - start_tick) / cpu_frequency;
+
+    switch (time_unit)
+    {
+        case TIME_UNIT_NANOSECONDS:
+            result = seconds * 1000000000.0;
+            break;
+        case TIME_UNIT_MICROSECONDS:
+            result = seconds * 1000000.0;
+            break;
+        case TIME_UNIT_MILLISECONDS:
+            result = seconds * 1000.0;
+            break;
+        case TIME_UNIT_SECONDS:
+            result = seconds;
+            break;
+    }
+#else
+    auto segmented_nanoseconds = (s64)end.value - (s64)start.value;
+    auto segmented_seconds = (s64)(end.value >> 64) - (s64)(start.value >> 64);
+    if (segmented_nanoseconds < 0)
+    {
+        segmented_seconds -= 1;
+        segmented_nanoseconds += 1000000000;
+    }
+
+    auto total_ns = segmented_seconds * 1000000000 + segmented_nanoseconds;
+
+    switch (time_unit)
+    {
+        case TIME_UNIT_NANOSECONDS:
+            result = total_ns;
+            break;
+        case TIME_UNIT_MICROSECONDS:
+            result = total_ns / 1000.0;
+            break;
+        case TIME_UNIT_MILLISECONDS:
+            result = total_ns / 1000000.0;
+            break;
+        case TIME_UNIT_SECONDS:
+            result = total_ns / 1000000000.0;
+            break;
+    }
+#endif
+
+    return result;
+}
+
 FileDescriptor os_stdout_get()
 {
 #if _WIN32
@@ -70,95 +110,6 @@ FileDescriptor os_stdout_get()
     return handle;
 #else
     return 1;
-#endif
-}
-
-typedef enum TimeUnit
-{
-    TIME_UNIT_NANOSECONDS,
-    TIME_UNIT_MICROSECONDS,
-    TIME_UNIT_MILLISECONDS,
-    TIME_UNIT_SECONDS,
-} TimeUnit;
-
-may_be_unused fn f64 resolve_timestamp(
-#if _WIN32
-        u64 start, u64 end,
-#else
-#if LINK_LIBC
-        struct timespec start, struct timespec end,
-#else
-        u64 start, u64 end,
-#endif
-#endif
-        TimeUnit time_unit)
-{
-#if _WIN32
-    auto s = (f64)(end - start) / (f64)cpu_frequency;
-    switch (time_unit)
-    {
-        case TIME_UNIT_NANOSECONDS:
-            return s * 1000000000.0;
-        case TIME_UNIT_MICROSECONDS:
-            return s * 1000000.0;
-        case TIME_UNIT_MILLISECONDS:
-            return s * 1000.0;
-        case TIME_UNIT_SECONDS:
-            return s;
-    }
-#else
-#if LINK_LIBC
-    assert(end.tv_sec >= start.tv_sec);
-    struct timespec result = {
-        .tv_sec = end.tv_sec - start.tv_sec,
-        .tv_nsec = end.tv_nsec - start.tv_nsec,
-    };
-
-    auto ns_in_a_sec = 1000000000;
-    if (result.tv_nsec < 0)
-    {
-        result.tv_sec -= 1;
-        result.tv_nsec += ns_in_a_sec;
-    }
-
-    auto ns = result.tv_sec * ns_in_a_sec + result.tv_nsec;
-    switch (time_unit)
-    {
-    case TIME_UNIT_NANOSECONDS:
-        return (f64)ns;
-    case TIME_UNIT_MICROSECONDS:
-        return (f64)ns / 1000.0;
-    case TIME_UNIT_MILLISECONDS:
-        return (f64)ns / 1000000.0;
-    case TIME_UNIT_SECONDS:
-        return (f64)ns / 1000000000.0;
-    }
-#else
-    assert(end >= start);
-    auto ticks = end - start;
-    f64 s = (f64)(end - start);
-    if (cpu_frequency)
-    {
-        s = s / (f64)cpu_frequency;
-
-        switch (time_unit)
-        {
-            case TIME_UNIT_NANOSECONDS:
-                return s * 1000000000.0;
-            case TIME_UNIT_MICROSECONDS:
-                return s * 1000000.0;
-            case TIME_UNIT_MILLISECONDS:
-                return s * 1000.0;
-            case TIME_UNIT_SECONDS:
-                return s;
-        }
-    }
-    else
-    {
-        // warning: rdtsc frequency not queried (returning ticks as are)
-        return s;
-    }
-#endif
 #endif
 }
 
@@ -964,7 +915,7 @@ void calibrate_cpu_timer()
     clock_getres(CLOCK_MONOTONIC, &cpu_resolution);
 #else
     u64 miliseconds_to_wait = 100;
-    u64 cpu_start = timestamp();
+    u64 cpu_start = os_timestamp();
     u64 os_frequency = os_timer_freq();
     u64 os_elapsed = 0;
     u64 os_start = os_timer_get();
@@ -976,7 +927,7 @@ void calibrate_cpu_timer()
         os_elapsed = os_end - os_start;
     }
 
-    u64 cpu_end = timestamp();
+    u64 cpu_end = os_timestamp();
     u64 cpu_elapsed = cpu_end - cpu_start;
     cpu_frequency = os_frequency * cpu_elapsed / os_elapsed;
 #endif
@@ -1326,7 +1277,6 @@ void print(const char* format, ...)
 #endif
 }
 
-
 static_assert(sizeof(Arena) == 64);
 
 Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size)
@@ -1480,7 +1430,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
     print("\n");
 
 #if _WIN32
-    auto start_timestamp = timestamp();
+    auto start_timestamp = os_timestamp();
 
     u32 length = 0;
     for (u32 i = 0; i < arguments.length; i += 1)
@@ -1508,7 +1458,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         }
     }
     bytes[byte_i - 1] = 0;
-    auto end_timestamp = timestamp();
+    auto end_timestamp = os_timestamp();
 
     PROCESS_INFORMATION process_information = {};
     STARTUPINFOA startup_info = {};
@@ -1518,12 +1468,12 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
     startup_info.hStdError = GetStdHandle(STD_ERROR_HANDLE);
 
     auto handle_inheritance = 1;
-    auto start = timestamp();
+    auto start = os_timestamp();
     if (CreateProcessA(0, bytes, 0, 0, handle_inheritance, 0, 0, 0, &startup_info, &process_information))
     {
         WaitForSingleObject(process_information.hProcess, INFINITE);
-        auto end = timestamp();
-        auto ms = resolve_timestamp(start, end, TIME_UNIT_MILLISECONDS);
+        auto end = os_timestamp();
+        auto ms = os_resolve_timestamps(start, end, TIME_UNIT_MILLISECONDS);
 
         print("Process ran in {f64} ms\n", ms);
         DWORD exit_code;
@@ -1572,7 +1522,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         trap();
     }
 
-    auto start_timestamp = timestamp();
+    auto start_timestamp = os_timestamp();
 
     if (pid == 0)
     {
@@ -1592,7 +1542,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         int status = 0;
         int options = 0;
         pid_t result = syscall_waitpid(pid, &status, options);
-        auto end_timestamp = timestamp();
+        auto end_timestamp = os_timestamp();
         int success = 0;
         if (result == pid)
         {
@@ -1629,7 +1579,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
             print("Program failed to run!\n");
             failed_execution();
         }
-        auto ms = resolve_timestamp(start_timestamp, end_timestamp, TIME_UNIT_MILLISECONDS);
+        auto ms = os_resolve_timestamps(start_timestamp, end_timestamp, TIME_UNIT_MILLISECONDS);
         auto ticks =
 #if LINK_LIBC
             0
