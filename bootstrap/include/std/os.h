@@ -2,6 +2,20 @@
 
 #include <std/base.h>
 
+typedef enum TimeUnit
+{
+    TIME_UNIT_NANOSECONDS,
+    TIME_UNIT_MICROSECONDS,
+    TIME_UNIT_MILLISECONDS,
+    TIME_UNIT_SECONDS,
+} TimeUnit;
+
+
+STRUCT(Timestamp)
+{
+    u128 value;
+};
+
 STRUCT(OSFileOpenFlags)
 {
     u32 truncate:1;
@@ -94,6 +108,9 @@ EXPORT void os_directory_make(String path);
 EXPORT void calibrate_cpu_timer();
 
 EXPORT void print_string(String string);
+
+EXPORT Timestamp os_timestamp();
+EXPORT f64 os_resolve_timestamps(Timestamp start, Timestamp end, TimeUnit time_unit);
 
 #if _WIN32
 typedef void* HANDLE;

@@ -168,14 +168,28 @@ void run_app()
 
     window_rect_texture_update_end(renderer, render_window);
 
+    auto frame_start = os_timestamp();
+
     while (!os_window_should_close(os_window))
     {
+        auto frame_end = os_timestamp();
+        auto frame_ms = os_resolve_timestamps(frame_start, frame_end, TIME_UNIT_MILLISECONDS);
+        frame_start = frame_end;
+
         os_poll_events();
 
         auto mouse_position = os_window_cursor_position_get(os_window);
         // print("Mouse position: ({f64}, {f64})\n", mouse_position.x, mouse_position.y);
 
         renderer_window_frame_begin(renderer, render_window);
+
+        u8 format_buffer[256];
+        auto buffer_len = format_float((String)array_to_slice(format_buffer), frame_ms);
+        format_buffer[buffer_len + 0] = ' ';
+        format_buffer[buffer_len + 1] = 'm';
+        format_buffer[buffer_len + 2] = 's';
+        auto ms = (String) { .pointer = format_buffer, .length = buffer_len + 3 };
+        draw_string(render_window, Color4(0, 1, 1, 1), ms, monospace_font, RECT_TEXTURE_SLOT_MONOSPACE_FONT, 500, 500);
 
         u32 box_width = 100;
         u32 box_height = 100;
