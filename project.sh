@@ -23,10 +23,9 @@ if [[ -z "${BIRTH_OS-}" ]]; then
 fi
 
 if [[ "$BIRTH_OS" == "macos" ]]; then
-    MY_HOMEBREW_PREFIX=$(brew --prefix llvm)
-    C_COMPILER_PATH=$MY_HOMEBREW_PREFIX/bin/clang
-    CXX_COMPILER_PATH=$MY_HOMEBREW_PREFIX/bin/clang++
-    ASM_COMPILER_PATH=$MY_HOMEBREW_PREFIX/bin/clang
+    VK_LOADER_PREFIX=$(brew --prefix vulkan-loader)
+    VK_VALIDATION_PREFIX=$(brew --prefix vulkan-validationlayers)
+    export DYLD_LIBRARY_PATH=$VK_LOADER_PREFIX/lib:$VK_VALIDATION_PREFIX/lib
 fi
 
 if [[ -z "${BIRTH_ARCH-}" ]]; then
