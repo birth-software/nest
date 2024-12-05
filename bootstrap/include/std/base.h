@@ -39,6 +39,13 @@ typedef double f64;
 typedef u32 Hash32;
 typedef u64 Hash64;
 
+typedef enum Axis2
+{
+    AXIS2_X,
+    AXIS2_Y,
+    AXIS2_COUNT,
+} Axis2;
+
 #ifdef __cplusplus
 #define EXPORT extern "C"
 #else
@@ -194,12 +201,12 @@ const may_be_unused global_variable u8 bracket_close = ']';
 
 #define todo() do { print("TODO at {cstr}:{u32}\n", __FILE__, __LINE__); __builtin_trap(); } while(0)
 
-u64 align_forward(u64 value, u64 alignment);
-u64 align_backward(u64 value, u64 alignment);
-u8 log2_alignment(u64 alignment);
-u8 is_power_of_two(u64 value);
-u8 first_bit_set_32(u32 value);
-u64 first_bit_set_64(u64 value);
+EXPORT u64 align_forward(u64 value, u64 alignment);
+EXPORT u64 align_backward(u64 value, u64 alignment);
+EXPORT u8 log2_alignment(u64 alignment);
+EXPORT u8 is_power_of_two(u64 value);
+EXPORT u8 first_bit_set_32(u32 value);
+EXPORT u64 first_bit_set_64(u64 value);
 
 EXPORT void* memcpy(void* const restrict dst, const void* const restrict src, usize size) NO_EXCEPT;
 EXPORT void* memmove(void* const dst, const void* const src, usize n) NO_EXCEPT;
@@ -209,49 +216,49 @@ EXPORT usize strlen (const char* c_string) NO_EXCEPT;
 EXPORT int strcmp(const char* s1, const char* s2) NO_EXCEPT;
 EXPORT int strncmp(const char* s1, const char* s2, usize length) NO_EXCEPT;
 
-u8 cast_u32_to_u8(u32 source, const char* name, int line);
-u16 cast_u32_to_u16(u32 source, const char* name, int line);
-s16 cast_u32_to_s16(u32 source, const char* name, int line);
-s32 cast_u32_to_s32(u32 source, const char* name, int line);
-u8 cast_u64_to_u8(u64 source, const char* name, int line);
-u16 cast_u64_to_u16(u64 source, const char* name, int line);
-u32 cast_u64_to_u32(u64 source, const char* name, int line);
-s32 cast_u64_to_s32(u64 source, const char* name, int line);
-s64 cast_u64_to_s64(u64 source, const char* name, int line);
-u8 cast_s32_to_u8(s32 source, const char* name, int line);
-u16 cast_s32_to_u16(s32 source, const char* name, int line);
-u32 cast_s32_to_u32(s32 source, const char* name, int line);
-u64 cast_s32_to_u64(s32 source, const char* name, int line);
-s16 cast_s32_to_s16(s32 source, const char* name, int line);
-u16 cast_s64_to_u16(s64 source, const char* name, int line);
-u32 cast_s64_to_u32(s64 source, const char* name, int line);
-u64 cast_s64_to_u64(s64 source, const char* name, int line);
-s32 cast_s64_to_s32(s64 source, const char* name, int line);
+EXPORT u8 cast_u32_to_u8(u32 source, const char* name, int line);
+EXPORT u16 cast_u32_to_u16(u32 source, const char* name, int line);
+EXPORT s16 cast_u32_to_s16(u32 source, const char* name, int line);
+EXPORT s32 cast_u32_to_s32(u32 source, const char* name, int line);
+EXPORT u8 cast_u64_to_u8(u64 source, const char* name, int line);
+EXPORT u16 cast_u64_to_u16(u64 source, const char* name, int line);
+EXPORT u32 cast_u64_to_u32(u64 source, const char* name, int line);
+EXPORT s32 cast_u64_to_s32(u64 source, const char* name, int line);
+EXPORT s64 cast_u64_to_s64(u64 source, const char* name, int line);
+EXPORT u8 cast_s32_to_u8(s32 source, const char* name, int line);
+EXPORT u16 cast_s32_to_u16(s32 source, const char* name, int line);
+EXPORT u32 cast_s32_to_u32(s32 source, const char* name, int line);
+EXPORT u64 cast_s32_to_u64(s32 source, const char* name, int line);
+EXPORT s16 cast_s32_to_s16(s32 source, const char* name, int line);
+EXPORT u16 cast_s64_to_u16(s64 source, const char* name, int line);
+EXPORT u32 cast_s64_to_u32(s64 source, const char* name, int line);
+EXPORT u64 cast_s64_to_u64(s64 source, const char* name, int line);
+EXPORT s32 cast_s64_to_s32(s64 source, const char* name, int line);
 
-u32 format_decimal(String buffer, u64 decimal);
-u32 format_hexadecimal(String buffer, u64 hexadecimal);
-u64 format_float(String buffer, f64 value_double);
+EXPORT u32 format_decimal(String buffer, u64 decimal);
+EXPORT u32 format_hexadecimal(String buffer, u64 hexadecimal);
+EXPORT u64 format_float(String buffer, f64 value_double);
 
-u64 is_decimal_digit(u8 ch);
-u32 is_space(u8 ch, u8 next_ch);
-u8 get_next_ch_safe(String string, u64 index);
-u64 is_identifier_start(u8 ch);
-u64 is_identifier_ch(u8 ch);
-u64 is_alphabetic(u8 ch);
+EXPORT u64 is_decimal_digit(u8 ch);
+EXPORT u32 is_space(u8 ch, u8 next_ch);
+EXPORT u8 get_next_ch_safe(String string, u64 index);
+EXPORT u64 is_identifier_start(u8 ch);
+EXPORT u64 is_identifier_ch(u8 ch);
+EXPORT u64 is_alphabetic(u8 ch);
 
-u64 parse_decimal(String string);
+EXPORT u64 parse_decimal(String string);
 
 global_variable const Hash64 fnv_offset = 14695981039346656037ull;
 global_variable const u64 fnv_prime = 1099511628211ull;
 
-Hash32 hash32_fib_end(Hash32 hash);
-Hash32 hash64_fib_end(Hash64 hash);
+EXPORT Hash32 hash32_fib_end(Hash32 hash);
+EXPORT Hash32 hash64_fib_end(Hash64 hash);
 
-Hash64 hash_byte(Hash64 source, u8 ch);
-Hash64 hash_bytes(String bytes);
-Hash32 hash64_to_hash32(Hash64 hash64);
+EXPORT Hash64 hash_byte(Hash64 source, u8 ch);
+EXPORT Hash64 hash_bytes(String bytes);
+EXPORT Hash32 hash64_to_hash32(Hash64 hash64);
 
-u64 round_up_to_next_power_of_2(u64 n);
+EXPORT u64 round_up_to_next_power_of_2(u64 n);
 
 STRUCT(TextureIndex)
 {

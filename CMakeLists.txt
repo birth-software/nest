@@ -57,6 +57,7 @@ include_directories("bootstrap/include")
 add_library("${LIBRARY_NAME}"
     "bootstrap/std/base.c"
     "bootstrap/std/string.c"
+    "bootstrap/std/format.c"
     "bootstrap/std/os.c"
     "bootstrap/std/entry_point.c"
     "bootstrap/std/virtual_buffer.c"
@@ -236,6 +237,7 @@ if (NOT BB_IS_CI)
         "bootstrap/std/graphics.c"
         "bootstrap/std/render.c"
         "bootstrap/std/ui_core.c"
+        "bootstrap/std/ui_builder.c"
     )
 
     target_include_directories(${COMPILER_NAME} PRIVATE dependencies/stb)
