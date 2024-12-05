@@ -49,7 +49,7 @@ add_compile_options(
     -fdiagnostics-color=always
     -fansi-escape-codes
     -ferror-limit=1
-    -march=native
+    # -march=native
     ${BB_IS_CI_C_FLAG} -DCOMPILER_NAME=\"${COMPILER_NAME}\" -DBUILD_DIR=\"${CMAKE_BINARY_DIR}\" -DBB_DIR=\"${BB_DIR}\" ${SHADER_COMPILATION_USE_SOURCE_C_FLAG}
 )
 include_directories("bootstrap/include")
@@ -213,8 +213,17 @@ if (NOT BB_IS_CI)
         set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_XLIB_KHR)
         target_compile_definitions(${COMPILER_NAME} PRIVATE GLFW_EXPOSE_NATIVE_X11)
     elseif(CMAKE_SYSTEM_NAME STREQUAL Darwin)
-        set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_MACOS_MVK)
+        set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_METAL_EXT)
         target_compile_definitions(${COMPILER_NAME} PRIVATE GLFW_EXPOSE_NATIVE_COCOA)
+    endif()
+
+    if (APPLE)
+        execute_process(
+            COMMAND brew --prefix vulkan-headers
+            OUTPUT_VARIABLE VULKAN_HEADERS_PREFIX
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        include_directories("${VULKAN_HEADERS_PREFIX}/include")
     endif()
 
     add_subdirectory(dependencies/volk-1.3.301 volk)

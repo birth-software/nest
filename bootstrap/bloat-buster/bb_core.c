@@ -146,6 +146,8 @@ void run_app()
         strlit("C:/Users/David/Downloads/Fira_Sans/FiraSans-Regular.ttf");
 #elif defined(__linux__)
         strlit("/usr/share/fonts/TTF/FiraSans-Regular.ttf");
+#elif defined(__APPLE__)
+strlit("/Users/david/Library/Fonts/FiraSans-Regular.ttf");
 #else
         strlit("WRONG_PATH");
 #endif

@@ -840,11 +840,11 @@ Renderer* renderer_initialize(Arena* arena)
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
             VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
 #endif
-#ifdef VK_USE_PLATFORM_MACOS_MVK
-            VK_KHR_COCOA_SURFACE_EXTENSION_NAME,
+#ifdef VK_USE_PLATFORM_METAL_EXT
+            VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+            VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
 #endif
         };
-
 
 #if BB_DEBUG
         VkValidationFeatureEnableEXT enabled_validation_features[] =
@@ -855,7 +855,6 @@ Renderer* renderer_initialize(Arena* arena)
         VkDebugUtilsMessengerCreateInfoEXT msg_ci = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .pNext = 0,
-            .flags = 0,
             .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
             .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,
             .pfnUserCallback = debug_callback,
@@ -884,12 +883,17 @@ Renderer* renderer_initialize(Arena* arena)
         };
         VkInstanceCreateInfo ci = {
             .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+            .pNext = pNext,
+#if __APPLE__
+            .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#else
+            .flags = 0,
+#endif
             .pApplicationInfo = &app_info,
             .ppEnabledLayerNames = layers,
             .enabledLayerCount = layer_count,
             .ppEnabledExtensionNames = extensions,
             .enabledExtensionCount = array_length(extensions),
-            .pNext = pNext,
         };
 
         vkok(vkCreateInstance(&ci, renderer->allocator, &renderer->instance));
@@ -1080,6 +1084,7 @@ Renderer* renderer_initialize(Arena* arena)
         strlit("bootstrap/shaders/font.vert"),
         strlit("bootstrap/shaders/font.frag"),
     };
+
     PipelineLayoutCreate pipeline_layouts[] = {
         (PipelineLayoutCreate) {
             .push_constant_ranges = array_to_slice(((PushConstantRange[]){
