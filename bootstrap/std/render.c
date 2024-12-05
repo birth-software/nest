@@ -6,16 +6,6 @@
 
 #include <volk.h>
 
-#define vkok(call) do {\
-    VkResult _r_e_s_u_l_t_ = call; \
-    if (unlikely(_r_e_s_u_l_t_ != VK_SUCCESS)) wrong_vulkan_result(_r_e_s_u_l_t_, strlit(#call), strlit(__FILE__), __LINE__); \
-} while(0)
-
-#define vkok_swapchain(call) do {\
-    VkResult result = call; \
-    if (unlikely(result != VK_SUCCESS)) wrong_vulkan_result(result, strlit(#call), strlit(__FILE__), __LINE__); \
-} while(0)
-
 #define MAX_SWAPCHAIN_IMAGE_COUNT (16)
 #define MAX_FRAME_COUNT (2)
 #define MAX_DESCRIPTOR_SET_COUNT (16)
@@ -27,6 +17,11 @@
 #define MAX_TEXTURE_UPDATE_COUNT (32)
 #define MAX_DESCRIPTOR_SET_UPDATE_COUNT (16)
 #define MAX_LOCAL_BUFFER_COPY_COUNT (16)
+
+#define vkok(call) do {\
+    VkResult _r_e_s_u_l_t_ = call; \
+    if (unlikely(_r_e_s_u_l_t_ != VK_SUCCESS)) wrong_vulkan_result(_r_e_s_u_l_t_, strlit(#call), strlit(__FILE__), __LINE__); \
+} while(0)
 
 STRUCT(VulkanImageCreate)
 {
@@ -959,6 +954,7 @@ Renderer* renderer_initialize(Arena* arena)
         }
 
         present_queue_family_index = 0;
+
         // for (present_queue_family_index = 0; present_queue_family_index < queue_count; present_queue_family_index += 1)
         // {
         //     VkBool32 support;
@@ -1435,6 +1431,20 @@ fn void swapchain_recreate(Renderer* renderer, RenderWindow* window, VkSurfaceCa
     window->width = surface_capabilities.currentExtent.width;
     window->height = surface_capabilities.currentExtent.height;
 
+    VkPresentModeKHR preferred_present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+    VkPresentModeKHR present_modes[16];
+    u32 present_mode_count = array_length(present_modes);
+    vkok(vkGetPhysicalDeviceSurfacePresentModesKHR(renderer->physical_device, window->surface, &present_mode_count, present_modes));
+
+    for (u32 i = 0; i < present_mode_count; i += 1)
+    {
+        if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR)
+        {
+            preferred_present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+            break;
+        }
+    }
+
     VkSwapchainCreateInfoKHR swapchain_create_info = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .pNext = 0,
@@ -1451,7 +1461,7 @@ fn void swapchain_recreate(Renderer* renderer, RenderWindow* window, VkSurfaceCa
         .pQueueFamilyIndices = queue_family_indices,
         .preTransform = surface_capabilities.currentTransform,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = VK_PRESENT_MODE_MAILBOX_KHR,
+        .presentMode = preferred_present_mode,
         .clipped = 0,
         .oldSwapchain = window->swapchain,
     };
@@ -1540,7 +1550,7 @@ RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window)
             .pNext = 0,
             .flags = 0,
             .hinstance = os_windows_get_module_handle(),
-            .hwnd = graphics_win32_window_get(window),
+            .hwnd = win32_window_get(window),
         };
         vkok(vkCreateWin32SurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
 #endif
@@ -1564,6 +1574,7 @@ RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window)
 
     VkSurfaceCapabilitiesKHR surface_capabilities;
     vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, result->surface, &surface_capabilities));
+
     swapchain_recreate(renderer, result, surface_capabilities);
 
     for (u64 frame_index = 0; frame_index < MAX_FRAME_COUNT; frame_index += 1)
@@ -2007,7 +2018,7 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
     {
         for (u32 i = 0; i < array_length(results); i += 1)
         {
-            vkok_swapchain(results[i]);
+            vkok(results[i]);
         }
     }
     else if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
@@ -2170,7 +2181,10 @@ fn void window_texture_update_end(Renderer* renderer, RenderWindow* window, BBPi
     auto* pipeline_instantiation = &window->pipeline_instantiations[pipeline_index];
     u32 descriptor_copy_count = 0;
     VkCopyDescriptorSet* descriptor_copies = 0;
-    vkUpdateDescriptorSets(renderer->device, 1, &pipeline_instantiation->descriptor_set_update, descriptor_copy_count, descriptor_copies);
+    VkWriteDescriptorSet descriptor_set_writes[] = {
+        pipeline_instantiation->descriptor_set_update,
+    };
+    vkUpdateDescriptorSets(renderer->device, array_length(descriptor_set_writes), descriptor_set_writes, descriptor_copy_count, descriptor_copies);
 }
 
 void window_rect_texture_update_end(Renderer* renderer, RenderWindow* window)
@@ -2193,4 +2207,124 @@ void window_pipeline_add_indices(RenderWindow* window, BBPipeline pipeline_index
     auto* frame = window_frame(window);
     auto* index_pointer = vb_add(&frame->pipeline_instantiations[pipeline_index].index_buffer.cpu, indices.length);
     memcpy(index_pointer, indices.pointer, indices.length * sizeof(*indices.pointer));
+}
+
+void window_render_rect(RenderWindow* window, RectDraw draw)
+{
+    RectVertex vertices[] = {
+        (RectVertex) {
+            .x = draw.vertex.x0,
+            .y = draw.vertex.y0,
+            .uv_x = draw.texture.x0,
+            .uv_y = draw.texture.y0,
+            .color = draw.color,
+            .texture_index = draw.texture_index,
+        },
+        (RectVertex) {
+            .x = draw.vertex.x1,
+            .y = draw.vertex.y0,
+            .uv_x = draw.texture.x1,
+            .uv_y = draw.texture.y0,
+            .color = draw.color,
+            .texture_index = draw.texture_index,
+        },
+        (RectVertex) {
+            .x = draw.vertex.x0,
+            .y = draw.vertex.y1,
+            .uv_x = draw.texture.x0,
+            .uv_y = draw.texture.y1,
+            .color = draw.color,
+            .texture_index = draw.texture_index,
+        },
+        (RectVertex) {
+            .x = draw.vertex.x1,
+            .y = draw.vertex.y1,
+            .uv_x = draw.texture.x1,
+            .uv_y = draw.texture.y1,
+            .color = draw.color,
+            .texture_index = draw.texture_index,
+        },
+    };
+
+    auto vertex_offset = window_pipeline_add_vertices(window, BB_PIPELINE_RECT, (String)array_to_bytes(vertices), array_length(vertices));
+
+    u32 indices[] = {
+        vertex_offset + 0,
+        vertex_offset + 1,
+        vertex_offset + 2,
+        vertex_offset + 1,
+        vertex_offset + 3,
+        vertex_offset + 2,
+    };
+
+    window_pipeline_add_indices(window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(indices));
+}
+
+void window_render_text(Renderer* renderer, RenderWindow* window, String string, Color color, RenderFontType font_type, u32 x_offset, u32 y_offset)
+{
+    auto* texture_atlas = &renderer->fonts[font_type];
+    auto height = texture_atlas->ascent - texture_atlas->descent;
+    auto texture_index = texture_atlas->texture.value;
+    for (u64 i = 0; i < string.length; i += 1)
+    {
+        auto ch = string.pointer[i];
+        auto* character = &texture_atlas->characters[ch];
+        auto pos_x = x_offset;
+        auto pos_y = y_offset + character->y_offset + height; // Offset of the height to render the character from the bottom (y + height) up (y)
+        auto uv_x = character->x;
+        auto uv_y = character->y;
+        auto uv_width = character->width;
+        auto uv_height = character->height;
+
+        RectVertex vertices[] = {
+            (RectVertex) {
+                .x = pos_x,
+                .y = pos_y,
+                .uv_x = (f32)uv_x,
+                .uv_y = (f32)uv_y,
+                .color = color,
+                .texture_index = texture_index,
+            },
+            (RectVertex) {
+                .x = pos_x + character->width,
+                .y = pos_y,
+                .uv_x = (f32)(uv_x + uv_width),
+                .uv_y = (f32)uv_y,
+                .color = color,
+                .texture_index = texture_index,
+            },
+            (RectVertex) {
+                .x = pos_x,
+                .y = pos_y + character->height,
+                .uv_x = (f32)uv_x,
+                .uv_y = (f32)(uv_y + uv_height),
+                .color = color,
+                .texture_index = texture_index,
+            },
+            (RectVertex) {
+                .x = pos_x + character->width,
+                .y = pos_y + character->height,
+                .uv_x = (f32)(uv_x + uv_width),
+                .uv_y = (f32)(uv_y + uv_height),
+                .color = color,
+                .texture_index = texture_index,
+            },
+        };
+
+        auto vertex_offset = window_pipeline_add_vertices(window, BB_PIPELINE_RECT, (String)array_to_bytes(vertices), array_length(vertices));
+
+        u32 indices[] = {
+            vertex_offset + 0,
+            vertex_offset + 1,
+            vertex_offset + 2,
+            vertex_offset + 1,
+            vertex_offset + 3,
+            vertex_offset + 2,
+        };
+
+        window_pipeline_add_indices(window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(indices));
+
+        auto kerning = (texture_atlas->kerning_tables + ch * 256)[string.pointer[i + 1]];
+        x_offset += character->advance + kerning;
+    }
 }

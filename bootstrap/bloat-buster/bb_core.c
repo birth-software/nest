@@ -7,18 +7,8 @@
 #include <std/shader_compilation.h>
 #include <std/image_loader.h>
 #include <std/font_provider.h>
-
-STRUCT(Vertex)
-{
-    f32 x;
-    f32 y;
-    f32 uv_x;
-    f32 uv_y;
-    Vec4 color;
-    u32 texture_index;
-    u32 reserved[3];
-};
-decl_vb(Vertex);
+#include <std/ui_core.h>
+#include <std/ui_builder.h>
 
 fn TextureIndex white_texture_create(Arena* arena, Renderer* renderer)
 {
@@ -38,108 +28,155 @@ fn TextureIndex white_texture_create(Arena* arena, Renderer* renderer)
     return white_texture;
 }
 
-fn void draw_string(RenderWindow* window, Vec4 color, String string, TextureAtlas texture_atlas, u32 texture_index, u32 x_offset, u32 y_offset)
+STRUCT(BBPanel)
 {
-    auto height = texture_atlas.ascent - texture_atlas.descent;
-    for (u64 i = 0; i < string.length; i += 1)
-    {
-        auto ch = string.pointer[i];
-        auto* character = &texture_atlas.characters[ch];
-        auto pos_x = x_offset;
-        auto pos_y = y_offset + character->y_offset + height; // Offset of the height to render the character from the bottom (y + height) up (y)
-        auto uv_x = character->x;
-        auto uv_y = character->y;
-        auto uv_width = character->width;
-        auto uv_height = character->height;
-
-        Vertex vertices[] = {
-            (Vertex) {
-                .x = pos_x,
-                .y = pos_y,
-                .uv_x = (f32)uv_x,
-                .uv_y = (f32)uv_y,
-                .color = color,
-                .texture_index = texture_index,
-            },
-            (Vertex) {
-                .x = pos_x + character->width,
-                .y = pos_y,
-                .uv_x = (f32)(uv_x + uv_width),
-                .uv_y = (f32)uv_y,
-                .color = color,
-                .texture_index = texture_index,
-            },
-            (Vertex) {
-                .x = pos_x,
-                .y = pos_y + character->height,
-                .uv_x = (f32)uv_x,
-                .uv_y = (f32)(uv_y + uv_height),
-                .color = color,
-                .texture_index = texture_index,
-            },
-            (Vertex) {
-                .x = pos_x + character->width,
-                .y = pos_y + character->height,
-                .uv_x = (f32)(uv_x + uv_width),
-                .uv_y = (f32)(uv_y + uv_height),
-                .color = color,
-                .texture_index = texture_index,
-            },
-        };
-
-        auto vertex_offset = window_pipeline_add_vertices(window, BB_PIPELINE_RECT, (String)array_to_bytes(vertices), array_length(vertices));
-
-        u32 indices[] = {
-            vertex_offset + 0,
-            vertex_offset + 1,
-            vertex_offset + 2,
-            vertex_offset + 1,
-            vertex_offset + 3,
-            vertex_offset + 2,
-        };
-
-        window_pipeline_add_indices(window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(indices));
-
-        auto kerning = (texture_atlas.kerning_tables + ch * 256)[string.pointer[i + 1]];
-        x_offset += character->advance + kerning;
-    }
-}
+    BBPanel* first;
+    BBPanel* last;
+    BBPanel* next;
+    BBPanel* previous;
+    BBPanel* parent;
+    f32 parent_percentage;
+    Axis2 split_axis;
+};
 
 STRUCT(BBWindow)
 {
     OSWindow os;
     RenderWindow* render;
+    BBWindow* previous;
+    BBWindow* next;
+    BBPanel* root_panel;
+    UI_State* ui;
 };
 
 STRUCT(BBGUIState)
 {
     Arena* arena;
-    BBWindow* first;
-    BBWindow* last;
+    Timestamp last_frame_timestamp;
+    BBWindow* first_window;
+    BBWindow* last_window;
+    Renderer* renderer;
+    // TODO: should this not be thread local?
+    OSEventQueue event_queue;
 };
 global_variable BBGUIState state;
+
+fn void app_update()
+{
+    auto frame_end = os_timestamp();
+    os_poll_events(&state.event_queue);
+    auto frame_ms = os_resolve_timestamps(state.last_frame_timestamp, frame_end, TIME_UNIT_MILLISECONDS);
+    state.last_frame_timestamp = frame_end;
+
+    Renderer* renderer = state.renderer;
+
+    BBWindow* window = state.first_window;
+    while (likely(window))
+    {
+        auto* previous = window->previous;
+        auto* next = window->next;
+
+        auto* render_window = window->render;
+        renderer_window_frame_begin(renderer, render_window);
+
+        ui_state_select(window->ui);
+
+        if (likely(ui_build_begin(window->os, frame_ms, &state.event_queue)))
+        {
+            {
+                if (unlikely(ui_button(strlit("Hello world\n"), (UI_Rect) {
+                        .x0 = 200,
+                        .y0 = 200,
+                        .x1 = 300,
+                        .y1 = 300,
+                    }).clicked_left))
+                {
+                    print("Clicked on hello world\n");
+                }
+
+                if (unlikely(ui_button(strlit("Bye world\n"), (UI_Rect) {
+                        .x0 = 600,
+                        .y0 = 500,
+                        .x1 = 700,
+                        .y1 = 600,
+                    }).clicked_left))
+                {
+                    print("Clicked on bye world\n");
+                }
+            }
+
+            ui_build_end();
+
+            ui_draw();
+
+            renderer_window_frame_end(renderer, render_window);
+        }
+        else
+        {
+            if (previous)
+            {
+                previous->next = next;
+            }
+
+            if (next)
+            {
+                next->previous = previous;
+            }
+
+            if (state.first_window == window)
+            {
+                state.first_window = next;
+            }
+
+            if (state.last_window == window)
+            {
+                state.last_window = previous;
+            }
+        }
+
+        window = next;
+    }
+}
+
+fn void window_refresh_callback(OSWindow window, void* context)
+{
+    unused(window);
+    unused(context);
+    app_update();
+}
 
 void run_app()
 {
     state.arena = arena_init(MB(512), MB(2), MB(2));
 
-    u8 use_x11 = 1;
-    os_graphics_init(use_x11);
-    OSWindow os_window = os_window_create((OSWindowCreate) {
+    os_graphics_init((OSGraphicsInitializationOptions) {
+        .should_use_x11 = 1,
+    });
+    state.renderer = renderer_initialize(state.arena);
+
+    state.first_window = state.last_window = arena_allocate(state.arena, BBWindow, 1);
+    state.first_window->os = os_window_create((OSWindowCreate) {
         .name = strlit("Bloat Buster"),
         .size = {
             .width = 1024,
             .height= 768,
         },
+        .refresh_callback = &window_refresh_callback,
     });
 
-    if (!os_window)
+    if (!state.first_window->os)
     {
         failed_execution();
     }
 
-    Renderer* renderer = renderer_initialize(state.arena);
-    RenderWindow* render_window = renderer_window_initialize(renderer, os_window);
+    state.first_window->render = renderer_window_initialize(state.renderer, state.first_window->os);
+    state.first_window->ui = arena_allocate(state.arena, UI_State, 1);
+    state.first_window->ui->arena = arena_init(GB(4), MB(2), MB(2));
+    state.first_window->ui->render = state.first_window->render;
+    state.first_window->ui->renderer = state.renderer;
+    state.first_window->root_panel = arena_allocate(state.arena, BBPanel, 1);
+    state.first_window->root_panel->parent_percentage = 1.0f;
+    state.first_window->root_panel->split_axis = AXIS2_X;
 
     auto font_path = 
 #ifdef _WIN32
@@ -152,85 +189,26 @@ strlit("/Users/david/Library/Fonts/FiraSans-Regular.ttf");
         strlit("WRONG_PATH");
 #endif
 
-    window_rect_texture_update_begin(render_window);
+    window_rect_texture_update_begin(state.first_window->render);
 
-    auto white_texture = white_texture_create(state.arena, renderer);
-    auto monospace_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
+    auto white_texture = white_texture_create(state.arena, state.renderer);
+    auto monospace_font = font_texture_atlas_create(state.arena, state.renderer, (TextureAtlasCreate) {
         .font_path = font_path,
         .text_height = 50,
     });
     auto proportional_font = monospace_font;
-    // auto proportional_font = font_texture_atlas_create(state.arena, renderer, (TextureAtlasCreate) {
-    //     .font_path = font_path,
-    //     .text_height = 36,
-    // });
-    window_queue_rect_texture_update(render_window, RECT_TEXTURE_SLOT_WHITE, white_texture);
-    renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_MONOSPACE, monospace_font);
-    renderer_queue_font_update(renderer, render_window, RENDER_FONT_TYPE_PROPORTIONAL, proportional_font);
 
-    window_rect_texture_update_end(renderer, render_window);
+    window_queue_rect_texture_update(state.first_window->render, RECT_TEXTURE_SLOT_WHITE, white_texture);
+    renderer_queue_font_update(state.renderer, state.first_window->render, RENDER_FONT_TYPE_MONOSPACE, monospace_font);
+    renderer_queue_font_update(state.renderer, state.first_window->render, RENDER_FONT_TYPE_PROPORTIONAL, proportional_font);
 
-    auto frame_start = os_timestamp();
+    window_rect_texture_update_end(state.renderer, state.first_window->render);
 
-    while (!os_window_should_close(os_window))
+    state.last_frame_timestamp = os_timestamp();
+
+    while (state.first_window)
     {
-        auto frame_end = os_timestamp();
-        auto frame_ms = os_resolve_timestamps(frame_start, frame_end, TIME_UNIT_MILLISECONDS);
-        frame_start = frame_end;
-
-        os_poll_events();
-
-        auto mouse_position = os_window_cursor_position_get(os_window);
-        // print("Mouse position: ({f64}, {f64})\n", mouse_position.x, mouse_position.y);
-
-        renderer_window_frame_begin(renderer, render_window);
-
-        u8 format_buffer[256];
-        auto buffer_len = format_float((String)array_to_slice(format_buffer), frame_ms);
-        format_buffer[buffer_len + 0] = ' ';
-        format_buffer[buffer_len + 1] = 'm';
-        format_buffer[buffer_len + 2] = 's';
-        auto ms = (String) { .pointer = format_buffer, .length = buffer_len + 3 };
-        draw_string(render_window, Color4(0, 1, 1, 1), ms, monospace_font, RECT_TEXTURE_SLOT_MONOSPACE_FONT, 500, 500);
-
-        u32 box_width = 100;
-        u32 box_height = 100;
-        auto box_color = Color4(1, 1, 1, 1);
-
-        Vertex box_vertices[] = {
-            {
-                .x = mouse_position.x,
-                .y = mouse_position.y,
-                .color = box_color,
-            },
-            {
-                .x = mouse_position.x + box_width,
-                .y = mouse_position.y,
-                .color = box_color,
-            },
-            {
-                .x = mouse_position.x,
-                .y = mouse_position.y + box_height,
-                .color = box_color,
-            },
-            {
-                .x = mouse_position.x + box_width,
-                .y = mouse_position.y + box_height,
-                .color = box_color,
-            },
-        };
-
-        auto vertex_offset = window_pipeline_add_vertices(render_window, BB_PIPELINE_RECT, (String)array_to_bytes(box_vertices), array_length(box_vertices));
-
-        u32 box_indices[] = {
-            vertex_offset + 0, vertex_offset + 1, vertex_offset + 2,
-            vertex_offset + 1, vertex_offset + 3, vertex_offset + 2,
-        };
-
-        window_pipeline_add_indices(render_window, BB_PIPELINE_RECT, (Slice(u32))array_to_slice(box_indices));
-        draw_string(render_window, Color4(0, 0, 0, 1), strlit("abcdefghijklmnopqrstuvwxyz!"), monospace_font, RECT_TEXTURE_SLOT_MONOSPACE_FONT, 100, 100);
-
-        renderer_window_frame_end(renderer, render_window);
+        app_update();
     }
 
     // TODO: deinitialization

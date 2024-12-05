@@ -15,6 +15,35 @@ STRUCT(Vec4)
 {
     f32 v[4];
 }__attribute__((aligned(16)));
+typedef Vec4 Color;
+
+STRUCT(RenderRect)
+{
+    u32 x0;
+    u32 y0;
+    u32 x1;
+    u32 y1;
+};
+
+STRUCT(RectDraw)
+{
+    RenderRect vertex;
+    RenderRect texture;
+    Color color;
+    u32 texture_index;
+};
+
+STRUCT(RectVertex)
+{
+    f32 x;
+    f32 y;
+    f32 uv_x;
+    f32 uv_y;
+    Vec4 color;
+    u32 texture_index;
+    u32 reserved[3];
+};
+decl_vb(RectVertex);
 
 #define Color4(r, g, b, a) ((Vec4){ .v = { r, g, b, a } })
 
@@ -173,3 +202,5 @@ EXPORT void window_rect_texture_update_end(Renderer* renderer, RenderWindow* win
 
 EXPORT u32 window_pipeline_add_vertices(RenderWindow* window, BBPipeline pipeline_index, String vertex_memory, u32 vertex_count);
 EXPORT void window_pipeline_add_indices(RenderWindow* window, BBPipeline pipeline_index, Slice(u32) indices);
+EXPORT void window_render_rect(RenderWindow* window, RectDraw draw);
+EXPORT void window_render_text(Renderer* renderer, RenderWindow* window, String string, Color color, RenderFontType font_type, u32 x_offset, u32 y_offset);
