@@ -6,16 +6,6 @@
 
 #include <volk.h>
 
-#define vkok(call) do {\
-    VkResult _r_e_s_u_l_t_ = call; \
-    if (unlikely(_r_e_s_u_l_t_ != VK_SUCCESS)) wrong_vulkan_result(_r_e_s_u_l_t_, strlit(#call), strlit(__FILE__), __LINE__); \
-} while(0)
-
-#define vkok_swapchain(call) do {\
-    VkResult result = call; \
-    if (unlikely(result != VK_SUCCESS)) wrong_vulkan_result(result, strlit(#call), strlit(__FILE__), __LINE__); \
-} while(0)
-
 #define MAX_SWAPCHAIN_IMAGE_COUNT (16)
 #define MAX_FRAME_COUNT (2)
 #define MAX_DESCRIPTOR_SET_COUNT (16)
@@ -27,6 +17,11 @@
 #define MAX_TEXTURE_UPDATE_COUNT (32)
 #define MAX_DESCRIPTOR_SET_UPDATE_COUNT (16)
 #define MAX_LOCAL_BUFFER_COPY_COUNT (16)
+
+#define vkok(call) do {\
+    VkResult _r_e_s_u_l_t_ = call; \
+    if (unlikely(_r_e_s_u_l_t_ != VK_SUCCESS)) wrong_vulkan_result(_r_e_s_u_l_t_, strlit(#call), strlit(__FILE__), __LINE__); \
+} while(0)
 
 STRUCT(VulkanImageCreate)
 {
@@ -2007,7 +2002,7 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
     {
         for (u32 i = 0; i < array_length(results); i += 1)
         {
-            vkok_swapchain(results[i]);
+            vkok(results[i]);
         }
     }
     else if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
@@ -2170,7 +2165,10 @@ fn void window_texture_update_end(Renderer* renderer, RenderWindow* window, BBPi
     auto* pipeline_instantiation = &window->pipeline_instantiations[pipeline_index];
     u32 descriptor_copy_count = 0;
     VkCopyDescriptorSet* descriptor_copies = 0;
-    vkUpdateDescriptorSets(renderer->device, 1, &pipeline_instantiation->descriptor_set_update, descriptor_copy_count, descriptor_copies);
+    VkWriteDescriptorSet descriptor_set_writes[] = {
+        pipeline_instantiation->descriptor_set_update,
+    };
+    vkUpdateDescriptorSets(renderer->device, array_length(descriptor_set_writes), descriptor_set_writes, descriptor_copy_count, descriptor_copies);
 }
 
 void window_rect_texture_update_end(Renderer* renderer, RenderWindow* window)
