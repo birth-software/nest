@@ -107,3 +107,20 @@ TextureAtlas font_texture_atlas_create(Arena* arena, Renderer* renderer, Texture
 
     return result;
 }
+
+UVec2 texture_atlas_compute_string_rect(String string, const TextureAtlas* atlas)
+{
+    auto height = atlas->ascent - atlas->descent;
+    u32 x_offset = 0;
+    u32 y_offset = height;
+
+    for (u64 i = 0; i < string.length; i += 1)
+    {
+        auto ch = string.pointer[i];
+        auto* character = &atlas->characters[ch];
+        auto kerning = (atlas->kerning_tables + ch * 256)[string.pointer[i + 1]];
+        x_offset += character->advance + kerning;
+    }
+
+    return (UVec2) { .x = x_offset, .y = y_offset };
+}

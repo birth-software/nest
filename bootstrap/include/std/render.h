@@ -11,12 +11,6 @@ typedef struct Renderer Renderer;
 typedef struct RenderWindow RenderWindow;
 typedef struct Pipeline Pipeline;
 
-STRUCT(Vec4)
-{
-    f32 v[4];
-}__attribute__((aligned(16)));
-typedef Vec4 Color;
-
 STRUCT(RenderRect)
 {
     u32 x0;
@@ -188,6 +182,7 @@ EXPORT PipelineLayoutIndex renderer_pipeline_get_layout(PipelineIndex pipeline);
 EXPORT void renderer_window_frame_begin(Renderer* renderer, RenderWindow* window);
 EXPORT void renderer_window_frame_end(Renderer* renderer, RenderWindow* window);
 EXPORT TextureIndex renderer_texture_create(Renderer* renderer, TextureMemory texture_memory);
+EXPORT UVec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType type, String string);
 EXPORT void window_command_begin(RenderWindow* window);
 EXPORT void window_command_end(RenderWindow* window);
 EXPORT void window_render_begin(RenderWindow* window);

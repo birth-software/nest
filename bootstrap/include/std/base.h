@@ -39,6 +39,28 @@ typedef double f64;
 typedef u32 Hash32;
 typedef u64 Hash64;
 
+#define STRUCT_FORWARD_DECL(S) typedef struct S S
+#define STRUCT(S) STRUCT_FORWARD_DECL(S); struct S
+#define UNION_FORWARD_DECL(U) typedef union U U
+#define UNION(U) UNION_FORWARD_DECL(U); union U
+
+STRUCT(UVec2)
+{
+    struct
+    {
+        u32 x;
+        u32 y;
+    };
+    u32 v[2];
+};
+
+STRUCT(Vec4)
+{
+    f32 v[4];
+}__attribute__((aligned(16)));
+typedef Vec4 Color;
+
+
 typedef enum Axis2
 {
     AXIS2_X,
@@ -58,10 +80,6 @@ typedef enum Axis2
 #define NO_EXCEPT
 #endif
 
-#define STRUCT_FORWARD_DECL(S) typedef struct S S
-#define STRUCT(S) STRUCT_FORWARD_DECL(S); struct S
-#define UNION_FORWARD_DECL(U) typedef union U U
-#define UNION(U) UNION_FORWARD_DECL(U); union U
 
 #define Slice(T) Slice_ ## T
 #define SliceP(T) SliceP_ ## T
