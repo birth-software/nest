@@ -2270,7 +2270,7 @@ void window_render_text(Renderer* renderer, RenderWindow* window, String string,
         auto ch = string.pointer[i];
         auto* character = &texture_atlas->characters[ch];
         auto pos_x = x_offset;
-        auto pos_y = y_offset + character->y_offset + height; // Offset of the height to render the character from the bottom (y + height) up (y)
+        auto pos_y = y_offset + character->y_offset + height + texture_atlas->descent; // Offset of the height to render the character from the bottom (y + height) up (y)
         auto uv_x = character->x;
         auto uv_y = character->y;
         auto uv_width = character->width;
@@ -2327,4 +2327,11 @@ void window_render_text(Renderer* renderer, RenderWindow* window, String string,
         auto kerning = (texture_atlas->kerning_tables + ch * 256)[string.pointer[i + 1]];
         x_offset += character->advance + kerning;
     }
+}
+
+UVec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType type, String string)
+{
+    auto* texture_atlas = &renderer->fonts[type];
+    auto result = texture_atlas_compute_string_rect(string, texture_atlas);
+    return result;
 }

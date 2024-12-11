@@ -8,6 +8,11 @@ void ui_state_select(UI_State* state)
     ui_state = state;
 }
 
+UI_State* ui_state_get()
+{
+    return ui_state;
+}
+
 u8 ui_build_begin(OSWindow window, f64 frame_time, OSEventQueue* event_queue)
 {
     u8 open = 1;

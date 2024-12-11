@@ -48,7 +48,6 @@ STRUCT(UI_State)
     Arena* arena;
     Renderer* renderer;
     RenderWindow* render;
-
     UI_Widget* root;
     UI_MousePosition mouse_position;
     OSEventMouseButtonEvent mouse_button_events[OS_EVENT_MOUSE_BUTTON_COUNT];
@@ -81,5 +80,6 @@ EXPORT u8 ui_build_begin(OSWindow window, f64 frame_time, OSEventQueue* event_qu
 EXPORT void ui_build_end();
 EXPORT void ui_draw();
 EXPORT UI_Signal ui_signal_from_widget(UI_Widget* widget);
+EXPORT UI_State* ui_state_get();
 
 EXPORT UI_Widget* ui_widget_make(UI_WidgetFlags flags, String string, UI_Rect rect);
