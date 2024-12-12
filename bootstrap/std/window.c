@@ -1,5 +1,6 @@
 #include <std/window.h>
 
+#include <volk.h>
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
@@ -395,22 +396,3 @@ OSCursorPosition os_window_cursor_position_get(OSWindow window)
     glfwGetCursorPos(window, &result.x, &result.y);
     return result;
 }
-
-#ifdef _WIN32
-HANDLE win32_window_get(OSWindow window)
-{
-    return glfwGetWin32Window(window);
-}
-#endif
-
-#ifdef __linux__
-Display* x11_display_get()
-{
-    return glfwGetX11Display();
-}
-
-Window x11_window_get(OSWindow window)
-{
-    return glfwGetX11Window(window);
-}
-#endif
