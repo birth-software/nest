@@ -1281,6 +1281,12 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
                 print("terminated unexpectedly with status {u32}\n", status);
             }
         }
+        else if (result == -1)
+        {
+            auto waitpid_error = errno;
+            print("Error waiting for process termination: {u32}\n", waitpid_error);
+            trap();
+        }
         else
         {
             todo();
