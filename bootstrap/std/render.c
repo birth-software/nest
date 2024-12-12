@@ -987,13 +987,25 @@ Renderer* renderer_initialize(Arena* arena)
         const char* extensions[] =
         {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+#ifdef __APPLE__
+            "VK_KHR_portability_subset",
+            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+#endif
         };
 
+#ifdef __APPLE__
+            VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering_features = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES,
+                .pNext = 0,
+                .dynamicRendering = VK_TRUE,
+            };
+#else
         VkPhysicalDeviceVulkan13Features features13 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
             .dynamicRendering = 1,
             .synchronization2 = 1,
         };
+#endif
 
         VkPhysicalDeviceVulkan12Features features12 = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -1001,7 +1013,11 @@ Renderer* renderer_initialize(Arena* arena)
             .descriptorIndexing = 1,
             .runtimeDescriptorArray = 1,
             .shaderSampledImageArrayNonUniformIndexing = 1,
+#ifdef __APPLE__
+            .pNext = &dynamic_rendering_features,
+#else
             .pNext = &features13,
+#endif
         };
 
         VkPhysicalDeviceFeatures2 features = {
@@ -1408,8 +1424,11 @@ fn void destroy_image(Renderer* renderer, VulkanImage image)
     vkFreeMemory(renderer->device, image.memory.handle, renderer->allocator);
 }
 
-fn void swapchain_recreate(Renderer* renderer, RenderWindow* window, VkSurfaceCapabilitiesKHR surface_capabilities)
+fn void swapchain_recreate(Renderer* renderer, RenderWindow* window)
 {
+    VkSurfaceCapabilitiesKHR surface_capabilities;
+    vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, window->surface, &surface_capabilities));
+
     VkSwapchainKHR old_swapchain = window->swapchain;
     VkImageView old_swapchain_image_views[MAX_SWAPCHAIN_IMAGE_COUNT];
 
@@ -1539,42 +1558,52 @@ fn void swapchain_recreate(Renderer* renderer, RenderWindow* window, VkSurfaceCa
     });
 }
 
+typedef void GLFWwindow;
+extern VkResult glfwCreateWindowSurface(VkInstance instance, GLFWwindow* window, const VkAllocationCallbacks* allocator, VkSurfaceKHR* surface);
+
 RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window)
 {
     RenderWindow* result = &renderer_window_memory;
-    {
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-        VkWin32SurfaceCreateInfoKHR create_info = {
-            .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-            .pNext = 0,
-            .flags = 0,
-            .hinstance = os_windows_get_module_handle(),
-            .hwnd = win32_window_get(window),
-        };
-        vkok(vkCreateWin32SurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
-#endif
-#ifdef VK_USE_PLATFORM_XLIB_KHR
-        VkXlibSurfaceCreateInfoKHR create_info = {
-            .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
-            .pNext = 0,
-            .flags = 0,
-            .dpy = x11_display_get(),
-            .window = x11_window_get(window),
-        };
-        vkok(vkCreateXlibSurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
-#endif
-#ifdef VK_USE_PLATFORM_WAYLAND_KHR
-            VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-#endif
-#ifdef VK_USE_PLATFORM_MACOS_MVK
-            VK_KHR_COCOA_SURFACE_EXTENSION_NAME,
-#endif
-    }
+    vkok(glfwCreateWindowSurface(renderer->instance, window, renderer->allocator, &result->surface));
+//     {
+// #ifdef VK_USE_PLATFORM_WIN32_KHR
+//         VkWin32SurfaceCreateInfoKHR create_info = {
+//             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+//             .pNext = 0,
+//             .flags = 0,
+//             .hinstance = os_windows_get_module_handle(),
+//             .hwnd = win32_window_get(window),
+//         };
+//         vkok(vkCreateWin32SurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
+// #endif
+//
+// #ifdef VK_USE_PLATFORM_XLIB_KHR
+//         VkXlibSurfaceCreateInfoKHR create_info = {
+//             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
+//             .pNext = 0,
+//             .flags = 0,
+//             .dpy = x11_display_get(),
+//             .window = x11_window_get(window),
+//         };
+//         vkok(vkCreateXlibSurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
+// #endif
+//
+// #ifdef VK_USE_PLATFORM_WAYLAND_KHR
+//             VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
+// #endif
+//
+// #ifdef VK_USE_PLATFORM_METAL_EXT
+//         VkMetalSurfaceCreateInfoEXT create_info = {
+//             .sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+//             .pNext = 0,
+//             .flags = 0,
+//         };
+//
+//         vkok(vkCreateMetalSurfaceEXT(renderer->instance, &create_info, renderer->allocator, &result->surface));
+// #endif
+//     }
 
-    VkSurfaceCapabilitiesKHR surface_capabilities;
-    vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, result->surface, &surface_capabilities));
-
-    swapchain_recreate(renderer, result, surface_capabilities);
+    swapchain_recreate(renderer, result);
 
     for (u64 frame_index = 0; frame_index < MAX_FRAME_COUNT; frame_index += 1)
     {
@@ -1703,9 +1732,7 @@ void renderer_window_frame_begin(Renderer* renderer, RenderWindow* window)
     VkResult next_image_result = vkAcquireNextImageKHR(renderer->device, window->swapchain, timeout, frame->swapchain_semaphore, image_fence, &window->swapchain_image_index);
     if (next_image_result == VK_ERROR_OUT_OF_DATE_KHR)
     {
-        VkSurfaceCapabilitiesKHR surface_capabilities;
-        vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, window->surface, &surface_capabilities));
-        swapchain_recreate(renderer, window, surface_capabilities);
+        swapchain_recreate(renderer, window);
     }
     else if (next_image_result != VK_SUCCESS && next_image_result != VK_SUBOPTIMAL_KHR)
     {
@@ -2022,9 +2049,7 @@ void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
     }
     else if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR)
     {
-        VkSurfaceCapabilitiesKHR surface_capabilities;
-        vkok(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(renderer->physical_device, window->surface, &surface_capabilities));
-        swapchain_recreate(renderer, window, surface_capabilities);
+        swapchain_recreate(renderer, window);
     }
     else
     {

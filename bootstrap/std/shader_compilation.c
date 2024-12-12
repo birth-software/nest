@@ -89,6 +89,7 @@ fn SpirVBinary compileShaderToSPIRV_Vulkan(Arena* arena, glslang_stage_t stage, 
 
 String compile_shader(Arena* arena, String path, ShaderStage shader_stage)
 {
+    print("Compile shader\n");
 #if SHADER_COMPILATION_USE_SOURCE
     auto file = file_read(arena, path);
 
@@ -118,6 +119,8 @@ String compile_shader(Arena* arena, String path, ShaderStage shader_stage)
     char* arguments[] = {
 #if _WIN32
         "C:/VulkanSDK/1.3.296.0/Bin/glslangValidator.exe",
+#elif defined (__APPLE__)
+        "/opt/homebrew/bin/glslangValidator",
 #else
         "/usr/bin/glslangValidator",
 #endif
