@@ -990,24 +990,25 @@ void print(const char* format, ...)
 }
 
 static_assert(sizeof(Arena) == 64);
+const global_variable u64 minimum_position = sizeof(Arena);
 
 Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size)
 {
-    Arena* arena = (Arena*)os_reserve(0, reserved_size,
-            (OSReserveProtectionFlags) {
-                .read = 1,
-                .write = 1,
-            },
-            (OSReserveMapFlags) {
-                .priv = 1,
-                .anon = 1,
-                .noreserve = 1,
-            });
+    auto protection_flags = (OSReserveProtectionFlags) {
+        .read = 1,
+        .write = 1,
+    };
+    auto map_flags = (OSReserveMapFlags) {
+        .priv = 1,
+        .anon = 1,
+        .noreserve = 1,
+    };
+    Arena* arena = (Arena*)os_reserve(0, reserved_size, protection_flags, map_flags);
     os_commit(arena, initial_size);
-    *arena = (Arena){
+    *arena = (Arena) {
         .reserved_size = reserved_size,
-        .committed = initial_size,
-        .commit_position = sizeof(Arena),
+        .os_position = initial_size,
+        .position = minimum_position,
         .granularity = granularity,
     };
     return arena;
@@ -1020,21 +1021,21 @@ Arena* arena_init_default(u64 initial_size)
 
 u8* arena_allocate_bytes(Arena* arena, u64 size, u64 alignment)
 {
-    u64 aligned_offset = align_forward(arena->commit_position, alignment);
+    u64 aligned_offset = align_forward(arena->position, alignment);
     u64 aligned_size_after = aligned_offset + size;
 
-    if (aligned_size_after > arena->committed)
+    if (aligned_size_after > arena->os_position)
     {
         u64 committed_size = align_forward(aligned_size_after, arena->granularity);
-        u64 size_to_commit = committed_size - arena->committed;
-        void* commit_pointer = (u8*)arena + arena->committed;
+        u64 size_to_commit = committed_size - arena->os_position;
+        void* commit_pointer = (u8*)arena + arena->os_position;
         os_commit(commit_pointer, size_to_commit);
-        arena->committed = committed_size;
+        arena->os_position = committed_size;
     }
 
     auto* result = (u8*)arena + aligned_offset;
-    arena->commit_position = aligned_size_after;
-    assert(arena->commit_position <= arena->committed);
+    arena->position = aligned_size_after;
+    assert(arena->position <= arena->os_position);
     return result;
 }
 
@@ -1064,8 +1065,8 @@ String arena_join_string(Arena* arena, Slice(String) pieces)
 
 void arena_reset(Arena* arena)
 {
-    arena->commit_position = sizeof(Arena);
-    memset(arena + 1, 0, arena->committed - sizeof(Arena));
+    arena->position = minimum_position;
+    memset(arena + 1, 0, arena->position - minimum_position);
 }
 
 #define transmute(D, source) *(D*)&source

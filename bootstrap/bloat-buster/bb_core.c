@@ -170,10 +170,7 @@ void run_app()
     }
 
     state.first_window->render = renderer_window_initialize(state.renderer, state.first_window->os);
-    state.first_window->ui = arena_allocate(state.arena, UI_State, 1);
-    state.first_window->ui->arena = arena_init(GB(4), MB(2), MB(2));
-    state.first_window->ui->render = state.first_window->render;
-    state.first_window->ui->renderer = state.renderer;
+    state.first_window->ui = ui_state_allocate(state.renderer, state.first_window->render);
     state.first_window->root_panel = arena_allocate(state.arena, BBPanel, 1);
     state.first_window->root_panel->parent_percentage = 1.0f;
     state.first_window->root_panel->split_axis = AXIS2_X;

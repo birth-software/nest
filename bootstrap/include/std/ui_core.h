@@ -5,6 +5,11 @@
 #include <std/os.h>
 #include <std/render.h>
 
+STRUCT(UI_Key)
+{
+    u64 value;
+};
+
 STRUCT(UI_MousePosition)
 {
     f64 x;
@@ -32,24 +37,43 @@ UNION(UI_Rect)
 
 STRUCT(UI_Widget)
 {
-    UI_WidgetFlags flags;
-    String string;
+    UI_Widget* hash_previous;
+    UI_Widget* hash_next;
+
     UI_Widget* first;
     UI_Widget* last;
     UI_Widget* next;
     UI_Widget* previous;
     UI_Widget* parent;
+
+    UI_Key key;
+    u64 last_build_touched;
+
+    UI_WidgetFlags flags;
+    String text_string;
     UI_Rect rect;
     Color background_color;
 };
 
+STRUCT(UI_WidgetSlot)
+{
+    UI_Widget* first;
+    UI_Widget* last;
+};
+declare_slice(UI_WidgetSlot);
+
 STRUCT(UI_State)
 {
     Arena* arena;
+    Arena* build_arenas[2];
     Renderer* renderer;
-    RenderWindow* render;
+    RenderWindow* render_window;
+    OSWindow os_window;
+    u64 build_count;
+    f64 frame_time;
     UI_Widget* root;
     UI_MousePosition mouse_position;
+    Slice(UI_WidgetSlot) widget_table;
     OSEventMouseButtonEvent mouse_button_events[OS_EVENT_MOUSE_BUTTON_COUNT];
     u8 focused:1;
 };
@@ -75,6 +99,7 @@ STRUCT(UI_Signal)
     };
 };
 
+EXPORT UI_State* ui_state_allocate(Renderer* renderer, RenderWindow* window);
 EXPORT void ui_state_select(UI_State* state);
 EXPORT u8 ui_build_begin(OSWindow window, f64 frame_time, OSEventQueue* event_queue);
 EXPORT void ui_build_end();
@@ -82,4 +107,4 @@ EXPORT void ui_draw();
 EXPORT UI_Signal ui_signal_from_widget(UI_Widget* widget);
 EXPORT UI_State* ui_state_get();
 
-EXPORT UI_Widget* ui_widget_make(UI_WidgetFlags flags, String string, UI_Rect rect);
+EXPORT UI_Widget* ui_widget_make(UI_WidgetFlags flags, UI_Rect rect, String string);
