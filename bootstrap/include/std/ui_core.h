@@ -98,6 +98,7 @@ STRUCT(UI_Widget)
     u64 last_build_touched;
     F32Vec2 view_offset;
     Color background_color;
+    Color text_color;
 };
 decl_vbp(UI_Widget);
 
@@ -197,3 +198,9 @@ EXPORT UI_Signal ui_signal_from_widget(UI_Widget* widget);
 EXPORT UI_State* ui_state_get();
 
 EXPORT UI_Widget* ui_widget_make(UI_WidgetFlags flags, String string);
+EXPORT UI_Size ui_pixels(u32 width, f32 strictness);
+EXPORT UI_Size ui_percentage(f32 percentage, f32 strictness);
+EXPORT UI_Size ui_em(f32 value, f32 strictness);
+EXPORT void ui_pref_width(UI_Size size);
+EXPORT void ui_pref_height(UI_Size size);
+EXPORT void ui_font_size(f32 size);
