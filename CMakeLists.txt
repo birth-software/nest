@@ -219,16 +219,19 @@ if (NOT BB_IS_CI)
     endif()
 
     if (APPLE)
-        execute_process(
-            COMMAND brew --prefix vulkan-headers
-            OUTPUT_VARIABLE VULKAN_HEADERS_PREFIX
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
-        include_directories("${VULKAN_HEADERS_PREFIX}/include")
-    endif()
+    else()
+        if (APPLE)
+            execute_process(
+                COMMAND brew --prefix vulkan-headers
+                OUTPUT_VARIABLE VULKAN_HEADERS_PREFIX
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+            include_directories("${VULKAN_HEADERS_PREFIX}/include")
+        endif()
 
-    add_subdirectory(dependencies/volk-1.3.301 volk)
-    target_link_libraries(${COMPILER_NAME} PRIVATE volk)
+        add_subdirectory(dependencies/volk-1.3.301 volk)
+        target_link_libraries(${COMPILER_NAME} PRIVATE volk)
+    endif()
     target_sources(${COMPILER_NAME} PRIVATE
         "bootstrap/std/image_loader.c"
         "bootstrap/std/shader_compilation.c"
