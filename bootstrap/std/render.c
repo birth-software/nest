@@ -4,6 +4,95 @@
 #include <std/image_loader.h>
 #include <std/virtual_buffer.h>
 
+#if __APPLE__
+
+#include <objc/message.h>
+
+STRUCT(Renderer)
+{
+};
+
+fn void send_message(void* this_pointer)
+{
+    objc_msgSend();
+}
+
+typedef struct MTLDevice MTLDevice;
+typedef struct MTLCommandQueue MTLCommandQueue;
+typedef struct CAMetalLayer CAMetalLayer;
+extern MTLDevice* MTLCreateSystemDefaultDevice();
+
+fn MTLCommandQueue* metal_device_new_command_queue(MTLDevice* device)
+{
+    typedef MTLCommandQueue* MetalDeviceNewCommandQueue(MTLDevice* device, SEL sel);
+    auto* function = (MetalDeviceNewCommandQueue*)&objc_msgSend;
+    return function(device, sel_registerName("newCommandQueue"));
+}
+
+fn CAMetalLayer* metal_layer()
+{
+    typedef CAMetalLayer* CAMetalLayerLayer(Class class, SEL sel);
+    auto class = objc_lookUpClass("CAMetalLayer");
+    auto sel = sel_registerName("layer");
+
+    auto* function = (CAMetalLayerLayer*)&objc_msgSend;
+    return function(class, sel);
+}
+
+Renderer* renderer_initialize(Arena* arena)
+{
+}
+
+U32Vec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType type, String string)
+{
+}
+
+void renderer_queue_font_update(Renderer* renderer, RenderWindow* window, RenderFontType type, TextureAtlas atlas)
+{
+}
+
+TextureIndex renderer_texture_create(Renderer* renderer, TextureMemory texture_memory)
+{
+}
+
+void renderer_window_frame_begin(Renderer* renderer, RenderWindow* window)
+{
+}
+
+void renderer_window_frame_end(Renderer* renderer, RenderWindow* window)
+{
+}
+
+RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window)
+{
+}
+
+void window_queue_rect_texture_update(RenderWindow* window, RectTextureSlot slot, TextureIndex texture_index)
+{
+}
+
+void window_texture_update_begin(RenderWindow* window, BBPipeline pipeline_index, u32 descriptor_count)
+{
+}
+
+void window_rect_texture_update_begin(RenderWindow* window)
+{
+}
+
+void window_rect_texture_update_end(Renderer* renderer, RenderWindow* window)
+{
+}
+
+void window_render_rect(RenderWindow* window, RectDraw draw)
+{
+}
+
+void window_render_text(Renderer* renderer, RenderWindow* window, String string, Color color, RenderFontType font_type, u32 x_offset, u32 y_offset)
+{
+}
+
+#else
+
 #include <volk.h>
 
 #define MAX_SWAPCHAIN_IMAGE_COUNT (16)
@@ -2360,3 +2449,6 @@ U32Vec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType typ
     auto result = texture_atlas_compute_string_rect(string, texture_atlas);
     return result;
 }
+
+#endif
+
