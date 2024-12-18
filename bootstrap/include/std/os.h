@@ -52,8 +52,8 @@ STRUCT(OSReserveMapFlags)
 STRUCT(Arena)
 {
     u64 reserved_size;
-    u64 committed;
-    u64 commit_position;
+    u64 position;
+    u64 os_position;
     u64 granularity;
     u8 reserved[4 * 8];
 };
@@ -87,6 +87,7 @@ EXPORT String path_no_extension(String string);
 
 EXPORT Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size);
 EXPORT Arena* arena_init_default(u64 initial_size);
+EXPORT void arena_clear(Arena* arena);
 EXPORT String arena_join_string(Arena* arena, Slice(String) pieces);
 EXPORT u8* arena_allocate_bytes(Arena* arena, u64 size, u64 alignment);
 EXPORT void arena_reset(Arena* arena);
@@ -111,6 +112,7 @@ EXPORT void print_string(String string);
 
 EXPORT Timestamp os_timestamp();
 EXPORT f64 os_resolve_timestamps(Timestamp start, Timestamp end, TimeUnit time_unit);
+EXPORT u8 os_is_being_debugged();
 
 #if _WIN32
 typedef void* HANDLE;

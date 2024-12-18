@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <sys/time.h>
+#include <sys/ptrace.h>
 #endif
 
 #if LINK_LIBC
@@ -990,24 +991,25 @@ void print(const char* format, ...)
 }
 
 static_assert(sizeof(Arena) == 64);
+const global_variable u64 minimum_position = sizeof(Arena);
 
 Arena* arena_init(u64 reserved_size, u64 granularity, u64 initial_size)
 {
-    Arena* arena = (Arena*)os_reserve(0, reserved_size,
-            (OSReserveProtectionFlags) {
-                .read = 1,
-                .write = 1,
-            },
-            (OSReserveMapFlags) {
-                .priv = 1,
-                .anon = 1,
-                .noreserve = 1,
-            });
+    auto protection_flags = (OSReserveProtectionFlags) {
+        .read = 1,
+        .write = 1,
+    };
+    auto map_flags = (OSReserveMapFlags) {
+        .priv = 1,
+        .anon = 1,
+        .noreserve = 1,
+    };
+    Arena* arena = (Arena*)os_reserve(0, reserved_size, protection_flags, map_flags);
     os_commit(arena, initial_size);
-    *arena = (Arena){
+    *arena = (Arena) {
         .reserved_size = reserved_size,
-        .committed = initial_size,
-        .commit_position = sizeof(Arena),
+        .os_position = initial_size,
+        .position = minimum_position,
         .granularity = granularity,
     };
     return arena;
@@ -1020,21 +1022,21 @@ Arena* arena_init_default(u64 initial_size)
 
 u8* arena_allocate_bytes(Arena* arena, u64 size, u64 alignment)
 {
-    u64 aligned_offset = align_forward(arena->commit_position, alignment);
+    u64 aligned_offset = align_forward(arena->position, alignment);
     u64 aligned_size_after = aligned_offset + size;
 
-    if (aligned_size_after > arena->committed)
+    if (aligned_size_after > arena->os_position)
     {
         u64 committed_size = align_forward(aligned_size_after, arena->granularity);
-        u64 size_to_commit = committed_size - arena->committed;
-        void* commit_pointer = (u8*)arena + arena->committed;
+        u64 size_to_commit = committed_size - arena->os_position;
+        void* commit_pointer = (u8*)arena + arena->os_position;
         os_commit(commit_pointer, size_to_commit);
-        arena->committed = committed_size;
+        arena->os_position = committed_size;
     }
 
     auto* result = (u8*)arena + aligned_offset;
-    arena->commit_position = aligned_size_after;
-    assert(arena->commit_position <= arena->committed);
+    arena->position = aligned_size_after;
+    assert(arena->position <= arena->os_position);
     return result;
 }
 
@@ -1064,8 +1066,8 @@ String arena_join_string(Arena* arena, Slice(String) pieces)
 
 void arena_reset(Arena* arena)
 {
-    arena->commit_position = sizeof(Arena);
-    memset(arena + 1, 0, arena->committed - sizeof(Arena));
+    arena->position = minimum_position;
+    memset(arena + 1, 0, arena->position - minimum_position);
 }
 
 #define transmute(D, source) *(D*)&source
@@ -1231,7 +1233,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
 
     if (pid == -1)
     {
-        trap();
+        todo();
     }
 
     auto start_timestamp = os_timestamp();
@@ -1242,12 +1244,10 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         // fcntl(pipes[1], F_SETFD, FD_CLOEXEC);
         auto result = syscall_execve(arguments.pointer[0], arguments.pointer, envp);
 #if LINK_LIBC
-        print("Execve failed! Error: {cstr}\n", strerror(errno));
+        my_panic("Execve failed! Error: {cstr}\n", strerror(errno));
 #else
-        trap();
+        todo();
 #endif
-        unused(result);
-        trap();
     }
     else
     {
@@ -1283,7 +1283,7 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         }
         else
         {
-            trap();
+            todo();
         }
 
         if (!success)
@@ -1302,6 +1302,31 @@ void run_command(Arena* arena, CStringSlice arguments, char* envp[])
         print("Command run successfully in {f64} {cstr}\n", ms, ticks ? "ticks" : "ms");
     }
 #endif
+}
+
+u8 os_is_being_debugged()
+{
+    u8 result = 0;
+#if _WIN32
+    result = IsDebuggerPresent();
+#else
+    auto request = 
+#ifdef __APPLE__
+    PT_TRACE_ME;
+#else
+    PTRACE_TRACEME;
+#endif
+    if (ptrace(request, 0, 0, 0) == -1)
+    {
+        auto error = errno;
+        if (error == EPERM)
+        {
+            result = 1;
+        }
+    }
+#endif
+
+    return result;
 }
 
 void print_string(String message)

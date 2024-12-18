@@ -5,7 +5,7 @@
 
 typedef struct Renderer Renderer;
 
-#include <std/graphics.h>
+#include <std/window.h>
 #include <std/font_provider.h>
 
 typedef struct RenderWindow RenderWindow;
@@ -33,13 +33,13 @@ STRUCT(RectVertex)
     f32 y;
     f32 uv_x;
     f32 uv_y;
-    Vec4 color;
+    F32Vec4 color;
     u32 texture_index;
     u32 reserved[3];
 };
 decl_vb(RectVertex);
 
-#define Color4(r, g, b, a) ((Vec4){ .v = { r, g, b, a } })
+#define Color4(r, g, b, a) ((F32Vec4){ .v = { r, g, b, a } })
 
 typedef enum BBPipeline
 {
@@ -182,7 +182,7 @@ EXPORT PipelineLayoutIndex renderer_pipeline_get_layout(PipelineIndex pipeline);
 EXPORT void renderer_window_frame_begin(Renderer* renderer, RenderWindow* window);
 EXPORT void renderer_window_frame_end(Renderer* renderer, RenderWindow* window);
 EXPORT TextureIndex renderer_texture_create(Renderer* renderer, TextureMemory texture_memory);
-EXPORT UVec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType type, String string);
+EXPORT U32Vec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType type, String string);
 EXPORT void window_command_begin(RenderWindow* window);
 EXPORT void window_command_end(RenderWindow* window);
 EXPORT void window_render_begin(RenderWindow* window);

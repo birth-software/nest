@@ -234,7 +234,7 @@ if (NOT BB_IS_CI)
         "bootstrap/std/shader_compilation.c"
         "bootstrap/std/font_cache.c"
         "bootstrap/std/font_provider.c"
-        "bootstrap/std/graphics.c"
+        "bootstrap/std/window.c"
         "bootstrap/std/render.c"
         "bootstrap/std/ui_core.c"
         "bootstrap/std/ui_builder.c"
