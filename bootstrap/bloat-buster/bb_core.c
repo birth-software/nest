@@ -10,6 +10,10 @@
 #include <std/ui_core.h>
 #include <std/ui_builder.h>
 
+#define default_font_height (64)
+auto proportional_font_height = default_font_height;
+auto monospace_font_height = default_font_height;
+
 fn TextureIndex white_texture_create(Arena* arena, Renderer* renderer)
 {
     u32 white_texture_width = 1024;
@@ -83,16 +87,18 @@ fn void app_update()
 
         if (likely(ui_build_begin(window->os, frame_ms, &state.event_queue)))
         {
-            {
-                if (unlikely(ui_button(strlit("Hello world\n")).clicked_left))
-                {
-                    print("Clicked on hello world\n");
-                }
+            ui_font_size(default_font_height);
+            ui_pref_width(ui_em(10, 1));
+            ui_pref_height(ui_em(2, 1));
 
-                if (unlikely(ui_button(strlit("Bye world\n")).clicked_left))
-                {
-                    print("Clicked on bye world\n");
-                }
+            if (unlikely(ui_button(strlit("Hello world\n")).clicked_left))
+            {
+                print("Clicked on hello world\n");
+            }
+
+            if (unlikely(ui_button(strlit("Bye world\n")).clicked_left))
+            {
+                print("Clicked on bye world\n");
             }
 
             ui_build_end();
@@ -181,7 +187,7 @@ strlit("/Users/david/Library/Fonts/FiraSans-Regular.ttf");
     auto white_texture = white_texture_create(state.arena, state.renderer);
     auto monospace_font = font_texture_atlas_create(state.arena, state.renderer, (TextureAtlasCreate) {
         .font_path = font_path,
-        .text_height = 12,
+        .text_height = monospace_font_height,
     });
     auto proportional_font = monospace_font;
 

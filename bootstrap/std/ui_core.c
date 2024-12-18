@@ -28,6 +28,16 @@ fn u8* ui_pop_generic(VirtualBuffer(u8)* stack, u32 element_size)
 #define ui_stack_pop(field_name) (typeof(ui_state->stacks.field_name.pointer)) ui_pop_generic(&ui_state->stacks.field_name, sizeof(*ui_state->stacks.field_name.pointer))
 #define ui_stack_top(field_name) (ui_state->stacks.field_name.length ? ui_state->stacks.field_name.pointer[ui_state->stacks.field_name.length - 1] : ui_state->stack_nulls.field_name)
 
+void ui_pref_width(UI_Size size)
+{
+    ui_stack_push(pref_width, size);
+}
+
+void ui_pref_height(UI_Size size)
+{
+    ui_stack_push(pref_height, size);
+}
+
 fn void ui_autopop(UI_State* state)
 {
     auto* restrict stack_end = (u32*)((u8*)&state->stacks + sizeof(state->stacks));
@@ -256,6 +266,7 @@ UI_Widget* ui_widget_make_from_key(UI_WidgetFlags flags, UI_Key key)
     auto color = count % 3 == 0;
     widget->key = key;
     widget->background_color = Color4(color, color, color, 1);
+    widget->text_color = Color4(!color, !color, !color, 1);
     widget->flags = flags;
     widget->first = 0;
     widget->last = 0;
@@ -327,8 +338,7 @@ fn void ui_stack_reset(UI_State* state)
     }
 }
 
-
-fn UI_Size ui_pixels(u32 width, f32 strictness)
+UI_Size ui_pixels(u32 width, f32 strictness)
 {
     return (UI_Size) {
         .kind = UI_SIZE_PIXEL_COUNT,
@@ -337,7 +347,7 @@ fn UI_Size ui_pixels(u32 width, f32 strictness)
     };
 }
 
-fn UI_Size ui_percentage(f32 percentage, f32 strictness)
+UI_Size ui_percentage(f32 percentage, f32 strictness)
 {
     return (UI_Size) {
         .kind = UI_SIZE_PERCENTAGE,
@@ -346,13 +356,20 @@ fn UI_Size ui_percentage(f32 percentage, f32 strictness)
     };
 }
 
-fn UI_Size ui_em(f32 value, f32 strictness)
+UI_Size ui_em(f32 value, f32 strictness)
 {
+    auto font_size = ui_stack_top(font_size);
+    assert(font_size);
     return (UI_Size) {
-        .kind = UI_SIZE_PERCENTAGE,
+        .kind = UI_SIZE_PIXEL_COUNT,
         .strictness = strictness,
-        .value = value * ui_stack_top(font_size),
+        .value = value * font_size,
     };
+}
+
+void ui_font_size(f32 size)
+{
+    ui_stack_push(font_size, size);
 }
 
 u8 ui_build_begin(OSWindow os_window, f64 frame_time, OSEventQueue* event_queue)
@@ -713,8 +730,7 @@ void ui_draw()
 
         if (widget->flags.draw_text)
         {
-            // todo();
-            // window_render_text(renderer, window, widget->text_string, Color4(1, 1, 1, 1), RENDER_FONT_TYPE_PROPORTIONAL, widget->rect.x0, widget->rect.y0);
+            window_render_text(renderer, window, widget->text, widget->text_color, RENDER_FONT_TYPE_PROPORTIONAL, widget->rect.x0, widget->rect.y0);
         }
 
         if (widget->first)
