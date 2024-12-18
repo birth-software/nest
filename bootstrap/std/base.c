@@ -6,8 +6,7 @@ u8 cast_u32_to_u8(u32 source, const char* name, int line)
 #if BB_DEBUG
     if (source > UINT8_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -22,8 +21,7 @@ u16 cast_u32_to_u16(u32 source, const char* name, int line)
 #if BB_DEBUG
     if (source > UINT16_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -38,8 +36,7 @@ s16 cast_u32_to_s16(u32 source, const char* name, int line)
 #if BB_DEBUG
     if (source > INT16_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -54,8 +51,7 @@ s32 cast_u32_to_s32(u32 source, const char* name, int line)
 #if BB_DEBUG
     if (source > INT32_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -70,8 +66,7 @@ u8 cast_u64_to_u8(u64 source, const char* name, int line)
 #if BB_DEBUG
     if (source > UINT8_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -86,8 +81,7 @@ u16 cast_u64_to_u16(u64 source, const char* name, int line)
 #if BB_DEBUG
     if (source > UINT16_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -102,8 +96,7 @@ u32 cast_u64_to_u32(u64 source, const char* name, int line)
 #if BB_DEBUG
     if (source > UINT32_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -118,8 +111,7 @@ s32 cast_u64_to_s32(u64 source, const char* name, int line)
 #if BB_DEBUG
     if (source > INT32_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -134,8 +126,7 @@ s64 cast_u64_to_s64(u64 source, const char* name, int line)
 #if BB_DEBUG
     if (source > INT64_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -150,13 +141,11 @@ u8 cast_s32_to_u8(s32 source, const char* name, int line)
 #if BB_DEBUG
     if (source < 0)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
     if ((u32)source > UINT8_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -171,13 +160,11 @@ u16 cast_s32_to_u16(s32 source, const char* name, int line)
 #if BB_DEBUG
     if (source < 0)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
     if ((u32)source > UINT16_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -192,8 +179,7 @@ u32 cast_s32_to_u32(s32 source, const char* name, int line)
 #if BB_DEBUG
     if (source < 0)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -208,8 +194,7 @@ u64 cast_s32_to_u64(s32 source, const char* name, int line)
 #if BB_DEBUG
     if (source < 0)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -224,13 +209,11 @@ s16 cast_s32_to_s16(s32 source, const char* name, int line)
 #if BB_DEBUG
     if (source > INT16_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
     if (source < INT16_MIN)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -245,13 +228,11 @@ u16 cast_s64_to_u16(s64 source, const char* name, int line)
 #if BB_DEBUG
     if (source < 0)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
     if (source > UINT16_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -266,8 +247,7 @@ u32 cast_s64_to_u32(s64 source, const char* name, int line)
 #if BB_DEBUG
     if (source < 0)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -282,8 +262,7 @@ u64 cast_s64_to_u64(s64 source, const char* name, int line)
 #if BB_DEBUG
     if (source < 0)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -298,14 +277,12 @@ s32 cast_s64_to_s32(s64 source, const char* name, int line)
 #if BB_DEBUG
     if (source < INT32_MIN)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 
     if (source > INT32_MAX)
     {
-        print("Cast failed at {cstr}:{u32}\n", name, line);
-        trap();
+        my_panic("Cast failed at {cstr}:{u32}\n", name, line);
     }
 #else 
     unused(name);
@@ -363,12 +340,6 @@ u64 parse_decimal(String string)
     }
 
     return value;
-}
-
-fn u64 safe_flag(u64 value, u64 flag)
-{
-    u64 result = value & ((u64)0 - flag);
-    return result;
 }
 
 u8 get_next_ch_safe(String string, u64 index)

@@ -2400,7 +2400,7 @@ fn UseReference thread_get_node_reference_array(Thread* thread, u16 count)
     {
         if (thread->buffer.use_free_list.pointer[i].length >= count)
         {
-            trap();
+            todo();
         }
     }
 
@@ -2604,7 +2604,7 @@ fn u8 node_remove_output(Thread* thread, NodeIndex node_index, NodeIndex use_ind
 //     for (u32 i = 0; i < node->dependency_count; i += 1)
 //     {
 //         unused(thread);
-//         trap();
+//         todo();
 //     }
 // }
 
@@ -2755,7 +2755,7 @@ fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
 //         {
 //             if (node_remove_output(thread, old_input, node_index))
 //             {
-//                 trap();
+//                 todo();
 //             }
 //         }
 //     }
@@ -2837,7 +2837,7 @@ fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
 //
 //             // if (old_node->id == NODE_SCOPE)
 //             // {
-//             //     trap();
+//             //     todo();
 //             // }
 //
 //             if (validi(node_index))
@@ -2910,7 +2910,7 @@ fn NodeIndex thread_node_add(Thread* thread, NodeCreate data)
 //                         }
 //                     } break;
 //                 default:
-//                     trap();
+//                     todo();
 //             }
 //         }
 //     }
@@ -2986,15 +2986,15 @@ fn Hash64 node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index
 //     auto* right = thread_node_get(thread, right_node_index);
 //     if (index_equal(left_node_index, right_node_index))
 //     {
-//         trap();
+//         todo();
 //     }
 //     else if (right->id == IR_INTEGER_NEGATION)
 //     {
-//         trap();
+//         todo();
 //     }
 //     else if (left->id == IR_INTEGER_NEGATION)
 //     {
-//         trap();
+//         todo();
 //     }
 //     else
 //     {
@@ -3012,7 +3012,7 @@ fn Hash64 node_get_hash_default(Thread* thread, Node* node, NodeIndex node_index
 //     auto* right = thread_node_get(thread, right_node_index);
 //     if (index_equal(left_node_index, right_node_index))
 //     {
-//         trap();
+//         todo();
 //     }
 //
 //     if (node->id == IR_INTEGER_COMPARE_EQUAL)
@@ -3337,7 +3337,7 @@ fn u8 node_equal(Thread* thread, NodeIndex a_index, NodeIndex b_index)
             //         // result = a->start.function == b->start.function;
             //         break;
             //     default:
-            //         trap();
+            //         todo();
             // }
         }
     }
@@ -3722,7 +3722,7 @@ fn Hash64 type_get_hash_tuple(Thread* thread, Type* type)
 //                     {
 //                         auto type_index = *(TypeIndex*)&key;
 //                         unused(type_index);
-//                         trap();
+//                         todo();
 //                     } break;
 //                 case INTERN_POOL_KIND_NODE:
 //                     {
@@ -3762,7 +3762,7 @@ fn Hash64 type_get_hash_tuple(Thread* thread, Type* type)
 //         case IR_PROJECTION:
 //             return node->projection.index;
 //         default:
-//             trap();
+//             todo();
 //     }
 // }
 
@@ -3799,17 +3799,17 @@ fn Hash64 type_get_hash_tuple(Thread* thread, Type* type)
 //     {
 //         if (index_equal(control_type->tuple.types.pointer[index], thread->types.dead_control))
 //         {
-//             trap();
+//             todo();
 //         }
 //         if (control_node->id == IR_IF)
 //         {
-//             trap();
+//             todo();
 //         }
 //     }
 //
 //     if (control_node->id == IR_IF)
 //     {
-//         trap();
+//         todo();
 //     }
 //
 //     return invalidi(Node);
@@ -4015,7 +4015,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //                     {
 //                         auto type_index = *(TypeIndex*)&key;
 //                         unused(type_index);
-//                         trap();
+//                         todo();
 //                     } break;
 //                 case INTERN_POOL_KIND_NODE:
 //                     {
@@ -4095,7 +4095,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //             auto existing_type_index = *(DebugTypeIndex*)&key;
 //             DebugType* existing_type = thread_debug_type_get(thread, existing_type_index);
 //             auto existing_hash = hash_debug_type(existing_type);
-//             trap();
+//             todo();
 //             // if (type_equal(existing_type, type))
 //             // {
 //             //     result = index;
@@ -4165,7 +4165,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //     {
 //         if (thread->interned.types.length < existing_capacity)
 //         {
-//             trap();
+//             todo();
 //         }
 //         else if (thread->interned.types.length == existing_capacity)
 //         {
@@ -4177,7 +4177,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //         }
 //         else
 //         {
-//             trap();
+//             todo();
 //         }
 //     }
 // }
@@ -4208,7 +4208,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //     {
 //         if (thread->interned.types.length < existing_capacity)
 //         {
-//             trap();
+//             todo();
 //         }
 //         else if (thread->interned.types.length == existing_capacity)
 //         {
@@ -4220,7 +4220,7 @@ fn NodeIndex return_get_value(Thread* thread, Node* node)
 //         }
 //         else
 //         {
-//             trap();
+//             todo();
 //         }
 //     }
 // }
@@ -4309,7 +4309,7 @@ fn NodeIndex idealize_return(Thread* thread, NodeIndex node_index)
 //         auto* input_node = thread_node_get(thread, input_node_index);
 //         if (index_equal(input_node->type, thread->types.dead_control))
 //         {
-//             trap();
+//             todo();
 //         }
 //     }
 //
@@ -4374,7 +4374,7 @@ fn NodeIndex idealize_return(Thread* thread, NodeIndex node_index)
 //         }
 //         else if (type_is_simple(b_type))
 //         {
-//             trap();
+//             todo();
 //         }
 //         else
 //         {
@@ -4428,7 +4428,7 @@ fn NodeIndex idealize_return(Thread* thread, NodeIndex node_index)
 //                                 }
 //                                 else if ((left_type->integer.is_constant & !left_type->integer.bit_count) & (!right_type->integer.is_constant & !!right_type->integer.bit_count))
 //                                 {
-//                                     trap();
+//                                     todo();
 //                                 }
 //                             }
 //                     } break;
@@ -4457,7 +4457,7 @@ fn NodeIndex idealize_return(Thread* thread, NodeIndex node_index)
 //                         }
 //                     } break;
 //                 default:
-//                     trap();
+//                     todo();
 //             }
 //         }
 //     }
@@ -4526,7 +4526,7 @@ fn NodeIndex idealize_return(Thread* thread, NodeIndex node_index)
 //                 result = left_value >> right_value;
 //                 break;
 //             default:
-//                 trap();
+//                 todo();
 //         }
 //
 //         type_integer.constant = result;
@@ -4739,7 +4739,7 @@ fn Hash64 hash_type(Thread* thread, Type* type)
 //     {
 //         if (thread->interned.nodes.length < existing_capacity)
 //         {
-//             trap();
+//             todo();
 //         }
 //         else if (thread->interned.nodes.length == existing_capacity)
 //         {
@@ -4751,7 +4751,7 @@ fn Hash64 hash_type(Thread* thread, Type* type)
 //         }
 //         else
 //         {
-//             trap();
+//             todo();
 //         }
 //     }
 // }
@@ -4816,7 +4816,7 @@ fn Hash64 hash_type(Thread* thread, Type* type)
 //     }
 //     else
 //     {
-//         trap();
+//         todo();
 //     }
 // }
 
@@ -4955,7 +4955,7 @@ STRUCT(Parser)
 // {
 //     unused(thread);
 //     unused(node_index);
-//     trap();
+//     todo();
 // }
 
 // fn void thread_add_jobs(Thread* thread, Slice(NodeIndex) nodes)
@@ -5041,7 +5041,7 @@ fn NodeIndex dead_code_elimination(Thread* thread, NodePair nodes)
 //     else
 //     {
 //         unused(thread);
-//         trap();
+//         todo();
 //     }
 //
 //     return result;
@@ -5084,7 +5084,7 @@ fn NodeIndex peephole_optimize(Thread* thread, Function* function, NodeIndex nod
         // {
         //     if (index_equal(node->type, thread->types.dead_control))
         //     {
-        //         trap();
+        //         todo();
         //     }
         //     else
         //     {
@@ -5211,15 +5211,15 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
 
     if (void_start)
     {
-        trap();
+        todo();
     }
     else if (is_array_start)
     {
-        trap();
+        todo();
     }
     else if (pointer_start)
     {
-        trap();
+        todo();
     }
     else if (number_start)
     {
@@ -5295,11 +5295,11 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
             }
             else if (float_start)
             {
-                trap();
+                todo();
             }
             else
             {
-                trap();
+                todo();
             }
         }
         else
@@ -5308,7 +5308,7 @@ fn TypePair analyze_type(Thread* thread, Parser* parser, String src)
         }
     }
 
-    trap();
+    todo();
 }
 
 declare_ip_functions(Node, node)
@@ -5404,7 +5404,7 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
                     //     parser->i += 1;
                     // }
 
-                    trap();
+                    todo();
                     // auto slice = src.slice(start, parser->i);
                     // value = parse_hex(slice);
                 } break;
@@ -5419,11 +5419,11 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
                 } break;
             case INTEGER_PREFIX_OCTAL:
                 {
-                    trap();
+                    todo();
                 } break;
             case INTEGER_PREFIX_BINARY:
                 {
-                    trap();
+                    todo();
                 } break;
         }
 
@@ -5446,7 +5446,7 @@ fn NodeIndex analyze_primary_expression(Thread* thread, Parser* parser, Function
     }
     else
     {
-        trap();
+        todo();
     }
 }
 
@@ -5906,7 +5906,7 @@ fn void analyze_block(Thread* thread, Parser* parser, FunctionBuilder* builder, 
                     parser->i += 1;
                     break;
                 default:
-                    trap();
+                    todo();
             }
             unused(assignment_operator);
 
@@ -6089,7 +6089,7 @@ fn void analyze_file(Thread* thread, File* file)
                         case argument_end:
                             break;
                         default:
-                            trap();
+                            todo();
                     }
                 }
 
@@ -6202,12 +6202,12 @@ fn void analyze_file(Thread* thread, File* file)
             }
             else
             {
-                trap();
+                todo();
             }
         }
         else
         {
-            trap();
+            todo();
         }
     }
 }
@@ -6315,7 +6315,7 @@ fn void analyze_file(Thread* thread, File* file)
 //             //     auto new_node_index = peephole_optimize(thread, function, node_index);
 //             //     if (validi(new_node_index))
 //             //     {
-//             //         trap();
+//             //         todo();
 //             //     }
 //             // }
 //         }
@@ -6339,7 +6339,7 @@ fn void analyze_file(Thread* thread, File* file)
 //         case IR_PROJECTION:
 //             return 0;
 //         default:
-//             trap();
+//             todo();
 //     }
 // }
 
@@ -6417,7 +6417,7 @@ fn void analyze_file(Thread* thread, File* file)
 //                 }
 //             } break;
 //         default:
-//             trap();
+//             todo();
 //     }
 //
 //     return loop_depth;
@@ -6441,7 +6441,7 @@ fn void analyze_file(Thread* thread, File* file)
 //         case IR_INTEGER_COMPARE_NOT_EQUAL:
 //             return 0;
 //         default:
-//             trap();
+//             todo();
 //     }
 // }
 
@@ -6461,7 +6461,7 @@ fn void analyze_file(Thread* thread, File* file)
 //         case IR_STOP:
 //             todo();
 //         default:
-//             trap();
+//             todo();
 //     }
 // }
 
@@ -6504,7 +6504,7 @@ fn void analyze_file(Thread* thread, File* file)
 //                 if (input_depth > early_depth)
 //                 {
 //                     early = control_input_index;
-//                     trap();
+//                     todo();
 //                 }
 //             }
 //
@@ -6521,7 +6521,7 @@ fn void analyze_file(Thread* thread, File* file)
 //         case IR_START:
 //             return 1;
 //         default:
-//             trap();
+//             todo();
 //     }
 // }
 //
@@ -6540,7 +6540,7 @@ fn void analyze_file(Thread* thread, File* file)
 //             
 //             if (result)
 //             {
-//                 trap();
+//                 todo();
 //             }
 //         }
 //     }
@@ -6561,7 +6561,7 @@ fn void analyze_file(Thread* thread, File* file)
 //
 //         if (node->id == IR_PHI)
 //         {
-//             trap();
+//             todo();
 //         }
 //
 //         auto outputs = node_get_outputs(thread, node);
@@ -6571,7 +6571,7 @@ fn void analyze_file(Thread* thread, File* file)
 //             NodeIndex output = outputs.pointer[i];
 //             if (is_forwards_edge(thread, output, node_index))
 //             {
-//                 trap();
+//                 todo();
 //             }
 //         }
 //
@@ -6580,14 +6580,14 @@ fn void analyze_file(Thread* thread, File* file)
 //             NodeIndex output = outputs.pointer[i];
 //             if (is_forwards_edge(thread, output, node_index))
 //             {
-//                 trap();
+//                 todo();
 //             }
 //         }
 //
 //         if (!node_is_pinned(node))
 //         {
 //             unused(nodes);
-//             trap();
+//             todo();
 //         }
 //     }
 // }
@@ -6619,7 +6619,7 @@ fn void analyze_file(Thread* thread, File* file)
 //
 //         if (node_is_region(node))
 //         {
-//             trap();
+//             todo();
 //         }
 //     }
 //
@@ -6643,7 +6643,7 @@ fn void analyze_file(Thread* thread, File* file)
 //         auto node_index = nodes.pointer[i];
 //         if (validi(node_index))
 //         {
-//             trap();
+//             todo();
 //             auto late_node_index = late.pointer[i];
 //             node_set_input(thread, node_index, 0, late_node_index);
 //         }
@@ -6762,7 +6762,7 @@ fn void analyze_file(Thread* thread, File* file)
 //                 c_lower_append_ch(backend, lower_digit + '0');
 //             } break;
 //         default:
-//             trap();
+//             todo();
 //     }
 // }
 
@@ -6791,9 +6791,9 @@ fn void analyze_file(Thread* thread, File* file)
 //     //                         auto written_characters = format_hexadecimal(buffer_slice, type->integer.constant);
 //     //                         backend->buffer.length = current_length + written_characters;
 //     //                     } break;
-//     //                     trap();
+//     //                     todo();
 //     //                 default:
-//     //                     trap();
+//     //                     todo();
 //     //             }
 //     //         } break;
 //     //     case IR_INTEGER_SUBSTRACT:
@@ -6843,18 +6843,18 @@ fn void analyze_file(Thread* thread, File* file)
 //     //     //                     break;
 //     //     //                     // return interpreter->arguments.length;
 //     //     //                 case 2:
-//     //     //                     trap();
+//     //     //                     todo();
 //     //     //                 default:
-//     //     //                     trap();
+//     //     //                     todo();
 //     //     //             }
 //     //     //         }
 //     //     //         else
 //     //     //         {
-//     //     //         trap();
+//     //     //         todo();
 //     //     //         }
 //     //     //     } break;
 //     //     default:
-//     //         trap();
+//     //         todo();
 //     // }
 //     todo();
 // }

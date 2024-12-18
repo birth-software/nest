@@ -29,6 +29,8 @@ decl_vb(s64);
 decl_vbp(s64);
 decl_vb(String);
 decl_vbp(char);
+decl_vb(f32);
+decl_vb(f64);
 
 #define vb_size_of_element(vb) sizeof(*((vb)->pointer))
 #define vb_add(vb, count) (typeof((vb)->pointer)) vb_generic_add((VirtualBuffer(u8)*)(vb), (vb_size_of_element(vb)), (count))

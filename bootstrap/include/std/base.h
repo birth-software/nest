@@ -15,9 +15,11 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdlib.h>
 #if defined(__x86_64__)
 #include <immintrin.h>
 #endif
+#include <math.h>
 
 typedef uint8_t  u8;
 typedef uint16_t u16;
@@ -33,6 +35,7 @@ typedef __int128_t s128;
 
 typedef size_t usize;
 
+typedef _Float16 f16;
 typedef float f32;
 typedef double f64;
 
@@ -44,7 +47,16 @@ typedef u64 Hash64;
 #define UNION_FORWARD_DECL(U) typedef union U U
 #define UNION(U) UNION_FORWARD_DECL(U); union U
 
-STRUCT(UVec2)
+typedef enum Corner
+{
+    CORNER_00,
+    CORNER_01,
+    CORNER_10,
+    CORNER_11,
+    CORNER_COUNT,
+} Corner;
+
+STRUCT(U32Vec2)
 {
     struct
     {
@@ -54,12 +66,43 @@ STRUCT(UVec2)
     u32 v[2];
 };
 
-STRUCT(Vec4)
+STRUCT(F32Vec4)
 {
     f32 v[4];
-}__attribute__((aligned(16)));
-typedef Vec4 Color;
+};
+typedef F32Vec4 Color;
 
+UNION(F32Vec2)
+{
+    struct
+    {
+        f32 x;
+        f32 y;
+    };
+    f32 v[2];
+};
+
+UNION(F32Interval2)
+{
+    struct
+    {
+        F32Vec2 min;
+        F32Vec2 max;
+    };
+    struct
+    {
+        F32Vec2 p0;
+        F32Vec2 p1;
+    };
+    struct
+    {
+        f32 x0;
+        f32 y0;
+        f32 x1;
+        f32 y1;
+    };
+    F32Vec2 v[2];
+};
 
 typedef enum Axis2
 {
@@ -132,9 +175,15 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define CLAMP(a, x, b) (((a)>(x))?(a):((b)<(x))?(b):(x))
 
+
+#ifndef INFINITY
 #define INFINITY __builtin_inff()
+#endif
+#ifndef NAN
 #define NAN __builtin_nanf("")
+#endif
 #define fn static
 #define method __attribute__((visibility("internal")))
 #define global_variable static
@@ -142,11 +191,9 @@ FOR_N(_i, 0, ((set)->arr.capacity + 63) / 64) FOR_BIT(it, _i*64, (set)->arr.poin
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define breakpoint() __builtin_debugtrap()
-#define failed_execution() trap()
+#define failed_execution() my_panic("Failed execution at {cstr}:{u32}\n", __FILE__, __LINE__)
 
-EXPORT void print(const char* format, ...);
-
-#define trap() bad_exit("Trap reached", __FILE__, __LINE__)
+#define trap() __builtin_trap()
 #define array_length(arr) sizeof(arr) / sizeof((arr)[0])
 #define KB(n) ((n) * 1024)
 #define MB(n) ((n) * 1024 * 1024)
@@ -156,7 +203,6 @@ EXPORT void print(const char* format, ...);
 #define may_be_unused __attribute__((unused))
 #define truncate_value(Destination, source) (Destination)(source)
 #define cast_to(Destination, Source, source) cast_ ## Source ## _to_ ## Destination (source, __FILE__, __LINE__)
-#define bad_exit(message, file, line) do { print(message " at {cstr}:{u32}\n", file, line); __builtin_trap(); } while(0)
 #define size_until_end(T, field_name) (sizeof(T) - offsetof(T, field_name))
 #define SWAP(a, b) \
     do {\
@@ -194,7 +240,7 @@ const may_be_unused global_variable u8 bracket_close = ']';
 #define s_equal(a, b) ((a).length == (b).length && memcmp((a).pointer, (b).pointer, sizeof(*((a).pointer)) * (a).length) == 0)
 
 #if BB_DEBUG
-#define assert(x) if (unlikely(!(x))) { bad_exit("Assert failed: \"" # x "\"", __FILE__, __LINE__); }
+#define assert(x) if (unlikely(!(x))) { my_panic("Assert failed: \"" # x "\" at {cstr}:{u32}\n", __FILE__, __LINE__); }
 #else
 #define assert(x) unlikely(!(x))
 #endif
@@ -205,7 +251,7 @@ const may_be_unused global_variable u8 bracket_close = ']';
 #undef unreachable
 #endif
 #if BB_DEBUG
-#define unreachable() bad_exit("Unreachable triggered", __FILE__, __LINE__)
+#define unreachable() my_panic("Unreachable triggered\n", __FILE__, __LINE__)
 #else
 #define unreachable() __builtin_unreachable()
 #endif
@@ -217,7 +263,7 @@ const may_be_unused global_variable u8 bracket_close = ']';
 #define restrict __restrict
 #endif
 
-#define todo() do { print("TODO at {cstr}:{u32}\n", __FILE__, __LINE__); __builtin_trap(); } while(0)
+#define todo() my_panic("TODO at {cstr}:{u32}\n", __FILE__, __LINE__)
 
 EXPORT u64 align_forward(u64 value, u64 alignment);
 EXPORT u64 align_backward(u64 value, u64 alignment);
@@ -282,3 +328,26 @@ STRUCT(TextureIndex)
 {
     u32 value;
 };
+
+EXPORT void print(const char* format, ...);
+EXPORT u8 os_is_being_debugged();
+
+fn u64 safe_flag(u64 value, u64 flag)
+{
+    u64 result = value & ((u64)0 - flag);
+    return result;
+}
+
+
+#define my_panic(...) do \
+{\
+    print(__VA_ARGS__);\
+    if (os_is_being_debugged())\
+    {\
+        trap();\
+    }\
+    else\
+    {\
+        exit(1);\
+    }\
+} while (0)

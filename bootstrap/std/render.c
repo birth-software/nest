@@ -264,8 +264,7 @@ fn String vulkan_result_to_string(VkResult result)
     unused(line);
 
     String result_name = vulkan_result_to_string(result);
-    print("Wrong Vulkan result {s} at \"{s}\" {s}:{u32}\n", result_name, call_string, file, line);
-    trap();
+    my_panic("Wrong Vulkan result {s} at \"{s}\" {s}:{u32}\n", result_name, call_string, file, line);
 }
 
 fn void buffer_copy_to_local_command(VkCommandBuffer command_buffer, Slice(LocalBufferCopy) copies)
@@ -2265,6 +2264,7 @@ void window_render_text(Renderer* renderer, RenderWindow* window, String string,
     auto* texture_atlas = &renderer->fonts[font_type];
     auto height = texture_atlas->ascent - texture_atlas->descent;
     auto texture_index = texture_atlas->texture.value;
+
     for (u64 i = 0; i < string.length; i += 1)
     {
         auto ch = string.pointer[i];
@@ -2329,7 +2329,7 @@ void window_render_text(Renderer* renderer, RenderWindow* window, String string,
     }
 }
 
-UVec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType type, String string)
+U32Vec2 renderer_font_compute_string_rect(Renderer* renderer, RenderFontType type, String string)
 {
     auto* texture_atlas = &renderer->fonts[type];
     auto result = texture_atlas_compute_string_rect(string, texture_atlas);

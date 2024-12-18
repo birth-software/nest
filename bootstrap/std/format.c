@@ -1087,7 +1087,7 @@ String format_string_va(String buffer, const char* format, va_list args)
 
             if (next_ch == brace_open)
             {
-                trap();
+                todo();
             }
             else
             {
@@ -1140,7 +1140,7 @@ String format_string_va(String buffer, const char* format, va_list args)
                                         failed_execution();
                                     }
                                     it += 1;
-                                    failed_execution();
+                                    value_double = va_arg(args, f64);
                                     break;
                                 case '6':
                                     it += 1;
@@ -1200,7 +1200,7 @@ String format_string_va(String buffer, const char* format, va_list args)
                                             format = INTEGER_FORMAT_BINARY;
                                             break;
                                         default:
-                                            trap();
+                                            unreachable();
                                     }
 
                                     it += 1;
@@ -1218,7 +1218,7 @@ String format_string_va(String buffer, const char* format, va_list args)
                                         original_value = va_arg(args, s64);
                                         break;
                                     default:
-                                        trap();
+                                        unreachable();
                                 }
 
                                 auto buffer_slice = s_get_slice(u8, buffer, buffer_i, buffer.length);
@@ -1250,8 +1250,13 @@ String format_string_va(String buffer, const char* format, va_list args)
                                             buffer_i += written_characters;
                                         } break;
                                     case INTEGER_FORMAT_OCTAL:
+                                        {
+                                            todo();
+                                        } break;
                                     case INTEGER_FORMAT_BINARY:
-                                        trap();
+                                        {
+                                            todo();
+                                        } break;
                                 }
                             }
                             else
@@ -1303,7 +1308,7 @@ String format_string_va(String buffer, const char* format, va_list args)
                                         format = INTEGER_FORMAT_BINARY;
                                         break;
                                     default:
-                                        trap();
+                                        unreachable();
                                 }
 
                                 it += 1;
@@ -1321,7 +1326,7 @@ String format_string_va(String buffer, const char* format, va_list args)
                                     original_value = va_arg(args, u64);
                                     break;
                                 default:
-                                    trap();
+                                    unreachable();
                             }
 
                             auto buffer_slice = s_get_slice(u8, buffer, buffer_i, buffer.length);
@@ -1339,8 +1344,13 @@ String format_string_va(String buffer, const char* format, va_list args)
                                         buffer_i += written_characters;
                                     } break;
                                 case INTEGER_FORMAT_OCTAL:
+                                    {
+                                        todo();
+                                    } break;
                                 case INTEGER_FORMAT_BINARY:
-                                    trap();
+                                    {
+                                        todo();
+                                    } break;
                             }
                         } break;
                     default:

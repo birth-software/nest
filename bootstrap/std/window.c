@@ -1,4 +1,4 @@
-#include <std/graphics.h>
+#include <std/window.h>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -13,14 +13,14 @@ fn void monitor_callback(GLFWmonitor* monitor, int event)
 {
     unused(monitor);
     unused(event);
-    trap();
+    todo();
 }
 
 fn void joystick_callback(int joystick_id, int event)
 {
     unused(joystick_id);
     unused(event);
-    trap();
+    todo();
 }
 
 fn void bitset_list_add(VirtualBuffer(OSEventBitset)* list, u32* counter, u64 value)
@@ -314,6 +314,8 @@ fn void glfw_window_refresh_callback(GLFWwindow* w)
 
 OSWindow os_window_create(OSWindowCreate create)
 {
+    // glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
+
     GLFWmonitor* monitor = 0;
     GLFWwindow* share = 0;
     GLFWwindow* window = glfwCreateWindow(create.size.width, create.size.height, string_to_c(create.name), monitor, share);

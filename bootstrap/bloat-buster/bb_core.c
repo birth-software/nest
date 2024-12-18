@@ -2,7 +2,7 @@
 #include <bloat-buster/bb_core.h>
 
 #include <std/virtual_buffer.h>
-#include <std/graphics.h>
+#include <std/window.h>
 #include <std/render.h>
 #include <std/shader_compilation.h>
 #include <std/image_loader.h>
@@ -84,22 +84,12 @@ fn void app_update()
         if (likely(ui_build_begin(window->os, frame_ms, &state.event_queue)))
         {
             {
-                if (unlikely(ui_button(strlit("Hello world\n"), (UI_Rect) {
-                        .x0 = 200,
-                        .y0 = 200,
-                        .x1 = 300,
-                        .y1 = 300,
-                    }).clicked_left))
+                if (unlikely(ui_button(strlit("Hello world\n")).clicked_left))
                 {
                     print("Clicked on hello world\n");
                 }
 
-                if (unlikely(ui_button(strlit("Bye world\n"), (UI_Rect) {
-                        .x0 = 600,
-                        .y0 = 500,
-                        .x1 = 700,
-                        .y1 = 600,
-                    }).clicked_left))
+                if (unlikely(ui_button(strlit("Bye world\n")).clicked_left))
                 {
                     print("Clicked on bye world\n");
                 }
@@ -170,10 +160,7 @@ void run_app()
     }
 
     state.first_window->render = renderer_window_initialize(state.renderer, state.first_window->os);
-    state.first_window->ui = arena_allocate(state.arena, UI_State, 1);
-    state.first_window->ui->arena = arena_init(GB(4), MB(2), MB(2));
-    state.first_window->ui->render = state.first_window->render;
-    state.first_window->ui->renderer = state.renderer;
+    state.first_window->ui = ui_state_allocate(state.renderer, state.first_window->render);
     state.first_window->root_panel = arena_allocate(state.arena, BBPanel, 1);
     state.first_window->root_panel->parent_percentage = 1.0f;
     state.first_window->root_panel->split_axis = AXIS2_X;
@@ -194,7 +181,7 @@ strlit("/Users/david/Library/Fonts/FiraSans-Regular.ttf");
     auto white_texture = white_texture_create(state.arena, state.renderer);
     auto monospace_font = font_texture_atlas_create(state.arena, state.renderer, (TextureAtlasCreate) {
         .font_path = font_path,
-        .text_height = 50,
+        .text_height = 12,
     });
     auto proportional_font = monospace_font;
 
