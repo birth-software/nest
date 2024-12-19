@@ -2,41 +2,7 @@
 #include <std/format.h>
 #include <std/string.h>
 
-global_variable UI_State* ui_state = 0;
-#define ui_stack_autopop_set(field_name, value) ui_state->stack_autopops.field_name = (value)
-#define ui_stack_push_impl(field_name, value, auto_pop_value) do \
-{\
-    *vb_add(&ui_state->stacks.field_name, 1) = (value);\
-    ui_stack_autopop_set(field_name, auto_pop_value);\
-} while (0)
-
-fn u8* ui_pop_generic(VirtualBuffer(u8)* stack, u32 element_size)
-{
-    auto length = stack->length;
-
-    assert(length > 0);
-    auto next_length = length - 1;
-    auto index = next_length;
-    auto* result = &stack->pointer[index * element_size];
-    stack->length = next_length;
-
-    return result;
-}
-
-#define ui_stack_push(field_name, value) ui_stack_push_impl(field_name, value, 0)
-#define ui_stack_push_next_only(field_name, value) ui_stack_push_impl(field_name, value, 1)
-#define ui_stack_pop(field_name) (typeof(ui_state->stacks.field_name.pointer)) ui_pop_generic(&ui_state->stacks.field_name, sizeof(*ui_state->stacks.field_name.pointer))
-#define ui_stack_top(field_name) (ui_state->stacks.field_name.length ? ui_state->stacks.field_name.pointer[ui_state->stacks.field_name.length - 1] : ui_state->stack_nulls.field_name)
-
-void ui_pref_width(UI_Size size)
-{
-    ui_stack_push(pref_width, size);
-}
-
-void ui_pref_height(UI_Size size)
-{
-    ui_stack_push(pref_height, size);
-}
+UI_State* ui_state = 0;
 
 fn void ui_autopop(UI_State* state)
 {
@@ -314,10 +280,6 @@ UI_Signal ui_signal_from_widget(UI_Widget* widget)
 {
     auto rect = widget->rect;
     auto mouse_position = ui_state->mouse_position;
-    if (widget->flags.mouse_clickable & (ui_state->mouse_button_events[OS_EVENT_MOUSE_LEFT].action == OS_EVENT_MOUSE_RELEASE))
-    {
-        print("Clicked on {u32}x{u32}. Rect ({u32}, {u32}), ({u32}, {u32})\n", (u32)mouse_position.x, (u32)mouse_position.y, (u32)rect.p0.x, (u32)rect.p0.y, (u32)rect.p1.x, (u32)rect.p1.y);
-    }
     UI_Signal signal = {
         .clicked_left = 
             (widget->flags.mouse_clickable & (ui_state->mouse_button_events[OS_EVENT_MOUSE_LEFT].action == OS_EVENT_MOUSE_RELEASE)) &
@@ -365,11 +327,6 @@ UI_Size ui_em(f32 value, f32 strictness)
         .strictness = strictness,
         .value = value * font_size,
     };
-}
-
-void ui_font_size(f32 size)
-{
-    ui_stack_push(font_size, size);
 }
 
 u8 ui_build_begin(OSWindow os_window, f64 frame_time, OSEventQueue* event_queue)
@@ -709,6 +666,43 @@ fn RenderRect render_rect(F32Interval2 rect)
     };
 }
 
+STRUCT(WidgetIterator)
+{
+    UI_Widget* next;
+    u32 push_count;
+    u32 pop_count;
+};
+
+#define ui_widget_recurse_depth_first_preorder(widget) ui_widget_recurse_depth_first((widget), offset_of(UI_Widget, next), offset_of(UI_Widget, first))
+#define ui_widget_recurse_depth_first_postorder(widget) ui_widget_recurse_depth_first((widget), offset_of(UI_Widget, previous), offset_of(UI_Widget, last))
+
+WidgetIterator ui_widget_recurse_depth_first(UI_Widget* widget, u64 sibling_offset, u64 child_offset)
+{
+    WidgetIterator it = {};
+    auto* child = member_from_offset(widget, UI_Widget*, child_offset);
+    if (child)
+    {
+        it.next = child;
+        it.push_count += 1;
+    }
+    else
+    {
+        for (UI_Widget* w = widget; w; w = w->parent)
+        {
+            auto* sibling = member_from_offset(w, UI_Widget*, sibling_offset);
+            if (sibling)
+            {
+                it.next = sibling;
+                break;
+            }
+
+            it.pop_count += 1;
+        }
+    }
+
+    return it;
+}
+
 void ui_draw()
 {
     UI_Widget* root = ui_state->root;
@@ -717,9 +711,8 @@ void ui_draw()
     RenderWindow* window = ui_state->render_window;
     Renderer* renderer = ui_state->renderer;
 
-    while (1)
+    while (widget)
     {
-        // print("Widget 0x{u64:x}. {u32} {u32} {u32} {u32}\n", widget, (u32)widget->rect.p0.x, (u32)widget->rect.p0.y, (u32)widget->rect.p1.x, (u32)widget->rect.p1.y);
         if (widget->flags.draw_background)
         {
             window_render_rect(window, (RectDraw) {
@@ -733,26 +726,7 @@ void ui_draw()
             window_render_text(renderer, window, widget->text, widget->text_color, RENDER_FONT_TYPE_PROPORTIONAL, widget->rect.x0, widget->rect.y0);
         }
 
-        if (widget->first)
-        {
-            widget = widget->first;
-        }
-        else if (widget->next)
-        {
-            widget = widget->next;
-        }
-        else if (widget->parent == ui_state->root)
-        {
-            break;
-        }
-        else if (widget->parent)
-        {
-            widget = widget->parent;
-        }
-        else
-        {
-            break;
-        }
+        widget = ui_widget_recurse_depth_first_postorder(widget).next;
     }
 }
 
