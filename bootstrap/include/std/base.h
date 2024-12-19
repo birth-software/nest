@@ -338,6 +338,8 @@ fn u64 safe_flag(u64 value, u64 flag)
     return result;
 }
 
+#define member_from_offset(pointer, type, memory_offset) (*(type*)((u8*)pointer + memory_offset))
+#define offset_of(T, member) __builtin_offsetof(T, member)
 
 #define my_panic(...) do \
 {\
