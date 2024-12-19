@@ -65,6 +65,26 @@ STRUCT(BBGUIState)
 };
 global_variable BBGUIState state;
 
+fn void ui_top_bar()
+{
+    ui_push(pref_height, ui_em(1, 1));
+    {
+        ui_push(child_layout_axis, AXIS2_X);
+        auto* top_bar = ui_widget_make((UI_WidgetFlags) {
+                .draw_background = 1,
+                }, strlit("top_bar"));
+        ui_push(parent, top_bar);
+        {
+            ui_button(strlit("Button 1"));
+            ui_button(strlit("Button 2"));
+            ui_button(strlit("Button 3"));
+        }
+        ui_pop(parent);
+    }
+    ui_pop(pref_height);
+    ui_button(strlit("Hello!"));
+}
+
 fn void app_update()
 {
     auto frame_end = os_timestamp();
@@ -87,23 +107,15 @@ fn void app_update()
 
         if (likely(ui_build_begin(window->os, frame_ms, &state.event_queue)))
         {
-            ui_font_size(default_font_height);
-            ui_pref_width(ui_em(10, 1));
-            ui_pref_height(ui_em(2, 1));
+            ui_push(font_size, default_font_height);
 
-            if (unlikely(ui_button(strlit("Hello world\n")).clicked_left))
-            {
-                print("Clicked on hello world\n");
-            }
-
-            if (unlikely(ui_button(strlit("Bye world\n")).clicked_left))
-            {
-                print("Clicked on bye world\n");
-            }
+            ui_top_bar();
 
             ui_build_end();
 
             ui_draw();
+
+            ui_pop(font_size);
 
             renderer_window_frame_end(renderer, render_window);
         }
