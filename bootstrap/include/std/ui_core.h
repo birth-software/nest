@@ -77,6 +77,7 @@ STRUCT(UI_Widget)
     UI_Widget* next;
     UI_Widget* previous;
     UI_Widget* parent;
+    u64 child_count;
 
     UI_Key key;
 
@@ -189,6 +190,33 @@ STRUCT(UI_Signal)
     };
 };
 
+extern UI_State* ui_state;
+
+#define ui_stack_autopop_set(field_name, value) ui_state->stack_autopops.field_name = (value)
+#define ui_stack_push_impl(field_name, value, auto_pop_value) do \
+{\
+    *vb_add(&ui_state->stacks.field_name, 1) = (value);\
+    ui_stack_autopop_set(field_name, auto_pop_value);\
+} while (0)
+
+fn u8* ui_pop_generic(VirtualBuffer(u8)* stack, u32 element_size)
+{
+    auto length = stack->length;
+
+    assert(length > 0);
+    auto next_length = length - 1;
+    auto index = next_length;
+    auto* result = &stack->pointer[index * element_size];
+    stack->length = next_length;
+
+    return result;
+}
+
+#define ui_push(field_name, value) ui_stack_push_impl(field_name, value, 0)
+#define ui_push_next_only(field_name, value) ui_stack_push_impl(field_name, value, 1)
+#define ui_pop(field_name) (typeof(ui_state->stacks.field_name.pointer)) ui_pop_generic((VirtualBuffer(u8)*)&ui_state->stacks.field_name, sizeof(*ui_state->stacks.field_name.pointer))
+#define ui_top(field_name) (ui_state->stacks.field_name.length ? ui_state->stacks.field_name.pointer[ui_state->stacks.field_name.length - 1] : ui_state->stack_nulls.field_name)
+
 EXPORT UI_State* ui_state_allocate(Renderer* renderer, RenderWindow* window);
 EXPORT void ui_state_select(UI_State* state);
 EXPORT u8 ui_build_begin(OSWindow window, f64 frame_time, OSEventQueue* event_queue);
@@ -201,6 +229,3 @@ EXPORT UI_Widget* ui_widget_make(UI_WidgetFlags flags, String string);
 EXPORT UI_Size ui_pixels(u32 width, f32 strictness);
 EXPORT UI_Size ui_percentage(f32 percentage, f32 strictness);
 EXPORT UI_Size ui_em(f32 value, f32 strictness);
-EXPORT void ui_pref_width(UI_Size size);
-EXPORT void ui_pref_height(UI_Size size);
-EXPORT void ui_font_size(f32 size);
