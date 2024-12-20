@@ -90,19 +90,30 @@ namespace llvm
         }
         
         // TODO: make a more correct logic
-        StringRef target_triple;
+        std::string target_triple_str;
+        switch (options.target.cpu)
+        {
+            case CPU_ARCH_X86_64:
+                target_triple_str += string_ref("x86_64-");
+                break;
+            case CPU_ARCH_AARCH64:
+                target_triple_str += string_ref("aarch64-");
+                break;
+        }
+
         switch (options.target.os)
         {
             case OPERATING_SYSTEM_LINUX:
-                target_triple = string_ref("x86_64-unknown-linux-gnu");
+                target_triple_str += string_ref("unknown-linux-gnu");
                 break;
             case OPERATING_SYSTEM_MAC:
-                target_triple = string_ref("aarch64-apple-macosx-none");
+                target_triple_str += string_ref("apple-macosx-none");
                 break;
             case OPERATING_SYSTEM_WINDOWS:
-                target_triple = string_ref("x86_64-pc-windows-msvc");
+                target_triple_str += string_ref("pc-windows-msvc");
                 break;
         }
+        auto target_triple = StringRef(target_triple_str);
 
         const Target* target = TargetRegistry::lookupTarget(target_triple, error_message);
         if (!target)

@@ -34,6 +34,8 @@ if [[ -z "${BIRTH_ARCH-}" ]]; then
             BIRTH_ARCH=x86_64;;
         arm64)
             BIRTH_ARCH=aarch64;;
+        aarch64)
+            BIRTH_ARCH=aarch64;;
         *)
             exit 1;;
     esac
@@ -113,7 +115,7 @@ if [ "$#" -ne 0 ]; then
     $BUILD_DIR/runner $@
 fi
 
-if [ "$BB_IS_CI" == "ON" ]; then
+if [[ -n "${GITHUB_RUN_ID-}" ]]; then
     echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
     echo "COMPILER_NAME=$COMPILER_NAME" >> $GITHUB_ENV
 fi

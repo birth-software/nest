@@ -249,9 +249,9 @@ fn String vulkan_result_to_string(VkResult result)
         case_to_name(VK_, OPERATION_NOT_DEFERRED_KHR);
         case_to_name(VK_, ERROR_INVALID_VIDEO_STD_PARAMETERS_KHR);
         case_to_name(VK_, ERROR_COMPRESSION_EXHAUSTED_EXT);
-        case_to_name(VK_, INCOMPATIBLE_SHADER_BINARY_EXT);
-        case_to_name(VK_, PIPELINE_BINARY_MISSING_KHR);
-        case_to_name(VK_, ERROR_NOT_ENOUGH_SPACE_KHR);
+        //case_to_name(VK_, INCOMPATIBLE_SHADER_BINARY_EXT);
+        //case_to_name(VK_, PIPELINE_BINARY_MISSING_KHR);
+        //case_to_name(VK_, ERROR_NOT_ENOUGH_SPACE_KHR);
         case_to_name(VK_, RESULT_MAX_ENUM);
     }
 }
