@@ -104,8 +104,11 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
 
             run_command(arena, (CStringSlice) array_to_slice(arguments), envp);
 
-#if BB_CI
-            // if (compiler_backend != COMPILER_BACKEND_INTERPRETER)
+            auto run_tests = BB_CI;
+#ifndef __x86_64__
+            run_tests = run_tests && compiler_backend != COMPILER_BACKEND_BB;
+#endif
+            if (run_tests)
             {
                 auto executable = binary_path_from_options(arena, (BinaryPathOptions) {
                     .build_directory = strlit(BB_DIR),
@@ -120,7 +123,6 @@ fn void run_tests(Arena* arena, String compiler_path, TestOptions const * const 
                 };
                 run_command(arena, (CStringSlice) array_to_slice(run_arguments), envp);
             }
-#endif
         }
     }
 }

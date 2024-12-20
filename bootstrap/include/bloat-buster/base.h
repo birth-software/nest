@@ -184,14 +184,16 @@ STRUCT(CodegenOptions)
 fn Target native_target_get()
 {
     Target target = {
-#if _WIN32
+#ifdef __x86_64__
         .cpu = CPU_ARCH_X86_64,
+#else
+        .cpu = CPU_ARCH_AARCH64,
+#endif
+#if _WIN32
         .os = OPERATING_SYSTEM_WINDOWS,
 #elif defined(__APPLE__)
-        .cpu = CPU_ARCH_AARCH64,
         .os = OPERATING_SYSTEM_MAC,
 #elif defined(__linux__)
-        .cpu = CPU_ARCH_X86_64,
         .os = OPERATING_SYSTEM_LINUX,
 #else
 #error "Unknown platform"

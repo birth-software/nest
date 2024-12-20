@@ -555,9 +555,150 @@ typedef enum RelocationType_x86_64 : u32
     R_X86_64_NUM = 43,
 } RelocationType_x86_64;
 
+typedef enum RelocationType_aarch64 : u32
+{
+    // Null relocation codes
+    R_AARCH64_NONE = 0, // None
+    R_AARCH64_withdrawn = 256, // Treat as R_AARCH64_NONE
+
+    // Static relocations
+    R_AARCH64_ABS64 = 257, // S + A
+    R_AARCH64_ABS32 = 258, // S + A
+    R_AARCH64_ABS16 = 259, // S + A
+    R_AARCH64_PREL64 = 260, // S + A - P
+    R_AARCH64_PREL32 = 261, // S + A - P
+    R_AARCH64_PREL16 = 262, // S + A - P
+    R_AARCH64_MOVW_UABS_G0 = 263,  // S + A
+    R_AARCH64_MOVW_UABS_G0_NC = 264, // S + A
+    R_AARCH64_MOVW_UABS_G1 = 265,  // S + A
+    R_AARCH64_MOVW_UABS_G1_NC = 266, // S + A
+    R_AARCH64_MOVW_UABS_G2 = 267,  // S + A
+    R_AARCH64_MOVW_UABS_G2_NC = 268, // S + A
+    R_AARCH64_MOVW_UABS_G3 = 269,  // S + A
+    R_AARCH64_MOVW_SABS_G0 = 270,  // S + A
+    R_AARCH64_MOVW_SABS_G1 = 271,  // S + A
+    R_AARCH64_MOVW_SABS_G2 = 272,  // S + A
+    R_AARCH64_LD_PREL_LO19 = 273,  // S + A - P
+    R_AARCH64_ADR_PREL_LO21 = 274, // S + A - P
+    R_AARCH64_ADR_PREL_PG_HI21 = 275, // Page(S+A) - Page(P)
+    R_AARCH64_ADR_PREL_PG_HI21_NC = 276, // Page(S+A) - Page(P)
+    R_AARCH64_ADD_ABS_LO12_NC = 277, // S + A
+    R_AARCH64_LDST8_ABS_LO12_NC = 278, // S + A
+    R_AARCH64_TSTBR14 = 279,  // S + A - P
+    R_AARCH64_CONDBR19 = 280,  // S + A - P
+    R_AARCH64_JUMP26 = 282,  // S + A - P
+    R_AARCH64_CALL26 = 283,  // S + A - P
+    R_AARCH64_LDST16_ABS_LO12_NC = 284, // S + A
+    R_AARCH64_LDST32_ABS_LO12_NC = 285, // S + A
+    R_AARCH64_LDST64_ABS_LO12_NC = 286, // S + A
+    R_AARCH64_MOVW_PREL_G0 = 287,  // S + A - P
+    R_AARCH64_MOVW_PREL_G0_NC = 288, // S + A - P
+    R_AARCH64_MOVW_PREL_G1 = 289,  // S + A - P
+    R_AARCH64_MOVW_PREL_G1_NC = 290, // S + A - P
+    R_AARCH64_MOVW_PREL_G2 = 291,  // S + A - P
+    R_AARCH64_MOVW_PREL_G2_NC = 292, // S + A - P
+    R_AARCH64_MOVW_PREL_G3 = 293,  // S + A - P
+    R_AARCH64_LDST128_ABS_LO12_NC = 299, // S + A
+    R_AARCH64_MOVW_GOTOFF_G0 = 300, // G(GDAT(S+A))-GOT
+    R_AARCH64_MOVW_GOTOFF_G0_NC = 301, // G(GDAT(S+A))-GOT
+    R_AARCH64_MOVW_GOTOFF_G1 = 302, // G(GDAT(S+A))-GOT
+    R_AARCH64_MOVW_GOTOFF_G1_NC = 303, // G(GDAT(S+A))-GOT
+    R_AARCH64_MOVW_GOTOFF_G2 = 304, // G(GDAT(S+A))-GOT
+    R_AARCH64_MOVW_GOTOFF_G2_NC = 305, // G(GDAT(S+A))-GOT
+    R_AARCH64_MOVW_GOTOFF_G3 = 306, // G(GDAT(S+A))-GOT
+    R_AARCH64_GOTREL64 = 307,  // S + A - GOT
+    R_AARCH64_GOTREL32 = 308,  // S + A - GOT
+    R_AARCH64_GOT_LD_PREL19 = 309, // G(GDAT(S+A))-P
+    R_AARCH64_LD64_GOTOFF_LO15 = 310, // G(GDAT(S+A))-GOT
+    R_AARCH64_ADR_GOT_PAGE = 311,  // Page(G(GDAT(S+A)))-Page(P)
+    R_AARCH64_LD64_GOT_LO12_NC = 312, // G(GDAT(S+A))
+    R_AARCH64_LD64_GOTPAGE_LO15 = 313, // G(GDAT(S+A))-Page(GOT)
+
+    // Relocations for thread-local storage
+    R_AARCH64_TLSGD_ADR_PREL21 = 512,  // G(GTLSIDX(S,A)) - P
+    R_AARCH64_TLSGD_ADR_PAGE21 = 513,  // Page(G(GTLSIDX(S,A)))-Page(P)
+    R_AARCH64_TLSGD_ADD_LO12_NC = 514,  // G(GTLSICX(S,A))
+    R_AARCH64_TLSGD_MOVW_G1 = 515,  // G(GTLSIDX(S,A)) - GOT
+    R_AARCH64_TLSGD_MOVW_G0_NC = 516,  // G(GTLSIDX(S,A)) - GOT
+
+    R_AARCH64_TLSLD_ADR_PREL21 = 517,  // G(GLDM(S)) - P
+    R_AARCH64_TLSLD_ADR_PAGE21 = 518,  // Page(G(GLDM(S))) - Page(P)
+    R_AARCH64_TLSLD_ADD_LO12_NC = 519,  // G(GLDM(S))
+    R_AARCH64_TLSLD_MOVW_G1 = 520,  // G(GLDM(S)) - GOT
+    R_AARCH64_TLSLD_MOVW_G0_NC = 521,  // G(GLDM(S)) - GOT
+    R_AARCH64_TLSLD_LD_PREL19 = 522,  // G(GLDM(S)) - P
+    R_AARCH64_TLSLD_MOVW_DTPREL_G2 = 523,  // DTPREL(S+A)
+    R_AARCH64_TLSLD_MOVW_DTPREL_G1 = 524,  // DTPREL(S+A)
+    R_AARCH64_TLSLD_MOVW_DTPREL_G1_NC = 525, // DTPREL(S+A)
+    R_AARCH64_TLSLD_MOVW_DTPREL_G0 = 526,  // DTPREL(S+A)
+    R_AARCH64_TLSLD_MOVW_DTPREL_G0_NC = 527, // DTPREL(S+A)
+    R_AARCH64_TLSLD_ADD_DTPREL_HI12 = 528, // DTPREL(S+A)
+    R_AARCH64_TLSLD_ADD_DTPREL_LO12 = 529, // DTPREL(S+A)
+    R_AARCH64_TLSLD_ADD_DTPREL_LO12_NC = 530, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST8_DTPREL_LO12 = 531, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST8_DTPREL_LO12_NC = 532, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST16_DTPREL_LO12 = 533, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST16_DTPREL_LO12_NC = 534, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST32_DTPREL_LO12 = 535, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST32_DTPREL_LO12_NC = 536, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST64_DTPREL_LO12 = 537, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST64_DTPREL_LO12_NC = 538, // DTPREL(S+A)
+    R_AARCH64_TLSIE_MOVW_GOTTPREL_G1 = 539, // G(GTPREL(S+A)) - GOT
+    R_AARCH64_TLSIE_MOVW_GOTTPREL_G0_NC = 540, // G(GTPREL(S+A)) - GOT
+    R_AARCH64_TLSIE_ADR_GOTTPREL_PAGE21 = 541, // Page(G(GTPREL(S+A)))-Page(P)
+    R_AARCH64_TLSIE_LD64_GOTTPREL_LO12_NC = 542, // G(GTPREL(S+A))
+    R_AARCH64_TLSIE_LD_GOTTPREL_PREL19 = 543, // G(GTPREL(S+A)) - P
+    R_AARCH64_TLSLE_MOVW_TPREL_G2 = 544,  // TPREL(S+A)
+    R_AARCH64_TLSLE_MOVW_TPREL_G1 = 545,  // TPREL(S+A)
+    R_AARCH64_TLSLE_MOVW_TPREL_G1_NC = 546, // TPREL(S+A)
+    R_AARCH64_TLSLE_MOVW_TPREL_G0 = 547,  // TPREL(S+A)
+    R_AARCH64_TLSLE_MOVW_TPREL_G0_NC = 548, // TPREL(S+A)
+    R_AARCH64_TLSLE_ADD_TPREL_HI12 = 549,  // TPREL(S+A)
+    R_AARCH64_TLSLE_ADD_TPREL_LO12 = 550,  // TPREL(S+A)
+    R_AARCH64_TLSLE_ADD_TPREL_LO12_NC = 551, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST8_TPREL_LO12 = 552, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST8_TPREL_LO12_NC = 553, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST16_TPREL_LO12 = 554, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST16_TPREL_LO12_NC = 555, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST32_TPREL_LO12 = 556, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST32_TPREL_LO12_NC = 557, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST64_TPREL_LO12 = 558, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST64_TPREL_LO12_NC = 559, // TPREL(S+A)
+    R_AARCH64_TLSDESC_LD_PREL19 = 560, // G(GTLSDESC(S+A)) - P
+    R_AARCH64_TLSDESC_ADR_PREL21 = 561, // G(GTLSDESC(S+A)) - P
+    R_AARCH64_TLSDESC_ADR_PAGE21 = 562, // Page(G(GTLSDESC(S+A)))-Page(P)
+    R_AARCH64_TLSDESC_LD64_LO12 = 563, // G(GTLSDESC(S+A))
+    R_AARCH64_TLSDESC_ADD_LO12 = 564, // G(GTLSDESC(S+A))
+    R_AARCH64_TLSDESC_OFF_G1 = 565, // G(GTLSDESC(S+A)) - GOT
+    R_AARCH64_TLSDESC_OFF_G0_NC = 566, // G(GTLSDESC(S+A)) - GOT
+    R_AARCH64_TLSDESC_LDR = 567,  // None
+    R_AARCH64_TLSDESC_ADD = 568,  // None
+    R_AARCH64_TLSDESC_CALL = 569,  // None
+    R_AARCH64_TLSLE_LDST128_TPREL_LO12 = 570, // TPREL(S+A)
+    R_AARCH64_TLSLE_LDST128_TPREL_LO12_NC = 571, // TPREL(S+A)
+    R_AARCH64_TLSLD_LDST128_DTPREL_LO12 = 572, // DTPREL(S+A)
+    R_AARCH64_TLSLD_LDST128_DTPREL_LO12_NC = 573, // DTPREL(S+A)
+
+    // Dynamic relocations
+    R_AARCH64_COPY = 1024,
+    R_AARCH64_GLOB_DAT = 1025,  // S + A
+    R_AARCH64_JUMP_SLOT = 1026,  // S + A
+    R_AARCH64_RELATIVE = 1027,  // Delta(S) + A
+                                    // Note (shenhan): the following 2 relocs are different from elf spec from
+                                    // arm.  In elf docs, TLS_DTPMOD64 is defined as 1029, TLS_DTPREL64 1028.
+                                    // While actually the bfd linker (and the dynamic linker) treates TLS_DTPMOD64
+                                    // as 1028, TLS_DTPREL64 1029.  See binutils-gdb/include/elf/aarch64.h.
+    R_AARCH64_TLS_DTPMOD64 = 1028, // LDM(S)
+    R_AARCH64_TLS_DTPREL64 = 1029, // DTPREL(S+A)
+    R_AARCH64_TLS_TPREL64 = 1030,  // TPREL(S+A)
+    R_AARCH64_TLSDESC = 1031,  // TLSDESC(S+A)
+    R_AARCH64_IRELATIVE = 1032,  // Indirect(Delta(S) + A)
+} RelocationType_aarch64;
+
 UNION(RelocationType)
 {
     RelocationType_x86_64 x86_64;
+    RelocationType_aarch64 aarch64;
 };
 
 STRUCT(ElfRelocationWithAddendInfo)
@@ -7753,7 +7894,13 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         vb_align(&builder->file, alignment);
         auto offset = builder->file.length;
 
-        auto size = vb_copy_string_zero_terminated(&builder->file, strlit("/lib64/ld-linux-x86-64.so.2"));
+        auto interpreter_path = 
+#ifdef __x86_64__
+            strlit("/lib64/ld-linux-x86-64.so.2");
+#else
+            strlit("/lib/ld-linux-aarch64.so.1");
+#endif
+        auto size = vb_copy_string_zero_terminated(&builder->file, interpreter_path);
 
         *section_header = (ELFSectionHeader)
         {
@@ -7973,8 +8120,14 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
     auto libc_start_main = st_get_string(&builder->dynamic_st, strlit("__libc_start_main"));
     auto cxa_finalize = st_get_string(&builder->dynamic_st, strlit("__cxa_finalize"));
     auto libcso6 = st_get_string(&builder->dynamic_st, strlit("libc.so.6"));
-    auto glibc_225 = st_get_string_and_hash(&builder->dynamic_st, strlit("GLIBC_2.2.5"));
-    auto glibc_234 = st_get_string_and_hash(&builder->dynamic_st, strlit("GLIBC_2.34"));
+#ifdef __x86_64
+#define glibc_min_version_string "GLIBC_2.2.5"
+#else
+#define glibc_min_version_string "GLIBC_2.17"
+#endif
+#define glibc_max_version_string "GLIBC_2.34"
+    auto glibc_min = st_get_string_and_hash(&builder->dynamic_st, strlit(glibc_min_version_string));
+    auto glibc_max = st_get_string_and_hash(&builder->dynamic_st, strlit(glibc_max_version_string));
     auto itm_deregister = st_get_string(&builder->dynamic_st, strlit("_ITM_deregisterTMCloneTable"));
     auto gmon_start = st_get_string(&builder->dynamic_st, strlit("__gmon_start__"));
     auto itm_register = st_get_string(&builder->dynamic_st, strlit("_ITM_registerTMCloneTable"));
@@ -8166,17 +8319,17 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         ELFVersionRequirementEntry entries[] =  {
             {
-                .hash = glibc_225.hash,
+                .hash = glibc_min.hash,
                 .flags = 0,
                 .index = 3,
-                .name_offset = glibc_225.offset,
+                .name_offset = glibc_min.offset,
                 .next = sizeof(ELFVersionRequirementEntry),
             },
             {
-                .hash = glibc_234.hash,
+                .hash = glibc_max.hash,
                 .flags = 0,
                 .index = 2,
-                .name_offset = glibc_234.offset,
+                .name_offset = glibc_max.offset,
                 .next = 0,
             },
         };
@@ -8398,7 +8551,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                         .offset = offset + 0x18 + 3,
                     };
                     *vb_add(&symbol_relocations, 1) = (SymbolRelocation) {
-                        .name = strlit("__libc_start_main@GLIBC_2.34"),
+                        .name = strlit("__libc_start_main@" glibc_max_version_string),
                         .offset = offset + 0x1f + 2,
                     };
 
@@ -8541,7 +8694,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 .extra_bytes = 1,
             };
             *vb_add(&symbol_relocations, 1) = (SymbolRelocation) {
-                .name = strlit("__cxa_finalize@GLIBC_2.2.5"),
+                .name = strlit("__cxa_finalize@" glibc_min_version_string),
                 .offset = offset + 0xce - 0x20 + 3,
                 .extra_bytes = 1,
             };
@@ -8550,7 +8703,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 .offset = offset + 0xdb - 0x20 + 3,
             };
             *vb_add(&symbol_relocations, 1) = (SymbolRelocation) {
-                .name = strlit("__cxa_finalize@GLIBC_2.2.5"),
+                .name = strlit("__cxa_finalize@" glibc_min_version_string),
                 .offset = offset + 0xe2 - 0x20 + 2,
             };
             *vb_add(&symbol_relocations, 1) = (SymbolRelocation) {
@@ -8975,7 +9128,16 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         dynamic_relocations[dynamic_relocation_count] = (ElfRelocationWithAddend) {
             .offset = virtual_address,
-            .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0},
+            .info = {
+                .type = {
+#ifdef __x86_64__
+                    .x86_64 = R_X86_64_RELATIVE
+#else
+                    .x86_64 = R_AARCH64_RELATIVE
+#endif
+                },
+                .symbol = 0,
+            },
             .addend = text_init_array_offset,
         };
         dynamic_relocation_count += 1;
@@ -9019,7 +9181,16 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         dynamic_relocations[dynamic_relocation_count] = (ElfRelocationWithAddend) {
             .offset = virtual_address,
-            .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0},
+            .info = {
+                .type = {
+#ifdef __x86_64__
+                    .x86_64 = R_X86_64_RELATIVE
+#else
+                    .aarch64 = R_AARCH64_RELATIVE
+#endif
+                },
+                .symbol = 0,
+            },
             .addend = text_fini_array_offset,
         };
         dynamic_relocation_count += 1;
@@ -9140,7 +9311,13 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
             *relocation = (ElfRelocationWithAddend) {
                 .offset = offset, 
                 .info = {
-                    .type = { .x86_64 = R_X86_64_GLOB_DAT },
+                    .type = {
+#ifdef __x86_64__
+                        .x86_64 = R_X86_64_GLOB_DAT
+#else
+                        .aarch64 = R_AARCH64_GLOB_DAT
+#endif
+                    },
                     .symbol = i + 1,
                 },
                 .addend = 0,
@@ -9321,7 +9498,16 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
 
         *__dso_handle_relocation = (ElfRelocationWithAddend) {
             .offset = __dso_handle_va,
-            .info = { .type = { .x86_64 = R_X86_64_RELATIVE }, .symbol = 0 },
+            .info = {
+                .type = {
+#ifdef __x86_64__
+                    .x86_64 = R_X86_64_RELATIVE
+#else
+                    .aarch64 = R_AARCH64_RELATIVE
+#endif
+                },
+                .symbol = 0
+            },
             .addend = __dso_handle_va,
         };
     }
@@ -10043,7 +10229,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         auto _dynamic_string = st_get_string(&builder->static_st, strlit("_DYNAMIC"));
         auto eh_frame_hdr_string = st_get_string(&builder->static_st, strlit("__GNU_EH_FRAME_HDR"));
         auto got_string = st_get_string(&builder->static_st, strlit("_GLOBAL_OFFSET_TABLE_"));
-        auto libc_start_main_string = st_get_string(&builder->static_st, strlit("__libc_start_main@GLIBC_2.34"));
+        auto libc_start_main_string = st_get_string(&builder->static_st, strlit("__libc_start_main@" glibc_max_version_string));
         auto deregister_string = st_get_string(&builder->static_st, strlit("_ITM_deregisterTMCloneTable"));
         auto edata_string = st_get_string(&builder->static_st, strlit("_edata"));
         auto fini_string = st_get_string(&builder->static_st, strlit("_fini"));
@@ -10232,7 +10418,7 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
                 .size = 0,
             },
             {
-                .name_offset = st_get_string(&builder->static_st, strlit("__cxa_finalize@GLIBC_2.2.5")),
+                .name_offset = st_get_string(&builder->static_st, strlit("__cxa_finalize@" glibc_min_version_string)),
                 .type = ELF_SYMBOL_TYPE_FUNCTION,
                 .binding = ELF_SYMBOL_BINDING_WEAK,
                 .visibility = ELF_SYMBOL_VISIBILITY_DEFAULT,
@@ -10366,7 +10552,11 @@ may_be_unused fn String write_elf(Thread* thread, ObjectOptions options)
         .abi_version = 0,
         .padding = {},
         .type = shared,
+#ifdef __x86_64__
         .machine = x86_64,
+#else
+        .machine = aarch64,
+#endif
         .version = 1,
         .entry_point = _start_offset,
         .program_header_offset = sizeof(ELFHeader),
@@ -11199,11 +11389,11 @@ STRUCT(PDBSerializedHashTableBitArray)
 
 typedef enum PDBFeatureCode : u32
 {
-	PDB_FEATURE_CODE_VC110 = 20091201,
-	PDB_FEATURE_CODE_VC140 = 20140508,
-	// https://github.com/microsoft/microsoft-pdb/blob/master/PDB/include/pdbcommon.h#L23
-	PDB_FEATURE_CODE_NO_TYPE_MERGE = 0x4D544F4E,				// "NOTM"
-	PDB_FEATURE_CODE_MINIMAL_DEBUG_INFO = 0x494E494D			// "MINI", i.e. executable was linked with /DEBUG:FASTLINK
+ PDB_FEATURE_CODE_VC110 = 20091201,
+ PDB_FEATURE_CODE_VC140 = 20140508,
+ // https://github.com/microsoft/microsoft-pdb/blob/master/PDB/include/pdbcommon.h#L23
+ PDB_FEATURE_CODE_NO_TYPE_MERGE = 0x4D544F4E,    // "NOTM"
+ PDB_FEATURE_CODE_MINIMAL_DEBUG_INFO = 0x494E494D   // "MINI", i.e. executable was linked with /DEBUG:FASTLINK
 } PDBFeatureCode;
 
 STRUCT(PDBInfoStream)
@@ -24268,8 +24458,15 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                                 {
                                     if (gpr == RAX)
                                     {
+#ifdef __x86_64__
                                         *vb_add(&code, 1) = 0x31;
                                         *vb_add(&code, 1) = 0xc0;
+#else
+                                        *vb_add(&code, 1) = 0x2a;
+                                        *vb_add(&code, 1) = 0x1f;
+                                        *vb_add(&code, 1) = 0x03;
+                                        *vb_add(&code, 1) = 0xe0;
+#endif
                                     }
                                     else
                                     {
@@ -24305,7 +24502,14 @@ fn void code_generation(Thread* restrict thread, CodegenOptions options)
                         } break;
                     case IR_RETURN:
                         {
+#ifdef __x86_64__
                             *vb_add(&code, 1) = 0xc3;
+#else
+                            *vb_add(&code, 1) = 0xd6;
+                            *vb_add(&code, 1) = 0x5f;
+                            *vb_add(&code, 1) = 0x03;
+                            *vb_add(&code, 1) = 0xc0;
+#endif
                         } break;
                     default:
                         todo();
