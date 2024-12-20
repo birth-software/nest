@@ -241,10 +241,16 @@ if (NOT BB_IS_CI)
         "bootstrap/std/font_cache.c"
         "bootstrap/std/font_provider.c"
         "bootstrap/std/window.c"
-        "bootstrap/std/render.c"
         "bootstrap/std/ui_core.c"
         "bootstrap/std/ui_builder.c"
     )
+
+    if (APPLE)
+        target_include_directories(${COMPILER_NAME} PRIVATE dependencies/metal-cpp_macOS15.2_iOS18.2)
+        target_sources(${COMPILER_NAME} PRIVATE "bootstrap/std/renderer_metal.cpp")
+    else()
+        target_sources(${COMPILER_NAME} PRIVATE "bootstrap/std/renderer_vulkan.c")
+    endif()
 
     target_include_directories(${COMPILER_NAME} PRIVATE dependencies/stb)
 endif()
