@@ -919,6 +919,9 @@ Renderer* renderer_initialize(Arena* arena)
 #endif
 #ifdef VK_USE_PLATFORM_XLIB_KHR
             VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
+#endif 
+#ifdef VK_USE_PLATFORM_XCB_KHR
+            VK_KHR_XCB_SURFACE_EXTENSION_NAME,
 #endif
 #ifdef VK_USE_PLATFORM_WAYLAND_KHR
             VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
@@ -1654,43 +1657,6 @@ RenderWindow* renderer_window_initialize(Renderer* renderer, OSWindow window)
 {
     RenderWindow* result = &renderer_window_memory;
     vkok(glfwCreateWindowSurface(renderer->instance, window, renderer->allocator, &result->surface));
-//     {
-// #ifdef VK_USE_PLATFORM_WIN32_KHR
-//         VkWin32SurfaceCreateInfoKHR create_info = {
-//             .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-//             .pNext = 0,
-//             .flags = 0,
-//             .hinstance = os_windows_get_module_handle(),
-//             .hwnd = win32_window_get(window),
-//         };
-//         vkok(vkCreateWin32SurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
-// #endif
-//
-// #ifdef VK_USE_PLATFORM_XLIB_KHR
-//         VkXlibSurfaceCreateInfoKHR create_info = {
-//             .sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
-//             .pNext = 0,
-//             .flags = 0,
-//             .dpy = x11_display_get(),
-//             .window = x11_window_get(window),
-//         };
-//         vkok(vkCreateXlibSurfaceKHR(renderer->instance, &create_info, renderer->allocator, &result->surface));
-// #endif
-//
-// #ifdef VK_USE_PLATFORM_WAYLAND_KHR
-//             VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME,
-// #endif
-//
-// #ifdef VK_USE_PLATFORM_METAL_EXT
-//         VkMetalSurfaceCreateInfoEXT create_info = {
-//             .sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
-//             .pNext = 0,
-//             .flags = 0,
-//         };
-//
-//         vkok(vkCreateMetalSurfaceEXT(renderer->instance, &create_info, renderer->allocator, &result->surface));
-// #endif
-//     }
 
     swapchain_recreate(renderer, result);
 
